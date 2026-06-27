@@ -1,0 +1,6 @@
+@RentkuttCRM_HostAddress = http://localhost:5030
+
+GET {{RentkuttCRM_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
