@@ -8,10 +8,11 @@
     <title>Rentekutt — plattform</title>
     <link rel="stylesheet" href="app.css" />
     <link rel="icon" href="data:," />
+    <HeadOutlet />
 </head>
 
 <body>
-    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
 </body>
 
