@@ -40,7 +40,7 @@ else
                 @Header("belop", "Ønsket beløp")
                 @Header("status", "Status")
                 @Header("opprettet", "Opprettet")
-                @Header("statusdato", "Status-dato")
+                @Header("eier", "Eier")
                 <th></th>
             </tr>
         </thead>
@@ -59,7 +59,16 @@ else
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
                     <td><span class="status on">@k.Status</span></td>
                     <td>@Dt(k.CreatedAt)</td>
-                    <td>@Dt(k.UpdatedAt)</td>
+                    <td>
+                        @if (string.IsNullOrWhiteSpace(k.Eier))
+                        {
+                            <button class="btn-sm" @onclick="() => TakeOwnership(k)">Ta eierskap</button>
+                        }
+                        else
+                        {
+                            <span>@(k.Eier == Session.Email ? "Deg" : k.EierNavn ?? k.Eier)</span>
+                        }
+                    </td>
                     <td><button class="btn-sm" @onclick="() => Open(k.KundeId)">Åpne</button></td>
                 </tr>
             }
@@ -148,7 +157,7 @@ else
                 "laanetype" => k => k.Laanetype,
                 "belop" => k => k.OnsketLaanebelop ?? 0,
                 "status" => k => k.Status,
-                "statusdato" => k => k.UpdatedAt,
+                "eier" => k => k.EierNavn ?? k.Eier ?? "",
                 _ => k => k.CreatedAt,
             };
             q = _sortAsc ? q.OrderBy(key) : q.OrderByDescending(key);
@@ -179,6 +188,14 @@ else
     }
 
     private static string Dt(DateTime d) => d == default ? "—" : d.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+
+    private async Task TakeOwnership(Kundekort k)
+    {
+        var eier = Session.Email ?? Session.UserName ?? "ukjent";
+        await Svc.SetEierAsync(k.KundeId, eier, Session.UserName ?? eier);
+        k.Eier = eier;
+        k.EierNavn = Session.UserName ?? eier;
+    }
 
     private void Open(string kundeId) => Nav.NavigateTo($"/crm/ny-kunde?id={kundeId}");
 }

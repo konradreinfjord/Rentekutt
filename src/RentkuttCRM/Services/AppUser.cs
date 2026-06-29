@@ -24,6 +24,9 @@ public class AppUser : BaseModel
     [Column("active")]
     public bool Active { get; set; } = true;
 
+    [Column("mobilnummer")]
+    public string? Mobilnummer { get; set; }
+
     [Column("password_hash")]
     public string PasswordHash { get; set; } = "";
 

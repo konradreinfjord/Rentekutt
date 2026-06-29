@@ -3,7 +3,7 @@ using Supabase.Postgrest;
 
 namespace RentkuttCRM.Services;
 
-public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active);
+public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active, string? Mobilnummer = null);
 public record SignInResult(bool Ok, string? Error, UserRow? User);
 
 /// <summary>
@@ -106,7 +106,7 @@ public class SupabaseUserService
         }
     }
 
-    public async Task<(bool ok, string? error)> CreateUserAsync(string email, string fullName, string role, string password)
+    public async Task<(bool ok, string? error)> CreateUserAsync(string email, string fullName, string role, string password, string? mobil = null)
     {
         email = (email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
@@ -116,7 +116,7 @@ public class SupabaseUserService
         if (!IsConfigured)
         {
             if (_staging.Any(x => x.Email == email)) return (false, "E-posten finnes allerede.");
-            _staging.Add(new AppUser { Id = Guid.NewGuid(), Email = email, FullName = fullName, Role = role, Active = true });
+            _staging.Add(new AppUser { Id = Guid.NewGuid(), Email = email, FullName = fullName, Role = role, Active = true, Mobilnummer = mobil });
             return (true, null);
         }
 
@@ -126,7 +126,7 @@ public class SupabaseUserService
             var existing = await _client.From<AppUser>().Where(x => x.Email == email).Single();
             if (existing is not null) return (false, "E-posten finnes allerede.");
 
-            var user = new AppUser { Email = email, FullName = fullName, Role = role, Active = true };
+            var user = new AppUser { Email = email, FullName = fullName, Role = role, Active = true, Mobilnummer = mobil };
             user.PasswordHash = _hasher.HashPassword(user, password);
             await _client.From<AppUser>().Insert(user);
             return (true, null);
@@ -135,6 +135,25 @@ public class SupabaseUserService
         {
             _log.LogError(ex, "Oppretting av bruker feilet");
             return (false, "Teknisk feil ved oppretting.");
+        }
+    }
+
+    public async Task<(bool ok, string? error)> SetPasswordAsync(Guid id, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
+            return (false, "Passord må være minst 6 tegn.");
+        if (!IsConfigured) return (true, null); // staging godtar uansett alle passord
+        try
+        {
+            await EnsureReadyAsync();
+            var hash = _hasher.HashPassword(new AppUser { Id = id }, newPassword);
+            await _client.From<AppUser>().Where(x => x.Id == id).Set(x => x.PasswordHash, hash).Update();
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Endring av passord feilet");
+            return (false, "Teknisk feil ved endring av passord.");
         }
     }
 
@@ -218,5 +237,5 @@ public class SupabaseUserService
         }
     }
 
-    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active);
+    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active, u.Mobilnummer);
 }

@@ -4,26 +4,23 @@
 
 <PageTitle>Dashbord — Rentekutt</PageTitle>
 
-<h1 class="page-title">Kontrollrommet</h1>
-<p class="page-sub">Oversikt over leads, saker og provisjon siste 24 timer.</p>
+<div class="dash-head">
+    <div>
+        <h1 class="page-title">Hei, @Fornavn 👋</h1>
+        <p class="page-sub">Her er oversikten din for i dag.</p>
+    </div>
+    <div class="dash-actions">
+        <button class="btn-primary" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+ Opprett kunde</button>
+        <button class="btn-logout" @onclick='() => Nav.NavigateTo("/crm/database")'>Database</button>
+        <button class="btn-logout" @onclick='() => Nav.NavigateTo("/crm/oppfolging")'>Mine oppfølginger</button>
+    </div>
+</div>
 
 <div class="kpi-grid">
-    <div class="kpi-card">
-        <div class="kpi-value">0</div>
-        <div class="kpi-label">Nye leads (24t)</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-value">0 kr</div>
-        <div class="kpi-label">Pipeline-verdi</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-value">0</div>
-        <div class="kpi-label">Aktive saker</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-value">0 kr</div>
-        <div class="kpi-label">Forventet provisjon</div>
-    </div>
+    <div class="kpi-card"><div class="kpi-value">0</div><div class="kpi-label">Nye saker (24t)</div></div>
+    <div class="kpi-card"><div class="kpi-value">0</div><div class="kpi-label">Mine aktive saker</div></div>
+    <div class="kpi-card"><div class="kpi-value">0 kr</div><div class="kpi-label">Pipeline-verdi</div></div>
+    <div class="kpi-card"><div class="kpi-value">0 kr</div><div class="kpi-label">Forventet provisjon</div></div>
 </div>
 
 <div class="section">
@@ -40,19 +37,13 @@
 </div>
 
 <div class="section">
-    <h2>Leads uten kontakt</h2>
+    <h2>Saker uten kontakt</h2>
     <table class="data-table">
         <thead>
-            <tr>
-                <th>Saksnr</th>
-                <th>Kunde</th>
-                <th>Lånebeløp</th>
-                <th>Siste aktivitet</th>
-                <th></th>
-            </tr>
+            <tr><th>Saksnr</th><th>Kunde</th><th>Lånebeløp</th><th>Siste aktivitet</th><th></th></tr>
         </thead>
         <tbody>
-            <tr><td colspan="5" class="empty-row">Ingen leads ennå.</td></tr>
+            <tr><td colspan="5" class="empty-row">Ingen saker uten kontakt. 🎉</td></tr>
         </tbody>
     </table>
 </div>
@@ -63,10 +54,7 @@
         @foreach (var g in _goals)
         {
             <div class="goal">
-                <div class="goal-head">
-                    <span>@g.Label</span>
-                    <span>0/@g.Target</span>
-                </div>
+                <div class="goal-head"><span>@g.Label</span><span>0/@g.Target</span></div>
                 <div class="goal-bar"><div class="goal-fill" style="width:0%"></div></div>
             </div>
         }
@@ -79,9 +67,11 @@
         if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
     }
 
+    private string Fornavn => (Session.UserName ?? "der").Split(' ')[0];
+
     private readonly string[] _priorities =
     {
-        "Leads uten kontakt",
+        "Saker uten kontakt",
         "Mangler PSD2-samtykke",
         "Manuell vurdering",
         "Klar for bank",
@@ -92,7 +82,7 @@
     private record Goal(string Label, int Target);
     private readonly Goal[] _goals =
     {
-        new("Leads inn", 25),
+        new("Saker inn", 25),
         new("Kontaktet", 40),
         new("Kvalifisert", 15),
         new("Sendt bank", 10),

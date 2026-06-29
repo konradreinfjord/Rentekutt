@@ -35,11 +35,20 @@ public class WebhookController : ControllerBase
 
         // 2) Token (Authorization: Bearer <token>  eller  X-Webhook-Token)
         var token = ExtractToken();
-        if (!await _hooks.ValidateTokenAsync(token))
+        var hook = await _hooks.ValidateTokenAsync(token);
+        if (hook is null)
         {
             _log.LogWarning("Webhook avvist: ugyldig/manglende token fra {IP}",
                 HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { error = "Ugyldig token." });
+        }
+
+        // 2b) IP-whitelist (tom liste = alle tillatt)
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (!WebhookService.IpAllowed(hook, clientIp))
+        {
+            _log.LogWarning("Webhook avvist: IP {IP} ikke i whitelist", clientIp);
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "IP ikke tillatt." });
         }
 
         if (payload is null)
@@ -54,6 +63,10 @@ public class WebhookController : ControllerBase
             _log.LogWarning("Webhook-lead avvist ved lagring: {Error}", error);
             return BadRequest(new { error });
         }
+
+        // 4) Registrer sist mottatt (uten PII)
+        var belop = k.OnsketLaanebelop.HasValue ? $" · {k.OnsketLaanebelop:N0} kr" : "";
+        await _hooks.RecordReceiptAsync(hook, $"{k.KundeType} · {k.Laanetype ?? "—"}{belop}");
 
         _log.LogInformation("Webhook-lead mottatt og lagret ({Type})", k.KundeType);
         return Ok(new { status = "mottatt", kunde_type = k.KundeType });

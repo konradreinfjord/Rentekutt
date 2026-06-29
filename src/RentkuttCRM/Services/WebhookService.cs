@@ -82,10 +82,10 @@ public class WebhookService
         }
     }
 
-    /// <summary>Validerer token i konstant tid mot aktive inbound-webhooks.</summary>
-    public async Task<bool> ValidateTokenAsync(string? presented)
+    /// <summary>Validerer token i konstant tid og returnerer matchet inbound-webhook (eller null).</summary>
+    public async Task<Webhook?> ValidateTokenAsync(string? presented)
     {
-        if (string.IsNullOrWhiteSpace(presented)) return false;
+        if (string.IsNullOrWhiteSpace(presented)) return null;
 
         IEnumerable<Webhook> hooks;
         if (!IsConfigured) { SeedStaging(); hooks = _staging; }
@@ -96,19 +96,65 @@ public class WebhookService
                 await EnsureInitAsync();
                 hooks = (await _client.From<Webhook>().Where(w => w.Direction == "inbound").Get()).Models;
             }
-            catch (Exception ex) { _log.LogError(ex, "Token-validering feilet"); return false; }
+            catch (Exception ex) { _log.LogError(ex, "Token-validering feilet"); return null; }
         }
 
         var presentedBytes = Encoding.UTF8.GetBytes(presented);
-        var ok = false;
+        Webhook? match = null;
         foreach (var h in hooks.Where(h => h.Active))
         {
             var stored = Encoding.UTF8.GetBytes(h.Token);
             if (stored.Length == presentedBytes.Length
                 && CryptographicOperations.FixedTimeEquals(stored, presentedBytes))
-                ok = true; // ikke 'return' tidlig — unngå timing-lekkasje
+                match = h; // ikke 'return' tidlig — unngå timing-lekkasje
         }
-        return ok;
+        return match;
+    }
+
+    /// <summary>Sjekker om en IP er tillatt for webhooken (tom liste = alle tillatt).</summary>
+    public static bool IpAllowed(Webhook hook, string? ip)
+    {
+        if (string.IsNullOrWhiteSpace(hook.IpAllowlist)) return true;
+        if (string.IsNullOrWhiteSpace(ip)) return false;
+        var allowed = hook.IpAllowlist.Split(new[] { ',', '\n', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        return allowed.Any(a => a.Trim() == ip.Trim());
+    }
+
+    public async Task SetIpAllowlistAsync(Guid id, string? list)
+    {
+        if (!IsConfigured)
+        {
+            var s = _staging.FirstOrDefault(w => w.Id == id);
+            if (s is not null) s.IpAllowlist = list;
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<Webhook>().Where(w => w.Id == id).Set(w => w.IpAllowlist!, list ?? "").Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke lagre IP-whitelist"); }
+    }
+
+    /// <summary>Registrerer sist mottatte data (uten PII) på webhooken.</summary>
+    public async Task RecordReceiptAsync(Webhook hook, string info)
+    {
+        if (!IsConfigured)
+        {
+            var s = _staging.FirstOrDefault(w => w.Id == hook.Id);
+            if (s is not null) { s.LastReceivedAt = DateTime.UtcNow; s.LastReceivedInfo = info; }
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<Webhook>()
+                .Where(w => w.Id == hook.Id)
+                .Set(w => w.LastReceivedAt!, DateTime.UtcNow)
+                .Set(w => w.LastReceivedInfo!, info)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke oppdatere sist mottatt"); }
     }
 
     private void SeedStaging()

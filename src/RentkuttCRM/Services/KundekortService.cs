@@ -71,6 +71,44 @@ public class KundekortService
         }
     }
 
+    /// <summary>Saker eid av en bruker (Mine oppfølginger).</summary>
+    public async Task<List<Kundekort>> ListByEierAsync(string eier)
+    {
+        if (string.IsNullOrWhiteSpace(eier)) return new();
+        if (!IsConfigured) return _staging.Where(k => k.Eier == eier).ToList();
+        try
+        {
+            await EnsureReadyAsync();
+            return (await _client.From<Kundekort>().Where(k => k.Eier == eier).Get()).Models;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Henting av egne saker feilet");
+            return new();
+        }
+    }
+
+    /// <summary>Ta eierskap til en sak.</summary>
+    public async Task SetEierAsync(string kundeId, string eier, string eierNavn)
+    {
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.KundeId == kundeId);
+            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; }
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>()
+                .Where(x => x.KundeId == kundeId)
+                .Set(x => x.Eier!, eier)
+                .Set(x => x.EierNavn!, eierNavn)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
+    }
+
     public async Task<Kundekort?> GetAsync(string kundeId)
     {
         if (!IsConfigured) return _staging.FirstOrDefault(x => x.KundeId == kundeId);

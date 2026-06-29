@@ -77,6 +77,10 @@ public class Kundekort : BaseModel
 
     [Column("status")] public string Status { get; set; } = "Ny";
 
+    // Eierskap til saken
+    [Column("eier")] public string? Eier { get; set; }
+    [Column("eier_navn")] public string? EierNavn { get; set; }
+
     // Tidsstempler — leses for sortering, men skrives ikke (DB styrer dem).
     [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
     public DateTime CreatedAt { get; set; }

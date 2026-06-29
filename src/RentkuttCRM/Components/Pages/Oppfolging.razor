@@ -1,4 +1,58 @@
 @page "/crm/oppfolging"
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.KundekortService Svc
+@inject NavigationManager Nav
+
 <PageTitle>Mine oppfølginger — Rentekutt</PageTitle>
+
 <h1 class="page-title">Mine oppfølginger</h1>
-<p class="page-sub">Kommer snart — her samles saker du har ansvar for.</p>
+<p class="page-sub">Saker du har tatt eierskap til.</p>
+
+<div class="section">
+    <h2>Mine saker <span class="pill pill-warn">@_rows.Count</span></h2>
+    @if (_loading)
+    {
+        <p class="page-sub">Laster…</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr><th>Kunde-ID</th><th>Navn</th><th>Type</th><th>Lånetype</th><th>Ønsket beløp</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_rows.Count == 0)
+                {
+                    <tr><td colspan="7" class="empty-row">Du eier ingen saker ennå — ta eierskap til en sak i Database-fanen.</td></tr>
+                }
+                @foreach (var k in _rows)
+                {
+                    <tr>
+                        <td class="mono-cell">@k.KundeId</td>
+                        <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
+                        <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
+                        <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
+                        <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                        <td><span class="status on">@k.Status</span></td>
+                        <td><button class="btn-sm" @onclick="() => Open(k.KundeId)">Åpne</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<Kundekort> _rows = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        var eier = Session.Email ?? Session.UserName ?? "";
+        _rows = await Svc.ListByEierAsync(eier);
+        _loading = false;
+    }
+
+    private void Open(string kundeId) => Nav.NavigateTo($"/crm/ny-kunde?id={kundeId}");
+}
