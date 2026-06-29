@@ -1,3 +1,5 @@
+using RentkuttCRM.Components;
+using RentkuttCRM.Services;
 using Supabase;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,9 +13,17 @@ builder.Services.AddScoped(_ => new Client(
     supabaseKey,
     new SupabaseOptions { AutoConnectRealtime = false }));
 
+// Web API (controllers) + Swagger – beholdes som før.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Blazor (Interactive Server) – frontend i samme prosjekt.
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+// Innloggings-tilstand per økt (staging).
+builder.Services.AddScoped<SessionState>();
 
 var app = builder.Build();
 
@@ -21,7 +31,16 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseStaticFiles();
+app.UseAntiforgery();
+
 app.UseAuthorization();
+
+// API-endepunkter (under /api/...)
 app.MapControllers();
+
+// Blazor-frontend
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
 app.Run();

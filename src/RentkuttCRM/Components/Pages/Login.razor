@@ -1,0 +1,54 @@
+@page "/"
+@page "/login"
+@inject RentkuttCRM.Services.SessionState Session
+@inject NavigationManager Nav
+
+<PageTitle>Logg inn — Rentekutt</PageTitle>
+
+<div class="login-wrap">
+    <div class="login-card">
+        <div class="login-brand">
+            <span class="brand-mark large">R</span>
+            <h1>Rentekutt</h1>
+            <p class="login-sub">Intern plattform — CRM, statistikk og admin</p>
+        </div>
+
+        <EditForm Model="@model" OnValidSubmit="HandleLogin">
+            <div class="form-field">
+                <label>E-post</label>
+                <InputText @bind-Value="model.Email" placeholder="navn@rentekutt.no" />
+            </div>
+            <div class="form-field">
+                <label>Passord</label>
+                <InputText type="password" @bind-Value="model.Password" placeholder="••••••••" />
+            </div>
+            <button type="submit" class="btn-primary full">Logg inn</button>
+        </EditForm>
+
+        <p class="login-note">Staging — dummydata. Skriv hva som helst for å logge inn.</p>
+    </div>
+</div>
+
+@code {
+    private LoginModel model = new();
+
+    protected override void OnInitialized()
+    {
+        // Allerede innlogget? Hopp rett til dashbordet.
+        if (Session.IsLoggedIn)
+            Nav.NavigateTo("/crm");
+    }
+
+    private void HandleLogin()
+    {
+        var name = string.IsNullOrWhiteSpace(model.Email) ? "Dev Saksbehandler" : model.Email;
+        Session.SignIn(name, "Saksbehandler");
+        Nav.NavigateTo("/crm");
+    }
+
+    private class LoginModel
+    {
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+@inject RentkuttCRM.Services.SessionState Session
+@inject NavigationManager Nav
+
+@if (!Session.IsLoggedIn)
+{
+    @* Login og andre åpne sider vises uten skall *@
+    @Body
+}
+else
+{
+    <div class="app-shell">
+        <NavSidebar />
+        <div class="app-main">
+            <header class="app-topbar">
+                <span class="staging-badge">staging — dummydata (før konsesjon)</span>
+                <div class="topbar-user">
+                    <span class="user-name">@Session.UserName</span>
+                    <span class="user-role">@Session.Role</span>
+                    <button class="btn-logout" @onclick="LogOut">Logg ut</button>
+                </div>
+            </header>
+            <main class="app-content">
+                @Body
+            </main>
+        </div>
+    </div>
+}
+
+@code {
+    private void LogOut()
+    {
+        Session.SignOut();
+        Nav.NavigateTo("/login", forceLoad: false);
+    }
+}

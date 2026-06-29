@@ -1,0 +1,144 @@
+@page "/crm/admin"
+@inject RentkuttCRM.Services.SessionState Session
+@inject NavigationManager Nav
+
+<PageTitle>Admin — Rentekutt</PageTitle>
+
+<h1 class="page-title">Admin</h1>
+<p class="page-sub">Brukere, roller, bankpartnere og driftsinnstillinger.</p>
+
+<div class="section">
+    <h2>Roller og tilgang</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Rettighet</th>
+                @foreach (var r in _roles) { <th>@r</th> }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var perm in _permissions)
+            {
+                <tr>
+                    <td>@perm.Name</td>
+                    @foreach (var allowed in perm.Access)
+                    {
+                        <td>@(allowed ? "✓" : "—")</td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Brukere</h2>
+    <table class="data-table">
+        <thead><tr><th>Navn</th><th>Rolle</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var u in _users)
+            {
+                <tr>
+                    <td>@u.Name</td>
+                    <td>@u.Role</td>
+                    <td><button class="btn-sm btn-danger">Deaktiver</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Bankpartnere & provisjonssatser</h2>
+    <table class="data-table">
+        <thead><tr><th>Bank</th><th>Provisjon %</th></tr></thead>
+        <tbody>
+            @foreach (var b in _banks)
+            {
+                <tr>
+                    <td>@b.Name</td>
+                    <td><input class="inline-input" value="@b.Rate" /> %</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button class="btn-primary">Lagre satser</button>
+</div>
+
+<div class="section">
+    <h2>Leadkilder</h2>
+    <table class="data-table">
+        <thead><tr><th>Kilde</th><th>Aktiv</th></tr></thead>
+        <tbody>
+            @foreach (var s in _sources)
+            {
+                <tr><td>@s.Name</td><td>@(s.Active ? "På" : "Av")</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>System & drift</h2>
+    <ul class="bullet-list">
+        <li>Miljø: <strong>staging</strong></li>
+        <li>Datalagring: EU</li>
+        <li>Konsesjon: avventer Finanstilsynet</li>
+        <li>MFA: påkrevd</li>
+        <li>GDPR-sletting: inaktiv</li>
+    </ul>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
+    }
+
+    private readonly string[] _roles = { "Saksbehandler", "Compliance", "Leder", "Administrator" };
+
+    private record Perm(string Name, bool[] Access);
+    private readonly Perm[] _permissions =
+    {
+        new("Lese saker",        new[]{ true,  true,  true,  true }),
+        new("Redigere saker",    new[]{ true,  false, true,  true }),
+        new("Kvalifisere",       new[]{ true,  false, true,  true }),
+        new("Sende lead",        new[]{ true,  false, true,  true }),
+        new("Kundedata",         new[]{ true,  true,  true,  true }),
+        new("GDPR-sletting",     new[]{ false, true,  false, true }),
+        new("Se provisjon",      new[]{ false, false, true,  true }),
+        new("Revisjonslogg",     new[]{ false, true,  true,  true }),
+        new("Brukeradmin",       new[]{ false, false, false, true }),
+    };
+
+    private record User(string Name, string Role);
+    private readonly User[] _users =
+    {
+        new("Dev Saksbehandler (deg)", "Saksbehandler"),
+        new("Anne Compliance", "Compliance"),
+        new("Bjørn Leder", "Leder"),
+        new("Cathrine Admin", "Administrator"),
+    };
+
+    private record BankRate(string Name, string Rate);
+    private readonly BankRate[] _banks =
+    {
+        new("DNB", "1,20"),
+        new("Nordea", "1,10"),
+        new("Storebrand", "1,15"),
+        new("SpareBank 1", "1,25"),
+        new("Instabank", "1,50"),
+        new("Bulder", "1,30"),
+        new("Soknedal Sparebank", "1,40"),
+    };
+
+    private record Source(string Name, bool Active);
+    private readonly Source[] _sources =
+    {
+        new("Prismatch", true),
+        new("Organisk", true),
+        new("Meta ads", true),
+        new("Referral", false),
+        new("Partner", true),
+    };
+}

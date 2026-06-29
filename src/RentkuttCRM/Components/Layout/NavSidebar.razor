@@ -1,0 +1,45 @@
+@inject RentkuttCRM.Services.SessionState Session
+
+<aside class="sidebar">
+    <div class="sidebar-brand">
+        <span class="brand-mark">R</span>
+        <span class="brand-text">Rentekutt</span>
+    </div>
+
+    <nav class="sidebar-nav">
+        <div class="nav-group">
+            <div class="nav-group-title">CRM</div>
+            <NavLink class="nav-item" href="/crm" Match="NavLinkMatch.All">
+                <span class="nav-icon">📊</span> Dashbord
+            </NavLink>
+            <NavLink class="nav-item" href="/crm/oppfolging">
+                <span class="nav-icon">📞</span> Mine oppfølginger
+            </NavLink>
+            <NavLink class="nav-item" href="/crm/ny-kunde">
+                <span class="nav-icon">➕</span> Ny kunde
+            </NavLink>
+            <NavLink class="nav-item" href="/crm/soknader">
+                <span class="nav-icon">📁</span> Søknader
+            </NavLink>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-title">Statistikk</div>
+            <NavLink class="nav-item" href="/crm/statistikk">
+                <span class="nav-icon">📈</span> Statistikk
+            </NavLink>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-title">Admin</div>
+            <NavLink class="nav-item" href="/crm/admin">
+                <span class="nav-icon">⚙️</span> Admin
+            </NavLink>
+        </div>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="env-dot"></div>
+        <span>Staging</span>
+    </div>
+</aside>

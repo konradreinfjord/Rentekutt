@@ -1,0 +1,83 @@
+@page "/crm/statistikk"
+@inject RentkuttCRM.Services.SessionState Session
+@inject NavigationManager Nav
+
+<PageTitle>Statistikk — Rentekutt</PageTitle>
+
+<h1 class="page-title">Statistikk</h1>
+<p class="page-sub">Konvertering, bankytelse og volum.</p>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-value">52</div><div class="kpi-label">Søknader</div></div>
+    <div class="kpi-card"><div class="kpi-value">96 %</div><div class="kpi-label">Kvalifiseringsrate</div></div>
+    <div class="kpi-card"><div class="kpi-value">41 %</div><div class="kpi-label">Close rate</div></div>
+    <div class="kpi-card"><div class="kpi-value">6 690 000 kr</div><div class="kpi-label">Formidlet volum</div></div>
+    <div class="kpi-card"><div class="kpi-value">24 125 kr</div><div class="kpi-label">Opptjent provisjon</div></div>
+</div>
+
+<div class="section">
+    <h2>Konverteringstrakt</h2>
+    <div class="funnel">
+        @foreach (var f in _funnel)
+        {
+            <div class="funnel-step">
+                <div class="funnel-bar" style="width:@f.Pct%">@f.Count</div>
+                <div class="funnel-label">@f.Label <span class="muted">(@f.Pct%)</span></div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="section">
+    <h2>Bankytelse</h2>
+    <table class="data-table">
+        <thead>
+            <tr><th>Bank</th><th>Sendt</th><th>Tilbud</th><th>Fullført</th><th>Hit rate</th><th>Close rate</th><th>Volum</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var b in _banks)
+            {
+                <tr>
+                    <td>@b.Name</td><td>@b.Sent</td><td>@b.Offers</td><td>@b.Closed</td>
+                    <td>@b.HitRate</td><td>@b.CloseRate</td><td>@b.Volume</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Avslagsgrunner</h2>
+    <ul class="bullet-list">
+        <li>Gjeldsgrad for høy</li>
+        <li>Geografi (utenfor dekningsområde)</li>
+    </ul>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
+    }
+
+    private record Funnel(string Label, int Count, int Pct);
+    private readonly Funnel[] _funnel =
+    {
+        new("Søknader", 52, 100),
+        new("Kvalifisert", 50, 96),
+        new("Sendt til bank", 17, 33),
+        new("Tilbud mottatt", 10, 19),
+        new("Fullført", 7, 13),
+    };
+
+    private record Bank(string Name, int Sent, int Offers, int Closed, string HitRate, string CloseRate, string Volume);
+    private readonly Bank[] _banks =
+    {
+        new("Bulder", 5, 4, 3, "80 %", "60 %", "1 800 000 kr"),
+        new("Instabank", 4, 2, 1, "50 %", "25 %", "650 000 kr"),
+        new("SpareBank 1", 3, 2, 1, "67 %", "33 %", "1 200 000 kr"),
+        new("DNB", 2, 1, 1, "50 %", "50 %", "1 600 000 kr"),
+        new("Storebrand", 2, 1, 1, "50 %", "50 %", "900 000 kr"),
+        new("Nordea", 1, 0, 0, "0 %", "0 %", "0 kr"),
+    };
+}
