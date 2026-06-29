@@ -1,6 +1,7 @@
 @page "/"
 @page "/login"
 @inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.SupabaseUserService Users
 @inject NavigationManager Nav
 
 <PageTitle>Logg inn — Rentekutt</PageTitle>
@@ -17,34 +18,58 @@
         <EditForm Model="@model" OnValidSubmit="HandleLogin">
             <div class="form-field">
                 <label>E-post</label>
-                <InputText @bind-Value="model.Email" placeholder="navn@rentekutt.no" />
+                <InputText @bind-Value="model.Email" placeholder="navn@rentekutt.no" autocomplete="username" />
             </div>
             <div class="form-field">
                 <label>Passord</label>
-                <InputText type="password" @bind-Value="model.Password" placeholder="••••••••" />
+                <InputText type="password" @bind-Value="model.Password" placeholder="••••••••" autocomplete="current-password" />
             </div>
-            <button type="submit" class="btn-primary full">Logg inn</button>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="login-error">@_error</div>
+            }
+            <button type="submit" class="btn-primary full" disabled="@_busy">
+                @(_busy ? "Logger inn…" : "Logg inn")
+            </button>
         </EditForm>
 
-        <p class="login-note">Staging — dummydata. Skriv hva som helst for å logge inn.</p>
+        @if (!Users.IsConfigured)
+        {
+            <p class="login-note">Staging — Supabase ikke koblet til. Skriv hva som helst for å logge inn.</p>
+        }
+        else
+        {
+            <p class="login-note">Sikret med Supabase.</p>
+        }
     </div>
 </div>
 
 @code {
-    private LoginModel model = new();
+    private readonly LoginModel model = new();
+    private string? _error;
+    private bool _busy;
 
     protected override void OnInitialized()
     {
-        // Allerede innlogget? Hopp rett til dashbordet.
         if (Session.IsLoggedIn)
             Nav.NavigateTo("/crm");
     }
 
-    private void HandleLogin()
+    private async Task HandleLogin()
     {
-        var name = string.IsNullOrWhiteSpace(model.Email) ? "Dev Saksbehandler" : model.Email;
-        Session.SignIn(name, "Saksbehandler");
-        Nav.NavigateTo("/crm");
+        _busy = true;
+        _error = null;
+
+        var result = await Users.SignInAsync(model.Email, model.Password);
+        if (result is { Ok: true, User: not null })
+        {
+            Session.SignIn(result.User);
+            Nav.NavigateTo("/crm");
+            return;
+        }
+
+        _error = result.Error ?? "Innlogging feilet.";
+        _busy = false;
     }
 
     private class LoginModel

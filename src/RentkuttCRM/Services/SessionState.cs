@@ -1,25 +1,44 @@
+using Microsoft.Extensions.Hosting;
+
 namespace RentkuttCRM.Services;
 
 /// <summary>
-/// Enkel innloggings-tilstand for staging/demo. Holder kun i minnet per Blazor-økt.
-/// Byttes ut med ekte auth (MFA/Supabase) før konsesjon.
+/// Innloggings-tilstand per Blazor-økt (in-memory). Settes etter validert innlogging.
+/// Byttes ut med cookie/Supabase Auth-sesjon før konsesjon.
 /// </summary>
 public class SessionState
 {
+    public SessionState(IHostEnvironment env)
+    {
+        // Lokalt (Development): logg automatisk inn en utviklerbruker, så man slipper
+        // å logge inn på nytt etter hver omstart. Gjelder ALDRI i produksjon.
+        if (env.IsDevelopment())
+            SignIn(new UserRow(Guid.Empty, "dev@rentekutt.no", "Lokal Utvikler", "Administrator", true));
+    }
+
     public bool IsLoggedIn { get; private set; }
+    public Guid UserId { get; private set; }
+    public string? Email { get; private set; }
     public string? UserName { get; private set; }
     public string Role { get; private set; } = "Saksbehandler";
 
-    public void SignIn(string userName, string role = "Saksbehandler")
+    public bool IsAdmin => Role is "Administrator";
+
+    public void SignIn(UserRow user)
     {
         IsLoggedIn = true;
-        UserName = userName;
-        Role = role;
+        UserId = user.Id;
+        Email = user.Email;
+        UserName = string.IsNullOrWhiteSpace(user.FullName) ? user.Email : user.FullName;
+        Role = user.Role;
     }
 
     public void SignOut()
     {
         IsLoggedIn = false;
+        UserId = Guid.Empty;
+        Email = null;
         UserName = null;
+        Role = "Saksbehandler";
     }
 }

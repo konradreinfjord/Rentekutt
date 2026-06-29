@@ -1,0 +1,184 @@
+@page "/crm/database"
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.KundekortService Svc
+@inject NavigationManager Nav
+
+<PageTitle>Database — Rentekutt</PageTitle>
+
+<h1 class="page-title">Database</h1>
+<p class="page-sub">Alle kundekort og lånesøknader.</p>
+
+<div class="db-toolbar">
+    <button class="btn-primary" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+ Opprett kunde</button>
+    <input class="db-search" @bind="_search" @bind:event="oninput" placeholder="Søk navn, kunde-ID eller lånetype" />
+    <select class="db-select" @bind="_statusFilter">
+        <option value="">Alle statuser</option>
+        @foreach (var s in _statuses) { <option value="@s">@s</option> }
+    </select>
+    <select class="db-select" @bind="_typeFilter">
+        <option value="">Alle typer</option>
+        <option value="B2C">B2C</option>
+        <option value="B2B">B2B</option>
+    </select>
+    <div class="db-spacer"></div>
+    <span class="db-count">@View.Count av @_rows.Count</span>
+</div>
+
+@if (_loading)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                @Header("id", "Kunde-ID")
+                @Header("navn", "Navn")
+                @Header("type", "Type")
+                @Header("laanetype", "Lånetype")
+                @Header("belop", "Ønsket beløp")
+                @Header("status", "Status")
+                @Header("opprettet", "Opprettet")
+                @Header("statusdato", "Status-dato")
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (View.Count == 0)
+            {
+                <tr><td colspan="9" class="empty-row">Ingen treff.</td></tr>
+            }
+            @foreach (var k in View)
+            {
+                <tr>
+                    <td class="mono-cell">@k.KundeId</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
+                    <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
+                    <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                    <td><span class="status on">@k.Status</span></td>
+                    <td>@Dt(k.CreatedAt)</td>
+                    <td>@Dt(k.UpdatedAt)</td>
+                    <td><button class="btn-sm" @onclick="() => Open(k.KundeId)">Åpne</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="section" style="margin-top:24px">
+        <h2>Oppsummert</h2>
+        <div class="summary-grid">
+            <div class="summary-card">
+                <h3>Totalt</h3>
+                <div class="summary-big">@View.Count</div>
+                <div class="summary-sub">kundekort i visningen</div>
+            </div>
+            <div class="summary-card">
+                <h3>Ønsket lånebeløp</h3>
+                <div class="summary-big">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</div>
+                <div class="summary-sub">sum av visningen</div>
+            </div>
+            <div class="summary-card">
+                <h3>Status</h3>
+                @foreach (var g in View.GroupBy(k => k.Status).OrderByDescending(g => g.Count()))
+                {
+                    <div class="summary-row"><span>@g.Key</span><span class="v">@g.Count()</span></div>
+                }
+            </div>
+            <div class="summary-card">
+                <h3>Lånetype</h3>
+                @foreach (var g in View.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Uten" : k.Laanetype!).OrderByDescending(g => g.Count()))
+                {
+                    <div class="summary-row"><span>@g.Key</span><span class="v">@g.Count()</span></div>
+                }
+            </div>
+            <div class="summary-card">
+                <h3>Kundetype</h3>
+                @foreach (var g in View.GroupBy(k => k.KundeType).OrderByDescending(g => g.Count()))
+                {
+                    <div class="summary-row"><span>@g.Key</span><span class="v">@g.Count()</span></div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Kundekort> _rows = new();
+    private bool _loading = true;
+
+    private string _search = "";
+    private string _statusFilter = "";
+    private string _typeFilter = "";
+    private string _sortField = "opprettet";
+    private bool _sortAsc = false;
+
+    private readonly string[] _statuses = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        _rows = await Svc.ListAsync();
+        _loading = false;
+    }
+
+    private List<Kundekort> View
+    {
+        get
+        {
+            IEnumerable<Kundekort> q = _rows;
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim().ToLowerInvariant();
+                q = q.Where(k =>
+                    (k.KundeId?.ToLowerInvariant().Contains(s) ?? false)
+                    || (k.FulltNavn?.ToLowerInvariant().Contains(s) ?? false)
+                    || (k.Laanetype?.ToLowerInvariant().Contains(s) ?? false));
+            }
+            if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
+            if (!string.IsNullOrEmpty(_typeFilter)) q = q.Where(k => k.KundeType == _typeFilter);
+
+            Func<Kundekort, object?> key = _sortField switch
+            {
+                "id" => k => k.KundeId,
+                "navn" => k => k.FulltNavn,
+                "type" => k => k.KundeType,
+                "laanetype" => k => k.Laanetype,
+                "belop" => k => k.OnsketLaanebelop ?? 0,
+                "status" => k => k.Status,
+                "statusdato" => k => k.UpdatedAt,
+                _ => k => k.CreatedAt,
+            };
+            q = _sortAsc ? q.OrderBy(key) : q.OrderByDescending(key);
+            return q.ToList();
+        }
+    }
+
+    private RenderFragment Header(string field, string label) => builder =>
+    {
+        builder.OpenElement(0, "th");
+        builder.AddAttribute(1, "class", "sortable");
+        builder.AddAttribute(2, "onclick", EventCallback.Factory.Create(this, () => Sort(field)));
+        builder.AddContent(3, label);
+        if (_sortField == field)
+        {
+            builder.OpenElement(4, "span");
+            builder.AddAttribute(5, "class", "sort-arrow");
+            builder.AddContent(6, _sortAsc ? "▲" : "▼");
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private void Sort(string field)
+    {
+        if (_sortField == field) _sortAsc = !_sortAsc;
+        else { _sortField = field; _sortAsc = false; }
+    }
+
+    private static string Dt(DateTime d) => d == default ? "—" : d.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+
+    private void Open(string kundeId) => Nav.NavigateTo($"/crm/ny-kunde?id={kundeId}");
+}

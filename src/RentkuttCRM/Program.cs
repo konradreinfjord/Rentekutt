@@ -25,7 +25,32 @@ builder.Services.AddRazorComponents()
 // Innloggings-tilstand per økt (staging).
 builder.Services.AddScoped<SessionState>();
 
+// Innlogging + brukeradministrasjon (Supabase, med staging-fallback).
+builder.Services.AddScoped<SupabaseUserService>();
+
+// Kundekort (lånesøknader).
+builder.Services.AddScoped<KundekortService>();
+
+// Webhooks (inbound lead-mottak).
+builder.Services.AddScoped<WebhookService>();
+
+// Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
+builder.Services.AddSingleton<CustomerFieldCatalog>();
+
+// Databasemigrering (kjører SQL-filer i Migrations/ automatisk ved oppstart).
+builder.Services.AddSingleton<DatabaseMigrator>();
+
 var app = builder.Build();
+
+// Kjør databasemigrasjoner ved oppstart (hopper over hvis ingen connection string).
+await app.Services.GetRequiredService<DatabaseMigrator>().MigrateAsync();
+
+// Opprett standard-admin hvis brukertabellen er tom (krever Supabase konfigurert).
+using (var startupScope = app.Services.CreateScope())
+{
+    await startupScope.ServiceProvider.GetRequiredService<SupabaseUserService>().EnsureSeededPublicAsync();
+    await startupScope.ServiceProvider.GetRequiredService<WebhookService>().EnsureSeededPublicAsync();
+}
 
 // Swagger eksponeres også i produksjon → https://rentkutt-crm.azurewebsites.net/swagger
 app.UseSwagger();

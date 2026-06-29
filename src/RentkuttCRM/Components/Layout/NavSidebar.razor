@@ -3,43 +3,67 @@
 <aside class="sidebar">
     <div class="sidebar-brand">
         <span class="brand-mark">R</span>
-        <span class="brand-text">Rentekutt</span>
+        <div class="brand-meta">
+            <span class="brand-text">Rentekutt</span>
+            <span class="brand-env">Plattform</span>
+        </div>
     </div>
 
     <nav class="sidebar-nav">
         <div class="nav-group">
             <div class="nav-group-title">CRM</div>
             <NavLink class="nav-item" href="/crm" Match="NavLinkMatch.All">
-                <span class="nav-icon">📊</span> Dashbord
+                <span class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                </span> Dashbord
             </NavLink>
             <NavLink class="nav-item" href="/crm/oppfolging">
-                <span class="nav-icon">📞</span> Mine oppfølginger
+                <span class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </span> Mine oppfølginger
             </NavLink>
-            <NavLink class="nav-item" href="/crm/ny-kunde">
-                <span class="nav-icon">➕</span> Ny kunde
+            <NavLink class="nav-item" href="/crm/database">
+                <span class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                </span> Database
             </NavLink>
-            <NavLink class="nav-item" href="/crm/soknader">
-                <span class="nav-icon">📁</span> Søknader
-            </NavLink>
-        </div>
-
-        <div class="nav-group">
-            <div class="nav-group-title">Statistikk</div>
             <NavLink class="nav-item" href="/crm/statistikk">
-                <span class="nav-icon">📈</span> Statistikk
+                <span class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                </span> Statistikk
             </NavLink>
         </div>
 
         <div class="nav-group">
-            <div class="nav-group-title">Admin</div>
+            <div class="nav-group-title">Administrasjon</div>
             <NavLink class="nav-item" href="/crm/admin">
-                <span class="nav-icon">⚙️</span> Admin
+                <span class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </span> Admin
             </NavLink>
         </div>
     </nav>
 
     <div class="sidebar-footer">
-        <div class="env-dot"></div>
-        <span>Staging</span>
+        <div class="footer-user">
+            <div class="footer-avatar">@Initials(Session.UserName)</div>
+            <div class="footer-meta">
+                <span class="footer-name">@Session.UserName</span>
+                <span class="footer-role">@Session.Role</span>
+            </div>
+        </div>
     </div>
 </aside>
+
+@code {
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "–";
+        var at = name.IndexOf('@');
+        var s = at > 0 ? name[..at] : name;
+        var parts = s.Split(new[] { ' ', '.', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "–";
+        if (parts.Length == 1) return parts[0][..1].ToUpper();
+        return (parts[0][..1] + parts[^1][..1]).ToUpper();
+    }
+}

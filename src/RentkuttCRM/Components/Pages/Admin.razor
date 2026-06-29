@@ -1,101 +1,619 @@
 @page "/crm/admin"
 @inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.CustomerFieldCatalog Catalog
+@inject RentkuttCRM.Services.SupabaseUserService Users
+@inject RentkuttCRM.Services.WebhookService Webhooks
 @inject NavigationManager Nav
 
 <PageTitle>Admin — Rentekutt</PageTitle>
 
 <h1 class="page-title">Admin</h1>
-<p class="page-sub">Brukere, roller, bankpartnere og driftsinnstillinger.</p>
+<p class="page-sub">Brukere, tilgang, integrasjoner og personvern.</p>
 
-<div class="section">
-    <h2>Roller og tilgang</h2>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Rettighet</th>
-                @foreach (var r in _roles) { <th>@r</th> }
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var perm in _permissions)
-            {
+<div class="tabs">
+    @foreach (var t in _tabs)
+    {
+        <button class="tab @(t == _active ? "active" : "")" @onclick="() => _active = t">@t</button>
+    }
+</div>
+
+@if (_active == "Generelt")
+{
+    <div class="section">
+        <h2>SLA-frister</h2>
+        <table class="data-table">
+            <thead><tr><th>Hendelse</th><th>Frist</th></tr></thead>
+            <tbody>
+                @foreach (var s in _slas)
+                {
+                    <tr><td>@s.Label</td><td><input class="inline-input" value="@s.Hours" /> t</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (_active == "Partnere")
+{
+    <div class="section">
+        <h2>Bankpartnere & provisjonssatser <span class="pill pill-warn">@_banks.Count</span></h2>
+        <table class="data-table">
+            <thead><tr><th>Bank</th><th>Provisjon %</th></tr></thead>
+            <tbody>
+                @if (_banks.Count == 0)
+                {
+                    <tr><td colspan="2" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
+                }
+                @foreach (var b in _banks)
+                {
+                    <tr>
+                        <td>@b.Name</td>
+                        <td><input class="inline-input" value="@b.Rate" /> %</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (_banks.Count > 0)
+        {
+            <button class="btn-primary" style="margin-top:12px">Lagre satser</button>
+        }
+    </div>
+
+    <div class="section">
+        <h2>Ny partner</h2>
+        <div class="rule-builder">
+            <div class="rb-field"><label>Banknavn</label><input class="rb-input" @bind="_nbName" placeholder="f.eks. DNB" /></div>
+            <div class="rb-field rb-op" style="max-width:140px"><label>Provisjon %</label><input class="rb-input" @bind="_nbRate" placeholder="1,20" /></div>
+            <button class="btn-primary rb-add" @onclick="AddBank">Legg til partner</button>
+        </div>
+    </div>
+}
+else if (_active == "Leadkilder")
+{
+    <div class="section">
+        <h2>Leadkilder <span class="pill pill-warn">@_sources.Count</span></h2>
+        <table class="data-table">
+            <thead><tr><th>Kilde</th><th>Aktiv</th></tr></thead>
+            <tbody>
+                @if (_sources.Count == 0)
+                {
+                    <tr><td colspan="2" class="empty-row">Ingen leadkilder ennå — legg til under.</td></tr>
+                }
+                @foreach (var s in _sources)
+                {
+                    <tr><td>@s.Name</td><td><span class="status @(s.Active ? "on" : "off")">@(s.Active ? "På" : "Av")</span></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Ny leadkilde</h2>
+        <div class="rule-builder">
+            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_nsName" placeholder="f.eks. Prismatch" /></div>
+            <button class="btn-primary rb-add" @onclick="AddSource">Legg til leadkilde</button>
+        </div>
+    </div>
+}
+else if (_active == "Brukere")
+{
+    <div class="section">
+        <h2>Roller og tilgang</h2>
+        <table class="data-table">
+            <thead>
                 <tr>
-                    <td>@perm.Name</td>
-                    @foreach (var allowed in perm.Access)
+                    <th>Rettighet</th>
+                    @foreach (var r in _roles) { <th>@r</th> }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var perm in _permissions)
+                {
+                    <tr>
+                        <td>@perm.Name</td>
+                        @foreach (var allowed in perm.Access)
+                        {
+                            <td>@if (allowed) { <span class="check">✓</span> } else { <span class="muted">—</span> }</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Brukere <span class="pill pill-warn">@_userRows.Count</span></h2>
+        @if (_loadingUsers)
+        {
+            <p class="page-sub">Laster brukere…</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead><tr><th>Navn</th><th>E-post</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var u in _userRows)
                     {
-                        <td>@(allowed ? "✓" : "—")</td>
+                        <tr>
+                            <td>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</td>
+                            <td class="mono-cell">@u.Email</td>
+                            <td>
+                                <select class="inline-select" @onchange="e => ChangeRole(u, e)">
+                                    @foreach (var r in SupabaseUserService.Roles)
+                                    {
+                                        <option value="@r" selected="@(r == u.Role)">@r</option>
+                                    }
+                                </select>
+                            </td>
+                            <td><span class="status @(u.Active ? "on" : "off")">@(u.Active ? "Aktiv" : "Deaktivert")</span></td>
+                            <td><button class="btn-sm btn-danger" @onclick="() => ToggleActive(u)">@(u.Active ? "Deaktiver" : "Aktiver")</button></td>
+                        </tr>
                     }
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+                </tbody>
+            </table>
+        }
+    </div>
 
-<div class="section">
-    <h2>Brukere</h2>
-    <table class="data-table">
-        <thead><tr><th>Navn</th><th>Rolle</th><th></th></tr></thead>
-        <tbody>
-            @foreach (var u in _users)
-            {
-                <tr>
-                    <td>@u.Name</td>
-                    <td>@u.Role</td>
-                    <td><button class="btn-sm btn-danger">Deaktiver</button></td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+    <div class="section">
+        <h2>Ny bruker</h2>
+        <div class="rule-builder">
+            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_nuName" placeholder="Fullt navn" /></div>
+            <div class="rb-field"><label>E-post</label><input class="rb-input" @bind="_nuEmail" placeholder="navn@rentekutt.no" /></div>
+            <div class="rb-field rb-op" style="max-width:160px">
+                <label>Rolle</label>
+                <select class="rb-input" @bind="_nuRole">
+                    @foreach (var r in SupabaseUserService.Roles) { <option value="@r">@r</option> }
+                </select>
+            </div>
+            <div class="rb-field"><label>Midlertidig passord</label><input class="rb-input" type="password" @bind="_nuPassword" placeholder="••••••" /></div>
+            <button class="btn-primary rb-add" @onclick="CreateUser" disabled="@_creating">@(_creating ? "Oppretter…" : "Opprett bruker")</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_userMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_userMsg</p>
+        }
+        @if (!Users.IsConfigured)
+        {
+            <p class="page-sub" style="margin-top:6px; font-size:12px">⚠️ Supabase ikke koblet til — endringer er midlertidige (staging).</p>
+        }
+    </div>
+}
+else if (_active == "API og Data")
+{
+    <div class="form-card">
+        <h2>Inbound webhook — @WebhookService.InboundName <span class="status on">Aktiv</span></h2>
+        <p class="page-sub" style="margin:-6px 0 16px">
+            Mottar lånesøknader (finansielle data + fødselsnummer) fra ekstern leverandør og mapper dem til kundekort.
+        </p>
 
-<div class="section">
-    <h2>Bankpartnere & provisjonssatser</h2>
-    <table class="data-table">
-        <thead><tr><th>Bank</th><th>Provisjon %</th></tr></thead>
-        <tbody>
-            @foreach (var b in _banks)
-            {
-                <tr>
-                    <td>@b.Name</td>
-                    <td><input class="inline-input" value="@b.Rate" /> %</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-    <button class="btn-primary">Lagre satser</button>
-</div>
+        <div class="kv-list" style="margin-bottom:16px">
+            <span class="k">Endepunkt</span>
+            <span class="v">POST @WebhookUrl</span>
+            <span class="k">Autentisering</span>
+            <span class="v">Authorization: Bearer &lt;token&gt;</span>
+            <span class="k">Format</span>
+            <span class="v">application/json</span>
+            <span class="k">Token</span>
+            <span>
+                @if (_webhook is null)
+                {
+                    <span class="muted">Genereres ved oppstart…</span>
+                }
+                else
+                {
+                    <span class="token-row">
+                        <span class="token-val">@(_showToken ? _webhook.Token : "whk_••••••••••••••••••••••••")</span>
+                        <button class="btn-sm" @onclick="() => _showToken = !_showToken">@(_showToken ? "Skjul" : "Vis")</button>
+                    </span>
+                }
+            </span>
+        </div>
 
-<div class="section">
-    <h2>Leadkilder</h2>
-    <table class="data-table">
-        <thead><tr><th>Kilde</th><th>Aktiv</th></tr></thead>
-        <tbody>
-            @foreach (var s in _sources)
-            {
-                <tr><td>@s.Name</td><td>@(s.Active ? "På" : "Av")</td></tr>
-            }
-        </tbody>
-    </table>
-</div>
+        <div style="margin-bottom:8px">
+            <span class="sec-badge">🔒 HTTPS påkrevd (TLS)</span>
+            <span class="sec-badge">🔑 Token (konstant-tid)</span>
+            <span class="sec-badge">🇪🇺 EU-lagring</span>
+            <span class="sec-badge">🛡️ RLS — kun server</span>
+            <span class="sec-badge">🙈 Ingen PII i logg</span>
+        </div>
+    </div>
 
-<div class="section">
-    <h2>System & drift</h2>
-    <ul class="bullet-list">
-        <li>Miljø: <strong>staging</strong></li>
-        <li>Datalagring: EU</li>
-        <li>Konsesjon: avventer Finanstilsynet</li>
-        <li>MFA: påkrevd</li>
-        <li>GDPR-sletting: inaktiv</li>
-    </ul>
-</div>
+    <div class="form-card">
+        <h2>Dataflyt</h2>
+        <ol class="flow-steps">
+            <li>Leverandør (f.eks. lead-portal) sender <strong>POST</strong> med JSON til endepunktet over <strong>HTTPS</strong>.</li>
+            <li>Forespørselen autentiseres med <strong>Bearer-token</strong> — sammenlignet i konstant tid. Ugyldig token → <code>401</code>.</li>
+            <li>Payloaden <strong>mappes til et kundekort</strong> (fødselsnummer blir kunde-ID for B2C, orgnr for B2B).</li>
+            <li>Kundekortet lagres i <strong>Supabase</strong> (EU, Postgres) med RLS — kun serveren har tilgang.</li>
+            <li>Søknaden dukker opp i <strong>Database</strong>-fanen og kan rutes videre via Logikk-matrise.</li>
+        </ol>
+    </div>
+
+    <div class="form-card">
+        <h2>Payload — send til utvikler</h2>
+        <p class="page-sub" style="margin:-6px 0 12px">Eksempel-request leverandøren bruker. Felter er valgfrie utenom identifikator.</p>
+        <pre class="code-block">curl -X POST @WebhookUrl \
+  -H "Authorization: Bearer @(_webhook?.Token ?? "<token>")" \
+  -H "Content-Type: application/json" \
+  -d '@PayloadExample'</pre>
+    </div>
+
+    <div class="section">
+        <h2>API <span class="pill pill-warn">@ApiRowCount</span></h2>
+        <p class="page-sub" style="margin:-4px 0 14px">
+            Hver bankpartner og leadkilde får automatisk en rad her. Velg metode for å motta/sende data.
+        </p>
+        <table class="data-table">
+            <thead><tr><th>Navn</th><th>Type</th><th>Metode</th><th>Status</th></tr></thead>
+            <tbody>
+                @if (ApiRowCount == 0)
+                {
+                    <tr><td colspan="4" class="empty-row">Ingen integrasjoner ennå — opprett en partner/leadkilde, eller legg til under.</td></tr>
+                }
+                @foreach (var b in _banks)
+                {
+                    <tr>
+                        <td>@b.Name</td>
+                        <td><span class="type-tag bank">Bank</span></td>
+                        <td>
+                            <select class="inline-select" @bind="b.Method">
+                                @foreach (var m in _methods) { <option value="@m">@m</option> }
+                            </select>
+                        </td>
+                        <td><span class="status off">Ikke tilkoblet</span></td>
+                    </tr>
+                }
+                @foreach (var s in _sources)
+                {
+                    <tr>
+                        <td>@s.Name</td>
+                        <td><span class="type-tag lead">Leadkilde</span></td>
+                        <td>
+                            <select class="inline-select" @bind="s.Method">
+                                @foreach (var m in _methods) { <option value="@m">@m</option> }
+                            </select>
+                        </td>
+                        <td><span class="status off">Ikke tilkoblet</span></td>
+                    </tr>
+                }
+                @foreach (var i in _integrations)
+                {
+                    <tr>
+                        <td>@i.Name</td>
+                        <td><span class="type-tag">Annet</span></td>
+                        <td>
+                            <select class="inline-select" @bind="i.Method">
+                                @foreach (var m in _methods) { <option value="@m">@m</option> }
+                            </select>
+                        </td>
+                        <td><span class="status off">Ikke tilkoblet</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Ny integrasjon</h2>
+        <div class="rule-builder">
+            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_niName" placeholder="f.eks. Kreditz" /></div>
+            <div class="rb-field rb-op" style="max-width:180px">
+                <label>Metode</label>
+                <select class="rb-input" @bind="_niMethod">
+                    @foreach (var m in _methods) { <option value="@m">@m</option> }
+                </select>
+            </div>
+            <button class="btn-primary rb-add" @onclick="AddIntegration">Legg til integrasjon</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Datalagring</h2>
+        <ul class="bullet-list">
+            <li>Region: <strong>EU (Sweden Central)</strong></li>
+            <li>Database: Supabase (Postgres)</li>
+            <li>Backup: daglig, 30 dagers oppbevaring</li>
+        </ul>
+    </div>
+}
+else if (_active == "Logikk-matrise")
+{
+    <div class="section">
+        <h2>Rutingsregler <span class="pill pill-warn">@_rules.Count(r => r.Active) aktive</span></h2>
+        <p class="page-sub" style="margin:-4px 0 14px">
+            Universalfilter: segmentér søknader til bank basert på alle kundedata vi har
+            (@Catalog.Fields.Count felter — geografi, lån, økonomi, personalia, PSD2).
+            Reglene vurderes ovenfra og ned — første treff bestemmer hvilke banker søknaden sendes til.
+        </p>
+        <table class="data-table">
+            <thead>
+                <tr><th>#</th><th>Parameter</th><th>Operator</th><th>Verdi</th><th>Send til</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_rules.Count == 0)
+                {
+                    <tr><td colspan="7" class="empty-row">Ingen rutingsregler ennå — legg til under.</td></tr>
+                }
+                @foreach (var r in _rules.OrderBy(r => r.Priority))
+                {
+                    <tr>
+                        <td class="mono-cell">@r.Priority</td>
+                        <td>@LabelFor(r.FieldKey)</td>
+                        <td class="mono-cell">@r.Operator</td>
+                        <td>@DisplayValue(r)</td>
+                        <td>
+                            <div class="route-banks">
+                                @foreach (var bank in r.Banks)
+                                {
+                                    <span class="route-bank">@bank</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@r.Active" @onchange="e => r.Active = (bool)e.Value!" />
+                                <span class="status @(r.Active ? "on" : "off")">@(r.Active ? "Aktiv" : "Av")</span>
+                            </label>
+                        </td>
+                        <td><button class="btn-sm btn-danger" @onclick="() => RemoveRule(r)">Slett</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Ny regel</h2>
+        <div class="rule-builder">
+            <div class="rb-field">
+                <label>Felt (kundedata)</label>
+                <select class="rb-input" value="@_newFieldKey" @onchange="OnFieldChanged">
+                    @foreach (var cat in Catalog.Categories)
+                    {
+                        <optgroup label="@cat">
+                            @foreach (var f in Catalog.InCategory(cat))
+                            {
+                                <option value="@f.Key">@f.Label</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+            </div>
+            <div class="rb-field rb-op">
+                <label>Operator</label>
+                <select class="rb-input" @bind="_newOp">
+                    @foreach (var o in NewOperators) { <option value="@o">@o</option> }
+                </select>
+            </div>
+            <div class="rb-field">
+                <label>Verdi</label>
+                @{ var nf = NewField; }
+                @if (nf?.Type == FieldType.Enum && nf.Options is not null)
+                {
+                    <select class="rb-input" @bind="_newValue">
+                        @foreach (var v in nf.Options) { <option value="@v">@v</option> }
+                    </select>
+                }
+                else
+                {
+                    <div class="input-unit">
+                        <input class="rb-input" @bind="_newValue" placeholder="@(nf?.Placeholder ?? "Verdi")" />
+                        @if (!string.IsNullOrEmpty(nf?.Unit)) { <span class="unit-suffix">@nf.Unit</span> }
+                    </div>
+                }
+            </div>
+            <div class="rb-arrow">→</div>
+            <div class="rb-field rb-banks">
+                <label>Send til bank(er) — velg én eller flere</label>
+                <div class="bank-chips">
+                    @foreach (var b in BankNames)
+                    {
+                        <button type="button" class="bank-chip @(_newBanks.Contains(b) ? "sel" : "")" @onclick="() => ToggleNewBank(b)">@b</button>
+                    }
+                </div>
+            </div>
+        </div>
+        <button class="btn-primary rb-add-row" @onclick="AddRule">Legg til regel</button>
+        <p class="page-sub" style="margin:14px 0 0; font-size:12px">
+            💡 Feltlisten er foreløpig eksempeldata. Den styres fra ett sted (feltkatalogen),
+            og oppdateres automatisk her når ekte kundedatafelt opprettes / kobles til API-et (PSD2/scoring).
+        </p>
+    </div>
+}
+else if (_active == "GDPR")
+{
+    <div class="section">
+        <h2>Oppbevaring av søknadsdata</h2>
+        <p class="page-sub" style="margin:-4px 0 16px">
+            Søknadsdata slettes automatisk når oppbevaringstiden er nådd.
+        </p>
+
+        <div class="kpi-grid" style="max-width:520px; margin-bottom:18px">
+            <div class="kpi-card">
+                <div class="kpi-value">@_retentionMonths mnd</div>
+                <div class="kpi-label">Oppbevaringstid før sletting</div>
+            </div>
+        </div>
+
+        <div class="rule-builder">
+            <div class="rb-field rb-op" style="max-width:220px">
+                <label>Slett søknadsdata etter</label>
+                <div class="input-unit">
+                    <input class="rb-input" type="number" min="1" max="120" @bind="_retentionMonths" />
+                    <span class="unit-suffix">mnd</span>
+                </div>
+            </div>
+            <button class="btn-primary rb-add" @onclick="SaveRetention">Lagre</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_retentionMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_retentionMsg</p>
+        }
+    </div>
+}
 
 @code {
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        await LoadUsersAsync();
+        _webhook = await Webhooks.GetInboundAsync();
     }
 
-    private readonly string[] _roles = { "Saksbehandler", "Compliance", "Leder", "Administrator" };
+    // ---- Inbound webhook ----
+    private Webhook? _webhook;
+    private bool _showToken;
+    private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
+    private const string PayloadExample = """
+{
+  "kunde_type": "B2C",
+  "fodselsnummer": "12345678901",
+  "fullt_navn": "Ola Nordmann",
+  "mobilnummer": "90012345",
+  "epost": "ola.nordmann@example.no",
+  "adresse": "Storgata 1",
+  "postnummer": "0150",
+  "poststed": "Oslo",
+  "sivilstatus": "Samboer",
+  "antall_barn_under_18": 2,
+  "boforhold": "Selveier/enebolig",
+  "arbeidssituasjon": "Fast ansatt",
+  "arbeidsgiver": "Eksempel AS",
+  "aarsinntekt_brutto": 720000,
+  "boligkostnad_mnd": 14500,
+  "boliggjeld": 2800000,
+  "studielaan": 180000,
+  "billaan": 0,
+  "forbruksgjeld": 95000,
+  "refinansieres_belop": 95000,
+  "aktiv_inkasso": false,
+  "onsket_laanebelop": 450000,
+  "onsket_lopetid_mnd": 60,
+  "laanetype": "Refinansiering",
+  "kontonummer": "12345678903"
+}
+""";
+
+    // ---- Brukeradministrasjon ----
+    private List<UserRow> _userRows = new();
+    private bool _loadingUsers = true;
+    private string _nuName = "", _nuEmail = "", _nuRole = "Saksbehandler", _nuPassword = "";
+    private bool _creating;
+    private string? _userMsg;
+
+    private async Task LoadUsersAsync()
+    {
+        _loadingUsers = true;
+        _userRows = await Users.ListUsersAsync();
+        _loadingUsers = false;
+    }
+
+    private async Task ChangeRole(UserRow u, ChangeEventArgs e)
+    {
+        var role = e.Value?.ToString() ?? u.Role;
+        await Users.SetRoleAsync(u.Id, role);
+        await LoadUsersAsync();
+    }
+
+    private async Task ToggleActive(UserRow u)
+    {
+        await Users.SetActiveAsync(u.Id, !u.Active);
+        await LoadUsersAsync();
+    }
+
+    private async Task CreateUser()
+    {
+        _creating = true;
+        _userMsg = null;
+        var (ok, error) = await Users.CreateUserAsync(_nuEmail, _nuName, _nuRole, _nuPassword);
+        if (ok)
+        {
+            _userMsg = $"Bruker {_nuEmail} opprettet.";
+            _nuName = _nuEmail = _nuPassword = "";
+            _nuRole = "Saksbehandler";
+            await LoadUsersAsync();
+        }
+        else
+        {
+            _userMsg = error ?? "Kunne ikke opprette bruker.";
+        }
+        _creating = false;
+    }
+
+    private readonly string[] _tabs = { "Generelt", "Partnere", "Leadkilder", "Brukere", "Logikk-matrise", "API og Data", "GDPR" };
+    private string _active = "Generelt";
+
+    // ---- GDPR: oppbevaring av søknadsdata ----
+    private int _retentionMonths = 24;
+    private string? _retentionMsg;
+    private void SaveRetention()
+    {
+        if (_retentionMonths < 1) _retentionMonths = 1;
+        _retentionMsg = $"Lagret — søknadsdata slettes etter {_retentionMonths} måneder.";
+    }
+
+    // ---- Logikk-matrise (universalfilter → ruting til bank) ----
+    // Feltene leses fra CustomerFieldCatalog (én kilde til sannhet). Når ekte
+    // datafelt opprettes, oppdateres katalogen og denne siden følger automatisk.
+    private string[] BankNames => _banks.Select(b => b.Name).ToArray();
+
+    private class Rule
+    {
+        public int Priority { get; set; }
+        public string FieldKey { get; set; } = "";
+        public string Operator { get; set; } = "=";
+        public string Value { get; set; } = "";
+        public List<string> Banks { get; set; } = new();
+        public bool Active { get; set; } = true;
+    }
+
+    private readonly List<Rule> _rules = new();
+
+    // Builder-felt for ny regel
+    private string _newFieldKey = "laanetype";
+    private string _newOp = "=";
+    private string _newValue = "Forbrukslån";
+    private readonly HashSet<string> _newBanks = new() { "DNB" };
+
+    private FieldDef? NewField => Catalog.Get(_newFieldKey);
+    private string[] NewOperators => CustomerFieldCatalog.OperatorsFor(NewField?.Type ?? FieldType.Text);
+
+    private string LabelFor(string key) => Catalog.Get(key)?.Label ?? key;
+    private string DisplayValue(Rule r)
+    {
+        var unit = Catalog.Get(r.FieldKey)?.Unit;
+        return string.IsNullOrEmpty(unit) ? r.Value : $"{r.Value} {unit}";
+    }
+
+    private void OnFieldChanged(ChangeEventArgs e)
+    {
+        _newFieldKey = e.Value?.ToString() ?? "";
+        var f = NewField;
+        _newOp = NewOperators.First();
+        _newValue = f?.Type == FieldType.Enum && f.Options is { Length: > 0 } ? f.Options[0] : "";
+    }
+
+    private void ToggleNewBank(string bank)
+    {
+        if (!_newBanks.Remove(bank)) _newBanks.Add(bank);
+    }
+
+    private void AddRule()
+    {
+        if (string.IsNullOrWhiteSpace(_newValue) || _newBanks.Count == 0) return;
+        _rules.Add(new Rule
+        {
+            Priority = _rules.Count == 0 ? 1 : _rules.Max(r => r.Priority) + 1,
+            FieldKey = _newFieldKey,
+            Operator = _newOp,
+            Value = _newValue,
+            Banks = _newBanks.OrderBy(b => b).ToList(),
+            Active = true,
+        });
+    }
+
+    private void RemoveRule(Rule r) => _rules.Remove(r);
+
+    private readonly string[] _roles = { "Saksbeh.", "Compliance", "Leder", "Admin" };
 
     private record Perm(string Name, bool[] Access);
     private readonly Perm[] _permissions =
@@ -111,34 +629,64 @@
         new("Brukeradmin",       new[]{ false, false, false, true }),
     };
 
-    private record User(string Name, string Role);
-    private readonly User[] _users =
+    private class BankRate { public string Name { get; set; } = ""; public string Rate { get; set; } = ""; public string Method { get; set; } = "Webhook"; }
+    private readonly List<BankRate> _banks = new();
+
+    // Ny partner (kan legges til, ikke fjernes)
+    private string _nbName = "", _nbRate = "";
+
+    private void AddBank()
     {
-        new("Dev Saksbehandler (deg)", "Saksbehandler"),
-        new("Anne Compliance", "Compliance"),
-        new("Bjørn Leder", "Leder"),
-        new("Cathrine Admin", "Administrator"),
+        var name = _nbName.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (_banks.Any(b => b.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return;
+        // Oppretter også en API-rad (under "API og Data") for denne partneren.
+        _banks.Add(new BankRate { Name = name, Rate = string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim() });
+        _nbName = "";
+        _nbRate = "";
+    }
+
+    private class Source { public string Name { get; set; } = ""; public bool Active { get; set; } = true; public string Method { get; set; } = "Webhook"; }
+    private readonly List<Source> _sources = new();
+
+    // Ny leadkilde (oppretter også en API-rad)
+    private string _nsName = "";
+
+    private void AddSource()
+    {
+        var name = _nsName.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (_sources.Any(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return;
+        _sources.Add(new Source { Name = name, Active = true });
+        _nsName = "";
+    }
+
+    private record Sla(string Label, string Hours);
+    private readonly Sla[] _slas =
+    {
+        new("Ring kunde etter lead", "2"),
+        new("Følg opp samtykke", "24"),
+        new("Vurdering ferdig", "48"),
+        new("Følg opp bank", "72"),
+        new("Følg opp tilbud", "24"),
     };
 
-    private record BankRate(string Name, string Rate);
-    private readonly BankRate[] _banks =
-    {
-        new("DNB", "1,20"),
-        new("Nordea", "1,10"),
-        new("Storebrand", "1,15"),
-        new("SpareBank 1", "1,25"),
-        new("Instabank", "1,50"),
-        new("Bulder", "1,30"),
-        new("Soknedal Sparebank", "1,40"),
-    };
+    // Manuelle integrasjoner (i tillegg til de som auto-opprettes fra banker/leadkilder)
+    private class Integration { public string Name { get; set; } = ""; public string Method { get; set; } = "Webhook"; }
+    private readonly List<Integration> _integrations = new();
 
-    private record Source(string Name, bool Active);
-    private readonly Source[] _sources =
+    private static readonly string[] _methods = { "Webhook", "API (REST)", "Manuell", "FTP/SFTP", "E-post" };
+
+    private string _niName = "", _niMethod = "Webhook";
+
+    private void AddIntegration()
     {
-        new("Prismatch", true),
-        new("Organisk", true),
-        new("Meta ads", true),
-        new("Referral", false),
-        new("Partner", true),
-    };
+        var name = _niName.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        _integrations.Add(new Integration { Name = name, Method = _niMethod });
+        _niName = "";
+        _niMethod = "Webhook";
+    }
+
+    private int ApiRowCount => _banks.Count + _sources.Count + _integrations.Count;
 }

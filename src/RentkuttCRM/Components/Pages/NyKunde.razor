@@ -1,4 +1,196 @@
 @page "/crm/ny-kunde"
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.KundekortService Svc
+@inject NavigationManager Nav
+
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
-<h1 class="page-title">Ny kunde</h1>
-<p class="page-sub">Kommer snart — registrer ny kunde og start PSD2-innhenting.</p>
+
+<h1 class="page-title">@(_isEdit ? "Kundekort" : "Ny kunde")</h1>
+<p class="page-sub">Lånesøknad med kunde- og lånedata.</p>
+
+@* Kundetype *@
+<div class="form-card">
+    <h2>Kundetype</h2>
+    <div class="seg">
+        <button class="@(_k.KundeType == "B2C" ? "active" : "")" @onclick='() => _k.KundeType = "B2C"'>B2C — privatperson</button>
+        <button class="@(_k.KundeType == "B2B" ? "active" : "")" @onclick='() => _k.KundeType = "B2B"'>B2B — bedrift</button>
+    </div>
+    <div class="form-grid" style="margin-top:16px">
+        <div class="ff">
+            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer (9 siffer)" : "Fødselsnummer (11 siffer)")</label>
+            <input @bind="_k.KundeId" disabled="@_isEdit" placeholder="@(_k.KundeType == "B2B" ? "9 siffer" : "11 siffer")" />
+        </div>
+    </div>
+</div>
+
+@* G. Lånedetaljer (ofte først) *@
+<div class="form-card">
+    <h2>Lånedetaljer</h2>
+    <div class="form-grid">
+        <div class="ff">
+            <label>Lånetype / formål</label>
+            <select @bind="_k.Laanetype">
+                <option value="">— velg —</option>
+                @foreach (var t in KundekortService.Laanetyper) { <option value="@t">@t</option> }
+            </select>
+        </div>
+        <div class="ff"><label>Ønsket lånebeløp (kr)</label><input type="number" @bind="_k.OnsketLaanebelop" /></div>
+        <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
+    </div>
+</div>
+
+@* A. Søker *@
+<div class="form-card">
+    <h2>A · Søker</h2>
+    <div class="form-grid">
+        <div class="ff wide"><label>Fullt navn</label><input @bind="_k.FulltNavn" placeholder="Hentes ev. fra Vipps" /></div>
+        <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
+        <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
+        <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>
+        <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
+        <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
+    </div>
+</div>
+
+@* B. Medsøker *@
+<div class="form-card">
+    <h2>B · Medsøker</h2>
+    <label class="ff-check"><input type="checkbox" @bind="_k.HarMedsoker" /> Søknaden har medsøker</label>
+    @if (_k.HarMedsoker)
+    {
+        <div class="form-grid" style="margin-top:16px">
+            <div class="ff wide"><label>Fullt navn</label><input @bind="_k.MedsokerNavn" /></div>
+            <div class="ff"><label>Fødselsnummer</label><input @bind="_k.MedsokerFoedselsnummer" /></div>
+            <div class="ff"><label>Mobilnummer</label><input @bind="_k.MedsokerMobil" /></div>
+            <div class="ff"><label>E-post</label><input @bind="_k.MedsokerEpost" /></div>
+            <div class="ff wide"><label>Adresse</label><input @bind="_k.MedsokerAdresse" /></div>
+            <div class="ff"><label>Postnummer</label><input @bind="_k.MedsokerPostnummer" /></div>
+            <div class="ff"><label>Poststed</label><input @bind="_k.MedsokerPoststed" /></div>
+            <div class="ff"><label>Egen årsinntekt (kr)</label><input type="number" @bind="_k.MedsokerInntekt" /></div>
+            <div class="ff"><label>Arbeidsforhold</label><input @bind="_k.MedsokerArbeidsforhold" /></div>
+        </div>
+    }
+</div>
+
+@* C. Husholdning *@
+<div class="form-card">
+    <h2>C · Husholdning</h2>
+    <div class="form-grid">
+        <div class="ff"><label>Statsborgerskap</label><input @bind="_k.Statsborgerskap" /></div>
+        <div class="ff"><label>Opprinnelsesland</label><input @bind="_k.Opprinnelsesland" /></div>
+        <div class="ff"><label>År bodd i Norge</label><input type="number" @bind="_k.AarBoddINorge" /></div>
+        <div class="ff">
+            <label>Sivilstatus</label>
+            <select @bind="_k.Sivilstatus">
+                <option value="">— velg —</option>
+                @foreach (var s in KundekortService.Sivilstatuser) { <option value="@s">@s</option> }
+            </select>
+        </div>
+        <div class="ff"><label>Antall barn under 18</label><input type="number" @bind="_k.AntallBarnUnder18" /></div>
+        <div class="ff">
+            <label>Boforhold</label>
+            <select @bind="_k.Boforhold">
+                <option value="">— velg —</option>
+                @foreach (var b in KundekortService.Boforhold) { <option value="@b">@b</option> }
+            </select>
+        </div>
+        <div class="ff"><label>Botid nåværende adresse (mnd)</label><input type="number" @bind="_k.BotidMnd" /></div>
+        <div class="ff"><label>Antall biler</label><input type="number" @bind="_k.AntallBiler" /></div>
+    </div>
+</div>
+
+@* D. Arbeid og inntekt *@
+<div class="form-card">
+    <h2>D · Arbeid og inntekt</h2>
+    <div class="form-grid">
+        <div class="ff">
+            <label>Arbeidssituasjon</label>
+            <select @bind="_k.Arbeidssituasjon">
+                <option value="">— velg —</option>
+                @foreach (var a in KundekortService.Arbeidssituasjoner) { <option value="@a">@a</option> }
+            </select>
+        </div>
+        <div class="ff"><label>Arbeidsgiver</label><input @bind="_k.Arbeidsgiver" /></div>
+        <div class="ff"><label>Ansiennitet (mnd)</label><input type="number" @bind="_k.AnsiennitetMnd" /></div>
+        <div class="ff"><label>Utdanning (nivå)</label><input @bind="_k.Utdanning" /></div>
+        <div class="ff"><label>Årsinntekt før skatt (kr)</label><input type="number" @bind="_k.AarsinntektBrutto" /></div>
+        <div class="ff"><label>Andre inntekter (kr)</label><input type="number" @bind="_k.AndreInntekter" /></div>
+        <div class="ff"><label>Ektefelle/samboers årsinntekt (kr)</label><input type="number" @bind="_k.EktefelleInntekt" /></div>
+    </div>
+</div>
+
+@* E. Utgifter og forpliktelser *@
+<div class="form-card">
+    <h2>E · Utgifter og forpliktelser</h2>
+    <div class="form-grid">
+        <div class="ff"><label>Husleie / boligkostnad per mnd (kr)</label><input type="number" @bind="_k.BoligkostnadMnd" /></div>
+        <div class="ff"><label>Barnebidrag betalt per mnd (kr)</label><input type="number" @bind="_k.BarnebidragBetaltMnd" /></div>
+    </div>
+</div>
+
+@* F. Gjeld *@
+<div class="form-card">
+    <h2>F · Gjeld <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(verifiseres mot Gjeldsregisteret)</span></h2>
+    <div class="form-grid">
+        <div class="ff"><label>Boliggjeld / restgjeld boliglån (kr)</label><input type="number" @bind="_k.Boliggjeld" /></div>
+        <div class="ff"><label>Studielån (kr)</label><input type="number" @bind="_k.Studielaan" /></div>
+        <div class="ff"><label>Billån / kjøretøygjeld (kr)</label><input type="number" @bind="_k.Billaan" /></div>
+        <div class="ff"><label>Forbrukslån/kredittkort/inkasso (kr)</label><input type="number" @bind="_k.Forbruksgjeld" /></div>
+        <div class="ff"><label>Beløp som skal refinansieres (kr)</label><input type="number" @bind="_k.RefinansieresBelop" /></div>
+        <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.AktivInkasso" /> Aktiv inkassosak</label></div>
+    </div>
+</div>
+
+@* H. Utbetaling *@
+<div class="form-card">
+    <h2>H · Utbetaling</h2>
+    <div class="form-grid">
+        <div class="ff"><label>Kontonummer</label><input @bind="_k.Kontonummer" /></div>
+    </div>
+</div>
+
+<div class="form-actions">
+    <button class="btn-primary" @onclick="Save" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre kundekort")</button>
+    @if (!string.IsNullOrEmpty(_msg))
+    {
+        <span class="form-msg @(_ok ? "ok" : "err")">@_msg</span>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Id { get; set; }
+
+    private Kundekort _k = new();
+    private bool _isEdit;
+    private bool _saving;
+    private bool _ok;
+    private string? _msg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!string.IsNullOrEmpty(Id))
+        {
+            var existing = await Svc.GetAsync(Id);
+            if (existing is not null) { _k = existing; _isEdit = true; }
+        }
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        _msg = null;
+        var (ok, error) = await Svc.SaveAsync(_k);
+        _ok = ok;
+        if (ok)
+        {
+            _msg = "Kundekort lagret.";
+            _isEdit = true;
+        }
+        else
+        {
+            _msg = error ?? "Kunne ikke lagre.";
+        }
+        _saving = false;
+    }
+}

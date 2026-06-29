@@ -9,31 +9,31 @@
 
 <div class="kpi-grid">
     <div class="kpi-card">
-        <div class="kpi-value">11</div>
+        <div class="kpi-value">0</div>
         <div class="kpi-label">Nye leads (24t)</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-value">59,56 mill kr</div>
+        <div class="kpi-value">0 kr</div>
         <div class="kpi-label">Pipeline-verdi</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-value">36</div>
+        <div class="kpi-value">0</div>
         <div class="kpi-label">Aktive saker</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-value">268 020 kr</div>
+        <div class="kpi-value">0 kr</div>
         <div class="kpi-label">Forventet provisjon</div>
     </div>
 </div>
 
 <div class="section">
-    <h2>Krever oppmerksomhet <span class="pill pill-warn">18 høy prioritet</span></h2>
+    <h2>Krever oppmerksomhet</h2>
     <div class="priority-grid">
         @foreach (var p in _priorities)
         {
-            <div class="priority-card @(p.High ? "high" : "")">
-                <div class="priority-count">@p.Count</div>
-                <div class="priority-label">@p.Label</div>
+            <div class="priority-card">
+                <div class="priority-count">0</div>
+                <div class="priority-label">@p</div>
             </div>
         }
     </div>
@@ -52,16 +52,7 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var l in _leads)
-            {
-                <tr>
-                    <td>@l.CaseNo</td>
-                    <td>@l.Name</td>
-                    <td>@l.Amount</td>
-                    <td>@l.LastActivity</td>
-                    <td><button class="btn-sm">Ring kunde</button></td>
-                </tr>
-            }
+            <tr><td colspan="5" class="empty-row">Ingen leads ennå.</td></tr>
         </tbody>
     </table>
 </div>
@@ -74,9 +65,9 @@
             <div class="goal">
                 <div class="goal-head">
                     <span>@g.Label</span>
-                    <span>@g.Current/@g.Target</span>
+                    <span>0/@g.Target</span>
                 </div>
-                <div class="goal-bar"><div class="goal-fill" style="width:@(Math.Min(100, g.Percent))%"></div></div>
+                <div class="goal-bar"><div class="goal-fill" style="width:0%"></div></div>
             </div>
         }
     </div>
@@ -88,37 +79,23 @@
         if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
     }
 
-    private record Priority(string Label, int Count, bool High);
-    private readonly Priority[] _priorities =
+    private readonly string[] _priorities =
     {
-        new("Leads uten kontakt", 9, true),
-        new("Mangler PSD2-samtykke", 5, true),
-        new("Manuell vurdering", 4, true),
-        new("Klar for bank", 7, false),
-        new("Bank svarer ikke", 8, false),
-        new("Uoppfulgte tilbud", 3, false),
+        "Leads uten kontakt",
+        "Mangler PSD2-samtykke",
+        "Manuell vurdering",
+        "Klar for bank",
+        "Bank svarer ikke",
+        "Uoppfulgte tilbud",
     };
 
-    private record Lead(string CaseNo, string Name, string Amount, string LastActivity);
-    private readonly Lead[] _leads =
-    {
-        new("#10421", "Ola Nordmann", "1 250 000 kr", "7 dager siden"),
-        new("#10418", "Kari Hansen", "5 350 000 kr", "12 dager siden"),
-        new("#10410", "Per Johansen", "850 000 kr", "21 dager siden"),
-        new("#10402", "Ingrid Berg", "2 100 000 kr", "28 dager siden"),
-        new("#10395", "Lars Olsen", "250 000 kr", "42 dager siden"),
-    };
-
-    private record Goal(string Label, int Current, int Target)
-    {
-        public int Percent => Target == 0 ? 0 : (int)(100.0 * Current / Target);
-    }
+    private record Goal(string Label, int Target);
     private readonly Goal[] _goals =
     {
-        new("Leads inn", 11, 25),
-        new("Kontaktet", 42, 40),
-        new("Kvalifisert", 8, 15),
-        new("Sendt bank", 5, 10),
-        new("Aksept", 3, 6),
+        new("Leads inn", 25),
+        new("Kontaktet", 40),
+        new("Kvalifisert", 15),
+        new("Sendt bank", 10),
+        new("Aksept", 6),
     };
 }

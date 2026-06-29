@@ -1,0 +1,86 @@
+using Supabase.Postgrest.Attributes;
+using Supabase.Postgrest.Models;
+
+namespace RentkuttCRM.Services;
+
+/// <summary>
+/// Kundekort = lånesøknad med lånedata. Mappes mot tabellen kundekort.
+/// Identifikator: fødselsnummer (11) for B2C / orgnr (9) for B2B.
+/// </summary>
+[Table("kundekort")]
+public class Kundekort : BaseModel
+{
+    [PrimaryKey("kunde_id", true)]
+    public string KundeId { get; set; } = "";
+
+    [Column("kunde_type")] public string KundeType { get; set; } = "B2C";
+
+    // A. Søker
+    [Column("fullt_navn")] public string? FulltNavn { get; set; }
+    [Column("foedselsnummer")] public string? Foedselsnummer { get; set; }
+    [Column("mobilnummer")] public string? Mobilnummer { get; set; }
+    [Column("epost")] public string? Epost { get; set; }
+    [Column("adresse")] public string? Adresse { get; set; }
+    [Column("postnummer")] public string? Postnummer { get; set; }
+    [Column("poststed")] public string? Poststed { get; set; }
+
+    // B. Medsøker
+    [Column("har_medsoker")] public bool HarMedsoker { get; set; }
+    [Column("medsoker_navn")] public string? MedsokerNavn { get; set; }
+    [Column("medsoker_foedselsnummer")] public string? MedsokerFoedselsnummer { get; set; }
+    [Column("medsoker_mobil")] public string? MedsokerMobil { get; set; }
+    [Column("medsoker_epost")] public string? MedsokerEpost { get; set; }
+    [Column("medsoker_adresse")] public string? MedsokerAdresse { get; set; }
+    [Column("medsoker_postnummer")] public string? MedsokerPostnummer { get; set; }
+    [Column("medsoker_poststed")] public string? MedsokerPoststed { get; set; }
+    [Column("medsoker_inntekt")] public decimal? MedsokerInntekt { get; set; }
+    [Column("medsoker_arbeidsforhold")] public string? MedsokerArbeidsforhold { get; set; }
+
+    // C. Husholdning
+    [Column("statsborgerskap")] public string? Statsborgerskap { get; set; }
+    [Column("opprinnelsesland")] public string? Opprinnelsesland { get; set; }
+    [Column("aar_bodd_i_norge")] public int? AarBoddINorge { get; set; }
+    [Column("sivilstatus")] public string? Sivilstatus { get; set; }
+    [Column("antall_barn_under_18")] public int? AntallBarnUnder18 { get; set; }
+    [Column("boforhold")] public string? Boforhold { get; set; }
+    [Column("botid_mnd")] public int? BotidMnd { get; set; }
+    [Column("antall_biler")] public int? AntallBiler { get; set; }
+
+    // D. Arbeid og inntekt
+    [Column("arbeidssituasjon")] public string? Arbeidssituasjon { get; set; }
+    [Column("arbeidsgiver")] public string? Arbeidsgiver { get; set; }
+    [Column("ansiennitet_mnd")] public int? AnsiennitetMnd { get; set; }
+    [Column("utdanning")] public string? Utdanning { get; set; }
+    [Column("aarsinntekt_brutto")] public decimal? AarsinntektBrutto { get; set; }
+    [Column("andre_inntekter")] public decimal? AndreInntekter { get; set; }
+    [Column("ektefelle_inntekt")] public decimal? EktefelleInntekt { get; set; }
+
+    // E. Utgifter og forpliktelser
+    [Column("boligkostnad_mnd")] public decimal? BoligkostnadMnd { get; set; }
+    [Column("barnebidrag_betalt_mnd")] public decimal? BarnebidragBetaltMnd { get; set; }
+
+    // F. Gjeld
+    [Column("boliggjeld")] public decimal? Boliggjeld { get; set; }
+    [Column("studielaan")] public decimal? Studielaan { get; set; }
+    [Column("billaan")] public decimal? Billaan { get; set; }
+    [Column("forbruksgjeld")] public decimal? Forbruksgjeld { get; set; }
+    [Column("refinansieres_belop")] public decimal? RefinansieresBelop { get; set; }
+    [Column("aktiv_inkasso")] public bool AktivInkasso { get; set; }
+
+    // G. Lånedetaljer
+    [Column("onsket_laanebelop")] public decimal? OnsketLaanebelop { get; set; }
+    [Column("onsket_lopetid_mnd")] public int? OnsketLopetidMnd { get; set; }
+    [Column("laanetype")] public string? Laanetype { get; set; }
+
+    // H. Utbetaling
+    [Column("kontonummer")] public string? Kontonummer { get; set; }
+
+    [Column("status")] public string Status { get; set; } = "Ny";
+
+    // Tidsstempler — leses for sortering, men skrives ikke (DB styrer dem).
+    [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
+    public DateTime CreatedAt { get; set; }
+
+    [Column("updated_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
+    public DateTime UpdatedAt { get; set; }
+}

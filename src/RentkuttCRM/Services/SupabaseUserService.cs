@@ -1,0 +1,222 @@
+using Microsoft.AspNetCore.Identity;
+using Supabase.Postgrest;
+
+namespace RentkuttCRM.Services;
+
+public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active);
+public record SignInResult(bool Ok, string? Error, UserRow? User);
+
+/// <summary>
+/// Innlogging + brukeradministrasjon.
+///
+/// - Når Supabase er konfigurert (Url + service_role-nøkkel): bruker app_users-tabellen.
+/// - Ellers: in-memory staging-fallback, så lokal kjøring uten nøkler fungerer.
+///
+/// Passord hashes med ASP.NET PasswordHasher. Bytt gjerne til Supabase Auth senere.
+/// </summary>
+public class SupabaseUserService
+{
+    public static readonly string[] Roles = { "Saksbehandler", "Compliance", "Leder", "Administrator" };
+
+    private const string DefaultAdminEmail = "admin@rentekutt.no";
+    private const string DefaultAdminPassword = "Rentekutt2026!";
+
+    private readonly Supabase.Client _client;
+    private readonly ILogger<SupabaseUserService> _log;
+    private readonly PasswordHasher<AppUser> _hasher = new();
+
+    public bool IsConfigured { get; }
+
+    // Staging-lager (kun når Supabase ikke er konfigurert). Statisk → overlever per økt.
+    private static readonly List<AppUser> _staging = new()
+    {
+        new() { Id = Guid.NewGuid(), Email = "dev@rentekutt.no", FullName = "Dev Saksbehandler", Role = "Saksbehandler", Active = true },
+        new() { Id = Guid.NewGuid(), Email = "anne@rentekutt.no", FullName = "Anne Compliance", Role = "Compliance", Active = true },
+        new() { Id = Guid.NewGuid(), Email = "bjorn@rentekutt.no", FullName = "Bjørn Leder", Role = "Leder", Active = true },
+        new() { Id = Guid.NewGuid(), Email = "cathrine@rentekutt.no", FullName = "Cathrine Admin", Role = "Administrator", Active = true },
+    };
+
+    private static bool _seeded;
+    private bool _initialized;
+
+    public SupabaseUserService(Supabase.Client client, IConfiguration cfg, ILogger<SupabaseUserService> log)
+    {
+        _client = client;
+        _log = log;
+        IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
+                       && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
+    }
+
+    // ---------- Innlogging ----------
+    public async Task<SignInResult> SignInAsync(string email, string password)
+    {
+        email = (email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email))
+            return new SignInResult(false, "Skriv inn e-post.", null);
+
+        if (!IsConfigured)
+        {
+            // Staging: aksepter alle, finn evt. matchende dummybruker.
+            var u = _staging.FirstOrDefault(x => x.Email == email);
+            if (u is { Active: false })
+                return new SignInResult(false, "Brukeren er deaktivert.", null);
+            var name = u?.FullName ?? email.Split('@')[0];
+            var role = u?.Role ?? "Administrator";
+            return new SignInResult(true, null, new UserRow(u?.Id ?? Guid.Empty, email, name, role, true));
+        }
+
+        try
+        {
+            await EnsureReadyAsync();
+            var user = await _client.From<AppUser>().Where(x => x.Email == email).Single();
+            if (user is null)
+                return new SignInResult(false, "Feil e-post eller passord.", null);
+            if (!user.Active)
+                return new SignInResult(false, "Brukeren er deaktivert.", null);
+
+            var verify = _hasher.VerifyHashedPassword(user, user.PasswordHash, password);
+            if (verify == PasswordVerificationResult.Failed)
+                return new SignInResult(false, "Feil e-post eller passord.", null);
+
+            return new SignInResult(true, null, ToRow(user));
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Innlogging mot Supabase feilet");
+            return new SignInResult(false, "Teknisk feil ved innlogging. Prøv igjen.", null);
+        }
+    }
+
+    // ---------- Brukeradministrasjon ----------
+    public async Task<List<UserRow>> ListUsersAsync()
+    {
+        if (!IsConfigured)
+            return _staging.Select(ToRow).ToList();
+
+        try
+        {
+            await EnsureReadyAsync();
+            var res = await _client.From<AppUser>().Order(x => x.CreatedAt, Constants.Ordering.Ascending, Constants.NullPosition.Last).Get();
+            return res.Models.Select(ToRow).ToList();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Henting av brukere feilet");
+            return new List<UserRow>();
+        }
+    }
+
+    public async Task<(bool ok, string? error)> CreateUserAsync(string email, string fullName, string role, string password)
+    {
+        email = (email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            return (false, "E-post og passord er påkrevd.");
+        if (!Roles.Contains(role)) role = "Saksbehandler";
+
+        if (!IsConfigured)
+        {
+            if (_staging.Any(x => x.Email == email)) return (false, "E-posten finnes allerede.");
+            _staging.Add(new AppUser { Id = Guid.NewGuid(), Email = email, FullName = fullName, Role = role, Active = true });
+            return (true, null);
+        }
+
+        try
+        {
+            await EnsureReadyAsync();
+            var existing = await _client.From<AppUser>().Where(x => x.Email == email).Single();
+            if (existing is not null) return (false, "E-posten finnes allerede.");
+
+            var user = new AppUser { Email = email, FullName = fullName, Role = role, Active = true };
+            user.PasswordHash = _hasher.HashPassword(user, password);
+            await _client.From<AppUser>().Insert(user);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Oppretting av bruker feilet");
+            return (false, "Teknisk feil ved oppretting.");
+        }
+    }
+
+    public async Task SetRoleAsync(Guid id, string role)
+    {
+        if (!Roles.Contains(role)) return;
+        if (!IsConfigured)
+        {
+            var u = _staging.FirstOrDefault(x => x.Id == id);
+            if (u is not null) u.Role = role;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<AppUser>().Where(x => x.Id == id).Set(x => x.Role, role).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av rolle feilet"); }
+    }
+
+    public async Task SetActiveAsync(Guid id, bool active)
+    {
+        if (!IsConfigured)
+        {
+            var u = _staging.FirstOrDefault(x => x.Id == id);
+            if (u is not null) u.Active = active;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<AppUser>().Where(x => x.Id == id).Set(x => x.Active, active).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
+    }
+
+    /// <summary>Init + seeding av standard-admin (kalles ved oppstart).</summary>
+    public async Task EnsureSeededPublicAsync()
+    {
+        if (!IsConfigured) return;
+        await EnsureReadyAsync();
+    }
+
+    // ---------- Internt ----------
+    private async Task EnsureReadyAsync()
+    {
+        if (!_initialized)
+        {
+            try { await _client.InitializeAsync(); }
+            catch (Exception ex) { _log.LogWarning(ex, "Supabase InitializeAsync ga feil (fortsetter)"); }
+            _initialized = true;
+        }
+        await EnsureSeededAsync();
+    }
+
+    private async Task EnsureSeededAsync()
+    {
+        if (_seeded) return;
+        _seeded = true; // sett tidlig for å unngå dobbel-seeding ved samtidige kall
+        try
+        {
+            var any = (await _client.From<AppUser>().Limit(1).Get()).Models.Count > 0;
+            if (!any)
+            {
+                var admin = new AppUser
+                {
+                    Email = DefaultAdminEmail,
+                    FullName = "Administrator",
+                    Role = "Administrator",
+                    Active = true,
+                };
+                admin.PasswordHash = _hasher.HashPassword(admin, DefaultAdminPassword);
+                await _client.From<AppUser>().Insert(admin);
+                _log.LogInformation("Opprettet standard admin-bruker {Email}", DefaultAdminEmail);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Seeding av admin-bruker feilet");
+            _seeded = false; // tillat nytt forsøk senere
+        }
+    }
+
+    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active);
+}
