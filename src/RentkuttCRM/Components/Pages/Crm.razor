@@ -31,6 +31,15 @@ else
                     }
                 </div>
             }
+            @if (_laanetype24.Count > 0)
+            {
+                <div class="kpi-breakdown">
+                    @foreach (var (type, antall) in _laanetype24)
+                    {
+                        <div class="kpi-brk-row"><span class="kpi-brk-lbl"><span class="status-dot" style="background:@LaanetypeFarge(type)"></span>@type</span><span class="kpi-brk-num">@antall</span></div>
+                    }
+                </div>
+            }
         </div>
         <div class="kpi-card">
             <div class="kpi-value">@_rows.Count</div>
@@ -72,19 +81,46 @@ else
             </div>
             <div class="daybar-axis"><span>@_dager.FirstOrDefault()?.Label</span><span>I dag</span></div>
 
-            <table class="status-table">
-                <thead><tr><th></th><th>Status</th><th class="num">Siste 30 dager</th></tr></thead>
-                <tbody>
-                    @foreach (var s in _statuser)
-                    {
-                        <tr @onclick='() => Nav.NavigateTo("/crm/database")' style="cursor:pointer">
-                            <td><span class="status-dot" style="background:@StatusFarge(s)"></span></td>
-                            <td class="status-name">@s</td>
-                            <td class="num">@_statusCount30.GetValueOrDefault(s, 0)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div class="breakdown-grid">
+                <div>
+                    <h3 class="stat-subhead">Status</h3>
+                    <table class="status-table">
+                        <tbody>
+                            @foreach (var s in _statuser)
+                            {
+                                <tr @onclick='() => Nav.NavigateTo("/crm/database")' style="cursor:pointer">
+                                    <td class="status-name"><span class="status-dot" style="background:@StatusFarge(s)"></span>@s</td>
+                                    <td class="num">@_statusCount30.GetValueOrDefault(s, 0)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="stat-subhead">Lånetype</h3>
+                    <table class="status-table">
+                        <tbody>
+                            @foreach (var (type, antall) in _laanetype30)
+                            {
+                                <tr><td class="status-name"><span class="status-dot" style="background:@LaanetypeFarge(type)"></span>@type</td><td class="num">@antall</td></tr>
+                            }
+                            @if (_laanetype30.Count == 0) { <tr><td colspan="2" class="empty-row">Ingen data.</td></tr> }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="stat-subhead">Leadskilde</h3>
+                    <table class="status-table">
+                        <tbody>
+                            @foreach (var (kilde, antall) in _kilde30)
+                            {
+                                <tr><td><span class="kilde-badge @KundekortService.KildeBadgeKlasse(kilde)">@kilde</span></td><td class="num">@antall</td></tr>
+                            }
+                            @if (_kilde30.Count == 0) { <tr><td colspan="2" class="empty-row">Ingen data.</td></tr> }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 }
@@ -93,7 +129,18 @@ else
     private List<Kundekort> _rows = new();
     private Dictionary<string, int> _statusCount30 = new();
     private List<(string Kilde, int Antall)> _kilde24 = new();
+    private List<(string Type, int Antall)> _laanetype24 = new();
     private List<(string Type, int Antall)> _laanetyper = new();
+    private List<(string Type, int Antall)> _laanetype30 = new();
+    private List<(string Kilde, int Antall)> _kilde30 = new();
+
+    private static string LaanetypeFarge(string type) => type switch
+    {
+        "Forbrukslån" => "#6b3fc4",
+        "Refinansiering" => "#1f5fc4",
+        "Boliglån" => "#266f32",
+        _ => "#9aa0a8",
+    };
     private int _nye24;
     private int _mine;
     private decimal _pipeline;
@@ -132,6 +179,11 @@ else
             .Select(g => (g.Key, g.Count()))
             .OrderByDescending(x => x.Item2)
             .ToList();
+        _laanetype24 = siste24
+            .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
+            .Select(g => (g.Key, g.Count()))
+            .OrderByDescending(x => x.Item2)
+            .ToList();
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
         var idag = DateTime.Now.Date;
@@ -147,8 +199,14 @@ else
         _maxDag = Math.Max(1, _dager.Max(d => d.Total));
 
         var fra30 = idag.AddDays(-29);
-        _statusCount30 = _rows.Where(k => k.CreatedAt.ToLocalTime().Date >= fra30)
-            .GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+        var siste30 = _rows.Where(k => k.CreatedAt.ToLocalTime().Date >= fra30).ToList();
+        _statusCount30 = siste30.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+        _laanetype30 = siste30
+            .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
+            .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
+        _kilde30 = siste30
+            .GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
+            .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
 
         _laanetyper = _rows
             .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)

@@ -204,7 +204,9 @@ a { color: var(--accent); text-decoration: none; }
 .status-table .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .status-table td.num { font-weight: 600; color: var(--ink); }
 .status-name { color: var(--text-2); }
-.status-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.status-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 8px; }
+.breakdown-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px 28px; margin-top: 18px; }
+@media (max-width: 760px) { .breakdown-grid { grid-template-columns: 1fr; } }
 
 .pill { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
 .pill-warn { background: var(--warn-soft); color: var(--warn); }
