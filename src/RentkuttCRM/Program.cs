@@ -46,6 +46,9 @@ builder.Services.AddScoped<SettingsService>();
 // Hendelseslogg.
 builder.Services.AddScoped<EventService>();
 
+// Bankpartnere.
+builder.Services.AddScoped<PartnerService>();
+
 // Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
 builder.Services.AddSingleton<CustomerFieldCatalog>();
 

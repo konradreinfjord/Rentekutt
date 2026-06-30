@@ -6,6 +6,7 @@
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
 @inject RentkuttCRM.Services.SettingsService Settings
 @inject RentkuttCRM.Services.EventService Events
+@inject RentkuttCRM.Services.PartnerService Partners
 @inject NavigationManager Nav
 
 <PageTitle>Admin — Rentekutt</PageTitle>
@@ -76,17 +77,32 @@ else if (_active == "Partnere")
                 @foreach (var b in _banks)
                 {
                     <tr>
-                        <td>@b.Name</td>
-                        <td><input class="inline-input" value="@b.Rate" /> %</td>
-                        <td><input class="inline-input" style="width:90px" value="@b.Engangssum" /> kr</td>
+                        <td>@b.Navn</td>
+                        <td @ondblclick="() => _compUnlocked.Add(b.Id)">
+                            @if (_compUnlocked.Contains(b.Id))
+                            {
+                                <input class="inline-input" value="@b.Provisjon" @onchange="e => SaveProvisjon(b, e)" /> <span>%</span>
+                            }
+                            else
+                            {
+                                <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(b.Provisjon) ? "0" : b.Provisjon) %</span>
+                            }
+                        </td>
+                        <td @ondblclick="() => _compUnlocked.Add(b.Id)">
+                            @if (_compUnlocked.Contains(b.Id))
+                            {
+                                <input class="inline-input" style="width:90px" value="@b.Engangssum" @onchange="e => SaveEngangssum(b, e)" /> <span>kr</span>
+                                <button class="btn-sm" @onclick="() => _compUnlocked.Remove(b.Id)">Lås</button>
+                            }
+                            else
+                            {
+                                <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(b.Engangssum) ? "0" : b.Engangssum) kr</span>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
         </table>
-        @if (_banks.Count > 0)
-        {
-            <button class="btn-primary" style="margin-top:12px">Lagre satser</button>
-        }
     </div>
 
     <div class="section">
@@ -97,6 +113,10 @@ else if (_active == "Partnere")
             <div class="rb-field rb-op" style="max-width:170px"><label>Engangssum (kr)</label><input class="rb-input" @bind="_nbEngangssum" placeholder="0" /></div>
             <button class="btn-primary rb-add" @onclick="AddBank">Legg til partner</button>
         </div>
+        @if (!string.IsNullOrEmpty(_nbMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_nbMsg</p>
+        }
     </div>
 }
 else if (_active == "Brukere")
@@ -290,7 +310,7 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
                 @foreach (var b in _banks)
                 {
                     <tr>
-                        <td>@b.Name</td>
+                        <td>@b.Navn</td>
                         <td><span class="type-tag bank">Bank</span></td>
                         <td>
                             <select class="inline-select" @bind="b.Method">
@@ -519,6 +539,7 @@ else if (_active == "GDPR")
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         await LoadUsersAsync();
+        _banks = await Partners.ListAsync();
         _webhook = await Webhooks.GetInboundAsync();
         _webhookPrismatch = await Webhooks.GetByNameAsync(WebhookService.PrismatchName);
         _inboundWebhooks = new[] { _webhook, _webhookPrismatch }.Where(w => w is not null).Select(w => w!).ToList();
@@ -671,7 +692,7 @@ else if (_active == "GDPR")
     // ---- Logikk-matrise (universalfilter → ruting til bank) ----
     // Feltene leses fra CustomerFieldCatalog (én kilde til sannhet). Når ekte
     // datafelt opprettes, oppdateres katalogen og denne siden følger automatisk.
-    private string[] BankNames => _banks.Select(b => b.Name).ToArray();
+    private string[] BankNames => _banks.Select(b => b.Navn).ToArray();
 
     private class Rule
     {
@@ -746,27 +767,40 @@ else if (_active == "GDPR")
         new("Brukeradmin",       new[]{ false, false, false, true }),
     };
 
-    private class BankRate { public string Name { get; set; } = ""; public string Rate { get; set; } = ""; public string Engangssum { get; set; } = ""; public string Method { get; set; } = "Webhook"; }
-    private readonly List<BankRate> _banks = new();
+    // Bankpartnere lastes fra databasen (persistente).
+    private List<Partner> _banks = new();
 
-    // Ny partner (kan legges til, ikke fjernes)
+    // Ny partner
     private string _nbName = "", _nbRate = "", _nbEngangssum = "";
+    private string? _nbMsg;
 
-    private void AddBank()
+    private readonly HashSet<Guid> _compUnlocked = new();
+
+    private async Task AddBank()
     {
-        var name = _nbName.Trim();
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (_banks.Any(b => b.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return;
-        // Oppretter også en API-rad (under "API og Data") for denne partneren.
-        _banks.Add(new BankRate
+        var (ok, error) = await Partners.AddAsync(
+            _nbName,
+            string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim(),
+            string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim());
+        if (ok)
         {
-            Name = name,
-            Rate = string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim(),
-            Engangssum = string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim(),
-        });
-        _nbName = "";
-        _nbRate = "";
-        _nbEngangssum = "";
+            _nbName = _nbRate = _nbEngangssum = "";
+            _nbMsg = null;
+            _banks = await Partners.ListAsync();
+        }
+        else { _nbMsg = error; }
+    }
+
+    private async Task SaveProvisjon(Partner b, ChangeEventArgs e)
+    {
+        b.Provisjon = e.Value?.ToString();
+        await Partners.UpdateCompAsync(b.Id, b.Provisjon, b.Engangssum);
+    }
+
+    private async Task SaveEngangssum(Partner b, ChangeEventArgs e)
+    {
+        b.Engangssum = e.Value?.ToString();
+        await Partners.UpdateCompAsync(b.Id, b.Provisjon, b.Engangssum);
     }
 
     private class Source { public string Name { get; set; } = ""; public bool Active { get; set; } = true; public string Method { get; set; } = "Webhook"; }
