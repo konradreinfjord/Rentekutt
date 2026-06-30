@@ -3,7 +3,7 @@ using Supabase.Postgrest;
 
 namespace RentkuttCRM.Services;
 
-public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active, string? Mobilnummer = null);
+public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active, string? Mobilnummer = null, bool TwoFactorEnabled = false);
 public record SignInResult(bool Ok, string? Error, UserRow? User);
 
 /// <summary>
@@ -237,5 +237,21 @@ public class SupabaseUserService
         }
     }
 
-    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active, u.Mobilnummer);
+    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active, u.Mobilnummer, u.TwoFactorEnabled);
+
+    public async Task SetTwoFactorAsync(Guid id, bool enabled)
+    {
+        if (!IsConfigured)
+        {
+            var u = _staging.FirstOrDefault(x => x.Id == id);
+            if (u is not null) u.TwoFactorEnabled = enabled;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<AppUser>().Where(x => x.Id == id).Set(x => x.TwoFactorEnabled, enabled).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av 2FA feilet"); }
+    }
 }

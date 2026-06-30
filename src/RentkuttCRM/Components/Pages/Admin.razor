@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.CustomerFieldCatalog Catalog
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.WebhookService Webhooks
+@inject RentkuttCRM.Services.LinkMobilityService LinkMobility
 @inject NavigationManager Nav
 
 <PageTitle>Admin — Rentekutt</PageTitle>
@@ -129,7 +130,7 @@ else if (_active == "Brukere")
         else
         {
             <table class="data-table">
-                <thead><tr><th>Navn</th><th>E-post</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Navn</th><th>E-post</th><th>Rolle</th><th>2FA</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var u in _userRows)
                     {
@@ -143,6 +144,11 @@ else if (_active == "Brukere")
                                         <option value="@r" selected="@(r == u.Role)">@r</option>
                                     }
                                 </select>
+                            </td>
+                            <td>
+                                <button class="btn-sm @(u.TwoFactorEnabled ? "" : "btn-danger")" @onclick="() => ToggleTwoFactor(u)">
+                                    @(u.TwoFactorEnabled ? "På" : "Av")
+                                </button>
                             </td>
                             <td><span class="status @(u.Active ? "on" : "off")">@(u.Active ? "Aktiv" : "Deaktivert")</span></td>
                             <td><button class="btn-sm btn-danger" @onclick="() => ToggleActive(u)">@(u.Active ? "Deaktiver" : "Aktiver")</button></td>
@@ -279,6 +285,44 @@ else if (_active == "API og Data")
   -H "Authorization: Bearer @(_webhook?.Token ?? "<token>")" \
   -H "Content-Type: application/json" \
   -d '@PayloadExample'</pre>
+            </div>
+        }
+    </div>
+
+    <div class="webhook-widget">
+        <div class="ww-header" @onclick="() => _lmOpen = !_lmOpen">
+            <div class="ww-title">
+                <span class="ww-chevron @(_lmOpen ? "open" : "")">▸</span>
+                <strong>LinkMobility</strong>
+                <span class="ww-tag">SMS · 2FA</span>
+            </div>
+            <div class="ww-meta">
+                <span class="ww-last">@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</span>
+                <span class="status @(LinkMobility.ErKonfigurert ? "on" : "off")">@(LinkMobility.ErKonfigurert ? "Aktiv" : "Av")</span>
+            </div>
+        </div>
+        @if (_lmOpen)
+        {
+            <div class="ww-body">
+                <p class="page-sub" style="margin:0 0 16px">
+                    MyLink SMS API (OAuth2 client credentials) — sender engangskoder for 2FA ved innlogging.
+                </p>
+                <div class="kv-list" style="margin-bottom:16px">
+                    <span class="k">Status</span>
+                    <span class="v">@(LinkMobility.ErKonfigurert ? "Client ID + secret satt ✓" : "Mangler Client ID/secret")</span>
+                    <span class="k">Avsender</span><span class="v">@LinkMobility.Sender</span>
+                    <span class="k">Token-URL</span><span class="v">@LinkMobility.TokenUrl</span>
+                    <span class="k">Send-URL</span><span class="v">@LinkMobility.SendUrl</span>
+                </div>
+                <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+                <pre class="code-block">LinkMobility__ClientId      = &lt;klient-ID&gt;
+LinkMobility__ClientSecret  = &lt;klient-hemmelighet&gt;
+LinkMobility__Sender        = Rentekutt        (valgfri)
+LinkMobility__TokenUrl      = &lt;overstyrbar&gt;     (valgfri)
+LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
+                <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+                    🔒 Client ID/secret leses kun fra server-config (Azure), aldri fra databasen. 2FA aktiveres per bruker under Brukere.
+                </p>
             </div>
         }
     </div>
@@ -520,6 +564,7 @@ else if (_active == "GDPR")
     private Webhook? _webhook;
     private bool _showToken;
     private bool _webhookOpen;
+    private bool _lmOpen;
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
     private const string PayloadExample = """
 {
@@ -591,6 +636,12 @@ else if (_active == "GDPR")
     private async Task ToggleActive(UserRow u)
     {
         await Users.SetActiveAsync(u.Id, !u.Active);
+        await LoadUsersAsync();
+    }
+
+    private async Task ToggleTwoFactor(UserRow u)
+    {
+        await Users.SetTwoFactorAsync(u.Id, !u.TwoFactorEnabled);
         await LoadUsersAsync();
     }
 

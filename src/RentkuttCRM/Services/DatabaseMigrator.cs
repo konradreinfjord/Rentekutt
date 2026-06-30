@@ -38,7 +38,9 @@ public class DatabaseMigrator
         try
         {
             await using var conn = new NpgsqlConnection(_connectionString);
-            await conn.OpenAsync();
+            // Kort timeout så oppstart ikke henger om DB er uroutbar (f.eks. IPv6).
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await conn.OpenAsync(cts.Token);
 
             await EnsureMigrationsTableAsync(conn);
             var applied = await GetAppliedAsync(conn);

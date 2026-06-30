@@ -27,6 +27,9 @@ public class AppUser : BaseModel
     [Column("mobilnummer")]
     public string? Mobilnummer { get; set; }
 
+    [Column("twofa_enabled")]
+    public bool TwoFactorEnabled { get; set; }
+
     [Column("password_hash")]
     public string PasswordHash { get; set; } = "";
 

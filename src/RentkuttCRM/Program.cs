@@ -34,6 +34,11 @@ builder.Services.AddScoped<KundekortService>();
 // Webhooks (inbound lead-mottak).
 builder.Services.AddScoped<WebhookService>();
 
+// SMS (LinkMobility) + 2FA.
+builder.Services.AddHttpClient("linkmobility");
+builder.Services.AddSingleton<LinkMobilityService>();
+builder.Services.AddSingleton<TwoFactorService>();
+
 // Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
 builder.Services.AddSingleton<CustomerFieldCatalog>();
 

@@ -2,6 +2,7 @@
 @page "/login"
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.SupabaseUserService Users
+@inject RentkuttCRM.Services.TwoFactorService TwoFactor
 @inject NavigationManager Nav
 
 <PageTitle>Logg inn — Rentekutt</PageTitle>
@@ -15,44 +16,63 @@
             <p class="login-tagline">Intern plattform — CRM, statistikk og admin</p>
         </div>
 
-        <EditForm Model="@model" OnValidSubmit="HandleLogin">
-            <div class="form-field">
-                <label>E-post</label>
-                <InputText @bind-Value="model.Email" placeholder="navn@rentekutt.no" autocomplete="username" />
-            </div>
-            <div class="form-field">
-                <label>Passord</label>
-                <InputText type="password" @bind-Value="model.Password" placeholder="••••••••" autocomplete="current-password" />
-            </div>
-            @if (!string.IsNullOrEmpty(_error))
-            {
-                <div class="login-error">@_error</div>
-            }
-            <button type="submit" class="btn-primary full" disabled="@_busy">
-                @(_busy ? "Logger inn…" : "Logg inn")
-            </button>
-        </EditForm>
-
-        @if (!Users.IsConfigured)
+        @if (_step == 1)
         {
-            <p class="login-note">Staging — Supabase ikke koblet til. Skriv hva som helst for å logge inn.</p>
+            <EditForm Model="@model" OnValidSubmit="HandleLogin">
+                <div class="form-field">
+                    <label>E-post</label>
+                    <InputText @bind-Value="model.Email" placeholder="navn@rentekutt.no" autocomplete="username" />
+                </div>
+                <div class="form-field">
+                    <label>Passord</label>
+                    <InputText type="password" @bind-Value="model.Password" placeholder="••••••••" autocomplete="current-password" />
+                </div>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="login-error">@_error</div>
+                }
+                <button type="submit" class="btn-primary full" disabled="@_busy">
+                    @(_busy ? "Logger inn…" : "Logg inn")
+                </button>
+            </EditForm>
         }
         else
         {
-            <p class="login-note">Sikret med Supabase.</p>
+            <EditForm Model="@model" OnValidSubmit="HandleVerify">
+                <p class="page-sub" style="margin:0 0 14px">Vi sendte en engangskode på SMS. Skriv den inn for å fullføre innloggingen.</p>
+                <div class="form-field">
+                    <label>SMS-kode</label>
+                    <InputText @bind-Value="_code" placeholder="6-sifret kode" autocomplete="one-time-code" />
+                </div>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="login-error">@_error</div>
+                }
+                <button type="submit" class="btn-primary full" disabled="@_busy">
+                    @(_busy ? "Verifiserer…" : "Bekreft kode")
+                </button>
+                <p class="login-note">Feil nummer? <a href="/login" @onclick:preventDefault @onclick="Reset">Start på nytt</a></p>
+            </EditForm>
+        }
+
+        @if (_step == 1)
+        {
+            <p class="login-note">@(Users.IsConfigured ? "Sikret med Supabase." : "Staging — skriv hva som helst for å logge inn.")</p>
         }
     </div>
 </div>
 
 @code {
     private readonly LoginModel model = new();
+    private string _code = "";
+    private int _step = 1;
+    private UserRow? _pending;
     private string? _error;
     private bool _busy;
 
     protected override void OnInitialized()
     {
-        if (Session.IsLoggedIn)
-            Nav.NavigateTo("/crm");
+        if (Session.IsLoggedIn) Nav.NavigateTo("/crm");
     }
 
     private async Task HandleLogin()
@@ -61,15 +81,49 @@
         _error = null;
 
         var result = await Users.SignInAsync(model.Email, model.Password);
-        if (result is { Ok: true, User: not null })
+        if (result is not { Ok: true, User: not null })
         {
-            Session.SignIn(result.User);
-            Nav.NavigateTo("/crm");
+            _error = result.Error ?? "Innlogging feilet.";
+            _busy = false;
             return;
         }
 
-        _error = result.Error ?? "Innlogging feilet.";
+        var user = result.User;
+        // 2FA håndheves kun når den er på OG vi faktisk kan sende SMS (konfigurert + mobil).
+        if (user.TwoFactorEnabled && TwoFactor.KanSende(user))
+        {
+            var (sent, error) = await TwoFactor.SendKodeAsync(user);
+            if (!sent) { _error = error; _busy = false; return; }
+            _pending = user;
+            _step = 2;
+            _busy = false;
+            return;
+        }
+
+        Session.SignIn(user);
+        Nav.NavigateTo("/crm");
+    }
+
+    private void HandleVerify()
+    {
+        _busy = true;
+        _error = null;
+        if (_pending is not null && TwoFactor.Verifiser(_pending.Email, _code))
+        {
+            Session.SignIn(_pending);
+            Nav.NavigateTo("/crm");
+            return;
+        }
+        _error = "Feil eller utløpt kode.";
         _busy = false;
+    }
+
+    private void Reset()
+    {
+        _step = 1;
+        _pending = null;
+        _code = "";
+        _error = null;
     }
 
     private class LoginModel
