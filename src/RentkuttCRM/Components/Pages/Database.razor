@@ -48,6 +48,9 @@ else
                 @Header("navn", "Navn")
                 <th>Personnr</th>
                 <th>Telefon</th>
+                <th>Kommune</th>
+                <th>Postnr</th>
+                <th>Adresse</th>
                 @Header("type", "Type")
                 @Header("laanetype", "Lånetype")
                 @Header("belop", "Ønsket beløp")
@@ -59,7 +62,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="10" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="13" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
@@ -78,6 +81,9 @@ else
                     </td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
