@@ -54,7 +54,9 @@ else
     var gjsnDager = total == 0 ? 0 : rows.Average(DagerSiden);
 
     @* ---------- Nøkkeltall (metric-strip) ---------- *@
-    <div class="metric-strip">
+    <div class="section widget">
+        <h2>Nøkkeltall</h2>
+    <div class="metric-strip metric-flush">
         <div class="metric">
             <div class="metric-num">@total</div>
             <div class="metric-label">Kontaktstrøm</div>
@@ -86,10 +88,11 @@ else
             <div class="metric-sub">vektet pipeline</div>
         </div>
     </div>
+    </div>
 
     <div class="stat-cols">
         @* ---------- Kontaktstrøm per leadskilde ---------- *@
-        <div class="section">
+        <div class="section widget">
             <h2>Kontaktstrøm</h2>
             <table class="data-table">
                 <thead><tr><th>Leadskilde</th><th class="num">Søknader</th><th class="num">Andel</th></tr></thead>
@@ -111,7 +114,7 @@ else
         </div>
 
         @* ---------- Lånevolum-fordeling ---------- *@
-        <div class="section">
+        <div class="section widget">
             <h2>Lånevolum</h2>
             <table class="data-table">
                 <thead><tr><th>Kategori</th><th class="num">Antall</th><th class="num">Volum</th></tr></thead>
@@ -126,7 +129,7 @@ else
     </div>
 
     @* ---------- Konvertering per bank ---------- *@
-    <div class="section">
+    <div class="section widget">
         <h2>Konvertering per bank</h2>
         <table class="data-table">
             <thead>
@@ -158,7 +161,7 @@ else
     </div>
 
     @* ---------- Tidsbruk ---------- *@
-    <div class="section">
+    <div class="section widget">
         <h2>Tidsbruk</h2>
         <p class="page-sub" style="margin:-4px 0 14px">Gjennomstrømning og liggetid målt mot fastsatte krav — for å benchmarke agenter.</p>
 
@@ -169,7 +172,8 @@ else
             @if (!string.IsNullOrEmpty(_malMsg)) { <span class="muted">@_malMsg</span> }
         </div>
 
-        <div class="metric-strip" style="margin:14px 0 18px">
+        <h3 class="stat-subhead" style="margin:16px 0 8px">Gjennomstrømning (etter tidsfilter)</h3>
+        <div class="metric-strip metric-flush" style="margin:0 0 4px">
             <div class="metric"><div class="metric-num">@($"{perDag:N1}")</div><div class="metric-label">Saker / dag</div><div class="metric-sub">over @PeriodeDager dager</div></div>
             <div class="metric"><div class="metric-num">@($"{perUke:N1}")</div><div class="metric-label">Saker / uke</div></div>
             <div class="metric"><div class="metric-num">@($"{perMnd:N0}")</div><div class="metric-label">Saker / måned</div></div>
@@ -246,7 +250,7 @@ else
     </div>
 
     @* ---------- Cashflow-analyse ---------- *@
-    <div class="section">
+    <div class="section widget">
         <h2>Cashflow-analyse</h2>
         <p class="page-sub" style="margin:-4px 0 14px">Forventet provisjonsinngang vektet på sannsynlighet per pipeline-steg.</p>
         <table class="data-table">
