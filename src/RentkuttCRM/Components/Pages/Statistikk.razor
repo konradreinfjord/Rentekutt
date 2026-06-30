@@ -1,57 +1,109 @@
 @page "/crm/statistikk"
 @inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.KundekortService Kundekort
+@inject RentkuttCRM.Services.PartnerService Partners
 @inject NavigationManager Nav
 
 <PageTitle>Statistikk — Rentekutt</PageTitle>
 
 <h1 class="page-title">Statistikk</h1>
-<p class="page-sub">Konvertering, bankytelse og volum.</p>
+<p class="page-sub">Konvertering, volum og opptjening.</p>
 
-<div class="kpi-grid">
-    <div class="kpi-card"><div class="kpi-value">0</div><div class="kpi-label">Søknader</div></div>
-    <div class="kpi-card"><div class="kpi-value">0 %</div><div class="kpi-label">Kvalifiseringsrate</div></div>
-    <div class="kpi-card"><div class="kpi-value">0 %</div><div class="kpi-label">Close rate</div></div>
-    <div class="kpi-card"><div class="kpi-value">0 kr</div><div class="kpi-label">Formidlet volum</div></div>
-    <div class="kpi-card"><div class="kpi-value">0 kr</div><div class="kpi-label">Opptjent provisjon</div></div>
-</div>
-
-<div class="section">
-    <h2>Konverteringstrakt</h2>
-    <div class="funnel">
-        @foreach (var f in _funnel)
-        {
-            <div class="funnel-step">
-                <div class="funnel-bar" style="width:0%; min-width:38px">0</div>
-                <div class="funnel-label">@f <span class="muted">(0 %)</span></div>
-            </div>
-        }
+@if (_loading)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-value">@_total</div><div class="kpi-label">Søknader</div></div>
+        <div class="kpi-card"><div class="kpi-value">@($"{_kvalRate:N0}") %</div><div class="kpi-label">Kvalifiseringsrate (sendt bank)</div></div>
+        <div class="kpi-card"><div class="kpi-value">@($"{_closeRate:N0}") %</div><div class="kpi-label">Close rate (fullført)</div></div>
+        <div class="kpi-card"><div class="kpi-value">@($"{_formidlet:N0}") kr</div><div class="kpi-label">Formidlet volum (fullført)</div></div>
+        <div class="kpi-card"><div class="kpi-value">@($"{_opptjent:N0}") kr</div><div class="kpi-label">Opptjent provisjon (fullført)</div></div>
     </div>
-</div>
 
-<div class="section">
-    <h2>Bankytelse</h2>
-    <table class="data-table">
-        <thead>
-            <tr><th>Bank</th><th>Sendt</th><th>Tilbud</th><th>Fullført</th><th>Hit rate</th><th>Close rate</th><th>Volum</th></tr>
-        </thead>
-        <tbody>
-            <tr><td colspan="7" class="empty-row">Ingen data ennå.</td></tr>
-        </tbody>
-    </table>
-</div>
+    <div class="section">
+        <h2>Konverteringstrakt</h2>
+        <div class="funnel">
+            @foreach (var f in _funnel)
+            {
+                <div class="funnel-step">
+                    <div class="funnel-bar" style="width:@(_total == 0 ? 0 : 100 * f.Antall / _total)%; min-width:40px">@f.Antall</div>
+                    <div class="funnel-label">@f.Navn <span class="muted">(@(_total == 0 ? 0 : 100 * f.Antall / _total) %)</span></div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Saker per status</h2>
+        <table class="data-table" style="max-width:420px">
+            <thead><tr><th>Status</th><th>Antall</th></tr></thead>
+            <tbody>
+                @foreach (var s in _statuser)
+                {
+                    <tr><td>@s</td><td class="mono-cell">@_rows.Count(k => k.Status == s)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 @code {
-    protected override void OnInitialized()
+    private List<Kundekort> _rows = new();
+    private bool _loading = true;
+
+    private int _total;
+    private double _kvalRate, _closeRate;
+    private decimal _formidlet, _opptjent;
+
+    private readonly string[] _statuser = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
+    private record FunnelStep(string Navn, int Antall);
+    private List<FunnelStep> _funnel = new();
+
+    protected override async Task OnInitializedAsync()
     {
-        if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        _rows = await Kundekort.ListAsync();
+        var partnere = await Partners.ListAsync();
+
+        _total = _rows.Count;
+
+        // Kumulativ funnel: en sak som er "Fullført" har også vært "Sendt bank" osv.
+        int Tellfra(params string[] statuser) => _rows.Count(k => statuser.Contains(k.Status));
+        var sendt = Tellfra("Sendt bank", "Tilbud", "Fullført");
+        var fullfort = Tellfra("Fullført");
+
+        _kvalRate = _total == 0 ? 0 : 100.0 * sendt / _total;
+        _closeRate = _total == 0 ? 0 : 100.0 * fullfort / _total;
+        _formidlet = _rows.Where(k => k.Status == "Fullført").Sum(k => k.OnsketLaanebelop ?? 0);
+
+        // Opptjent provisjon = gjennomsnittlig partnersats anvendt på fullført volum.
+        // (Estimat — kundekort knyttes ikke til en bestemt partner ennå.)
+        if (partnere.Count > 0)
+        {
+            var avgProv = partnere.Average(p => ParseDec(p.Provisjon));
+            var avgEngang = partnere.Average(p => ParseDec(p.Engangssum));
+            _opptjent = _formidlet * (avgProv / 100m) + fullfort * avgEngang;
+        }
+
+        _funnel = new()
+        {
+            new("Søknader", _total),
+            new("Kvalifisert", Tellfra("Bekreftet", "Sendt bank", "Tilbud", "Fullført")),
+            new("Sendt til bank", sendt),
+            new("Tilbud", Tellfra("Tilbud", "Fullført")),
+            new("Fullført", fullfort),
+        };
+
+        _loading = false;
     }
 
-    private readonly string[] _funnel =
+    private static decimal ParseDec(string? s)
     {
-        "Søknader",
-        "Kvalifisert",
-        "Sendt til bank",
-        "Tilbud mottatt",
-        "Fullført",
-    };
+        if (string.IsNullOrWhiteSpace(s)) return 0;
+        s = s.Replace(" ", "").Replace(",", ".");
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
+    }
 }
