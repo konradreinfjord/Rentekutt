@@ -73,9 +73,13 @@ using (var startupScope = app.Services.CreateScope())
     await startupScope.ServiceProvider.GetRequiredService<WebhookService>().EnsureSeededPublicAsync();
 }
 
-// HSTS i produksjon — be nettlesere alltid bruke HTTPS for domenet.
+// HSTS + HTTPS-redirect i produksjon — tving http→https for domenet.
+// (I Development hopper UseHttpsRedirection over når kun http-profilen kjører.)
 if (!app.Environment.IsDevelopment())
+{
     app.UseHsts();
+    app.UseHttpsRedirection();
+}
 
 // Swagger KUN i Development — eksponer ikke API-flaten i produksjon.
 if (app.Environment.IsDevelopment())

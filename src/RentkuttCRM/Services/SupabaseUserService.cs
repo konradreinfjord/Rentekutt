@@ -19,7 +19,6 @@ public class SupabaseUserService
     public static readonly string[] Roles = { "Saksbehandler", "Compliance", "Leder", "Administrator" };
 
     private const string DefaultAdminEmail = "admin@rentekutt.no";
-    private const string DefaultAdminPassword = "Rentekutt2026!";
 
     private readonly Supabase.Client _client;
     private readonly ILogger<SupabaseUserService> _log;
@@ -40,6 +39,10 @@ public class SupabaseUserService
     private bool _initialized;
 
     private readonly SettingsService _settings;
+    // Seed-admin passord fra konfig (Admin:SeedPassword / env Admin__SeedPassword).
+    // Tomt → genereres tilfeldig og logges én gang ved første oppstart.
+    private readonly string? _seedPassword;
+    private readonly string _seedEmail;
     // Sporing av feilede innloggingsforsøk per e-post (mot brute-force).
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<DateTime>> _failedLogins = new();
 
@@ -55,6 +58,17 @@ public class SupabaseUserService
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
+        _seedPassword = cfg["Admin:SeedPassword"];
+        _seedEmail = cfg["Admin:SeedEmail"] ?? DefaultAdminEmail;
+    }
+
+    private static string GenererPassord()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%+";
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < 20; i++)
+            sb.Append(chars[System.Security.Cryptography.RandomNumberGenerator.GetInt32(chars.Length)]);
+        return sb.ToString();
     }
 
     // ---------- Innlogging ----------
@@ -260,16 +274,21 @@ public class SupabaseUserService
             var any = (await _client.From<AppUser>().Limit(1).Get()).Models.Count > 0;
             if (!any)
             {
+                var fraKonfig = !string.IsNullOrWhiteSpace(_seedPassword);
+                var passord = fraKonfig ? _seedPassword! : GenererPassord();
                 var admin = new AppUser
                 {
-                    Email = DefaultAdminEmail,
+                    Email = _seedEmail,
                     FullName = "Administrator",
                     Role = "Administrator",
                     Active = true,
                 };
-                admin.PasswordHash = _hasher.HashPassword(admin, DefaultAdminPassword);
+                admin.PasswordHash = _hasher.HashPassword(admin, passord);
                 await _client.From<AppUser>().Insert(admin);
-                _log.LogInformation("Opprettet standard admin-bruker {Email}", DefaultAdminEmail);
+                if (fraKonfig)
+                    _log.LogInformation("Opprettet admin {Email} med passord fra konfigurasjon (Admin:SeedPassword).", _seedEmail);
+                else
+                    _log.LogWarning("Opprettet admin {Email} med GENERERT engangspassord: {Passord} — logg inn og bytt det straks.", _seedEmail, passord);
             }
         }
         catch (Exception ex)
