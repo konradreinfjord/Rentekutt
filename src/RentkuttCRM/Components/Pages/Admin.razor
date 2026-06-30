@@ -521,33 +521,46 @@ else if (_active == "Logikk-matrise")
 }
 else if (_active == "GDPR")
 {
-    <div class="section">
-        <h2>Oppbevaring av søknadsdata</h2>
-        <p class="page-sub" style="margin:-4px 0 16px">
-            Søknadsdata slettes automatisk når oppbevaringstiden er nådd.
+    <div class="form-card">
+        <h2>Personvern & oppbevaring</h2>
+        <p class="page-sub" style="margin:0 0 16px">
+            For å etterleve GDPR (dataminimering og lagringsbegrensning) behandles søknadsdata i to trinn,
+            regnet fra da søknaden ble opprettet. Først <strong>anonymisering</strong> — de finansielle
+            detaljene fjernes, men kontaktinfo og at en søknad ble sendt beholdes. Deretter <strong>sletting</strong>
+            — hele kundekortet fjernes permanent.
         </p>
 
-        <div class="kpi-grid" style="max-width:520px; margin-bottom:18px">
-            <div class="kpi-card">
-                <div class="kpi-value">@_retentionMonths mnd</div>
-                <div class="kpi-label">Oppbevaringstid før sletting</div>
-            </div>
-        </div>
-
-        <div class="rule-builder">
-            <div class="rb-field rb-op" style="max-width:220px">
-                <label>Slett søknadsdata etter</label>
-                <div class="input-unit">
-                    <input class="rb-input" type="number" min="1" max="120" @bind="_retentionMonths" />
-                    <span class="unit-suffix">mnd</span>
-                </div>
-            </div>
-            <button class="btn-primary rb-add" @onclick="SaveRetention">Lagre</button>
-        </div>
-        @if (!string.IsNullOrEmpty(_retentionMsg))
+        <table class="data-table">
+            <thead><tr><th>Trinn</th><th>Hva skjer</th><th>Beholdes</th><th>Etter</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="type-tag lead">Anonymisering</span></td>
+                    <td>Fjerner alle søknadsdetaljer (lånebeløp, inntekt, gjeld, arbeidsforhold, husholdning m.m.)</td>
+                    <td>Navn + kontaktinfo, og at en søknad ble sendt (dato)</td>
+                    <td><input class="inline-input" type="number" min="1" max="120" @bind="_gdprAnonMonths" /> mnd</td>
+                </tr>
+                <tr>
+                    <td><span class="type-tag">Sletting</span></td>
+                    <td>Sletter hele kundekortet permanent</td>
+                    <td class="muted">Ingenting</td>
+                    <td><input class="inline-input" type="number" min="1" max="240" @bind="_gdprDeleteMonths" /> mnd</td>
+                </tr>
+            </tbody>
+        </table>
+        <button class="btn-primary" style="margin-top:14px" @onclick="SaveGdpr">Lagre</button>
+        @if (!string.IsNullOrEmpty(_gdprMsg))
         {
-            <p class="page-sub" style="margin-top:10px">@_retentionMsg</p>
+            <p class="page-sub" style="margin-top:10px">@_gdprMsg</p>
         }
+    </div>
+
+    <div class="form-card">
+        <h2>Slik ser en anonymisert sak ut</h2>
+        <p class="page-sub" style="margin:0">
+            Etter @_gdprAnonMonths måneder lagres f.eks. kun:
+            «<strong>Ola Nordmann (90012345)</strong> sendte en lånesøknad <strong>12.03.2026</strong>» —
+            ingen detaljer om beløp, inntekt eller gjeld.
+        </p>
     </div>
 }
 
@@ -560,6 +573,8 @@ else if (_active == "GDPR")
         _ipList = _webhook?.IpAllowlist ?? "";
         _smsMaxHour = await Settings.GetIntAsync(TwoFactorService.KeyMaxPerHour, TwoFactorService.DefaultMaxPerHour);
         _smsMax24h = await Settings.GetIntAsync(TwoFactorService.KeyMaxPer24h, TwoFactorService.DefaultMaxPer24h);
+        _gdprAnonMonths = await Settings.GetIntAsync("gdpr_anonymize_months", 12);
+        _gdprDeleteMonths = await Settings.GetIntAsync("gdpr_delete_months", 24);
     }
 
     private int _smsMaxHour = TwoFactorService.DefaultMaxPerHour;
@@ -688,13 +703,17 @@ else if (_active == "GDPR")
     private readonly string[] _tabs = { "Generelt", "Partnere", "Leadkilder", "Brukere", "Logikk-matrise", "API og Data", "GDPR" };
     private string _active = "Generelt";
 
-    // ---- GDPR: oppbevaring av søknadsdata ----
-    private int _retentionMonths = 24;
-    private string? _retentionMsg;
-    private void SaveRetention()
+    // ---- GDPR: anonymisering + sletting ----
+    private int _gdprAnonMonths = 12;
+    private int _gdprDeleteMonths = 24;
+    private string? _gdprMsg;
+    private async Task SaveGdpr()
     {
-        if (_retentionMonths < 1) _retentionMonths = 1;
-        _retentionMsg = $"Lagret — søknadsdata slettes etter {_retentionMonths} måneder.";
+        if (_gdprAnonMonths < 1) _gdprAnonMonths = 1;
+        if (_gdprDeleteMonths < 1) _gdprDeleteMonths = 1;
+        await Settings.SetAsync("gdpr_anonymize_months", _gdprAnonMonths.ToString());
+        await Settings.SetAsync("gdpr_delete_months", _gdprDeleteMonths.ToString());
+        _gdprMsg = "Lagret.";
     }
 
     // ---- Logikk-matrise (universalfilter → ruting til bank) ----
