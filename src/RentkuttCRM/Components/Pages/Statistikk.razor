@@ -53,6 +53,9 @@ else
     var perMnd = perDag * 30;
     var gjsnDager = total == 0 ? 0 : rows.Average(DagerSiden);
 
+    var bankSyklus = BankSyklustider(rows);
+    var maxSyklus = bankSyklus.Count == 0 ? 1.0 : Math.Max(1.0, bankSyklus.Max(b => b.Snitt));
+
     @* ---------- Nøkkeltall (metric-strip) ---------- *@
     <div class="section widget">
         <h2>Nøkkeltall</h2>
@@ -249,6 +252,34 @@ else
         </table>
     </div>
 
+    @* ---------- Syklustid per bank ---------- *@
+    <div class="section widget">
+        <h2>Syklustid per bank</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Gjennomsnittlig tid fra åpnet til <strong>fullført og utbetalt</strong>, per bank.</p>
+        <table class="data-table">
+            <thead><tr><th>Bank</th><th class="num">Fullførte saker</th><th>Syklustid</th><th class="num">Gj.snitt dager</th></tr></thead>
+            <tbody>
+                @foreach (var b in bankSyklus)
+                {
+                    <tr>
+                        <td>@b.Bank</td>
+                        <td class="num">@b.Antall</td>
+                        <td>
+                            <div class="minibar-cell">
+                                <div class="minibar"><div class="minibar-fill" style="width:@((b.Snitt / maxSyklus * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:#0f8a8a"></div></div>
+                            </div>
+                        </td>
+                        <td class="num">@($"{b.Snitt:N1}")</td>
+                    </tr>
+                }
+                @if (bankSyklus.Count == 0)
+                {
+                    <tr><td colspan="4" class="empty-row">Ingen fullførte saker hos noen bank i perioden.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
     @* ---------- Cashflow-analyse ---------- *@
     <div class="section widget">
         <h2>Cashflow-analyse</h2>
@@ -402,6 +433,17 @@ else
 
     // Dager siden siste statusendring (updated_at oppdateres av DB-trigger).
     private static double DagerSiden(Kundekort k) => Math.Max(0, (DateTime.UtcNow - k.UpdatedAt).TotalDays);
+
+    // Syklustid: åpnet (created_at) → fullført (siste endring, updated_at).
+    private static double SyklusDager(Kundekort k) => Math.Max(0, (k.UpdatedAt - k.CreatedAt).TotalDays);
+
+    private record BankSyklus(string Bank, int Antall, double Snitt);
+    private List<BankSyklus> BankSyklustider(List<Kundekort> rows) =>
+        rows.Where(k => k.Status == KundekortService.StatusFullfort && !string.IsNullOrWhiteSpace(k.DelegertBank))
+            .GroupBy(k => k.DelegertBank!)
+            .Select(g => new BankSyklus(g.Key, g.Count(), g.Average(SyklusDager)))
+            .OrderByDescending(x => x.Snitt)
+            .ToList();
 
     private static string Mnok(decimal v) => v >= 1_000_000 ? $"{v / 1_000_000:N0}" : $"{v / 1_000:N0}";
     private static string MnokEnhet(decimal v) => v >= 1_000_000 ? "MNOK" : "kNOK";
