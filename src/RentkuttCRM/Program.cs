@@ -42,6 +42,9 @@ builder.Services.AddSingleton<TwoFactorService>();
 // Innstillinger (key/value).
 builder.Services.AddScoped<SettingsService>();
 
+// Hendelseslogg.
+builder.Services.AddScoped<EventService>();
+
 // Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
 builder.Services.AddSingleton<CustomerFieldCatalog>();
 

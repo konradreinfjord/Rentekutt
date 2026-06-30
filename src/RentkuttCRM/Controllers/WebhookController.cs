@@ -10,14 +10,16 @@ public class WebhookController : ControllerBase
 {
     private readonly WebhookService _hooks;
     private readonly KundekortService _kundekort;
+    private readonly EventService _events;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<WebhookController> _log;
 
-    public WebhookController(WebhookService hooks, KundekortService kundekort,
+    public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
         IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
+        _events = events;
         _env = env;
         _log = log;
     }
@@ -66,7 +68,9 @@ public class WebhookController : ControllerBase
 
         // 4) Registrer sist mottatt (uten PII)
         var belop = k.OnsketLaanebelop.HasValue ? $" · {k.OnsketLaanebelop:N0} kr" : "";
-        await _hooks.RecordReceiptAsync(hook, $"{k.KundeType} · {k.Laanetype ?? "—"}{belop}");
+        var info = $"{k.KundeType} · {k.Laanetype ?? "—"}{belop}";
+        await _hooks.RecordReceiptAsync(hook, info);
+        await _events.LogAsync("Webhook", $"Lead mottatt ({info})", hook.Name);
 
         _log.LogInformation("Webhook-lead mottatt og lagret ({Type})", k.KundeType);
         return Ok(new { status = "mottatt", kunde_type = k.KundeType });

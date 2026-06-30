@@ -1,0 +1,114 @@
+<div class="webhook-widget">
+    <div class="ww-header" @onclick="() => _open = !_open">
+        <div class="ww-title">
+            <span class="ww-chevron @(_open ? "open" : "")">▸</span>
+            <strong>@(Hook?.Name ?? Name)</strong>
+            <span class="ww-tag">inbound endepunkt</span>
+        </div>
+        <div class="ww-meta">
+            @if (Hook?.LastReceivedAt is { } t)
+            {
+                <span class="ww-last">Sist mottatt @t.ToLocalTime().ToString("dd.MM.yyyy HH:mm") · @Hook.LastReceivedInfo</span>
+            }
+            else
+            {
+                <span class="ww-last muted">Ingen data mottatt ennå</span>
+            }
+            <span class="status on">Aktiv</span>
+        </div>
+    </div>
+
+    @if (_open)
+    {
+        <div class="ww-body">
+            <p class="page-sub" style="margin:0 0 16px">
+                Mottar lånesøknader (finansielle data + fødselsnummer) fra ekstern leverandør og mapper dem til kundekort.
+            </p>
+
+            <div class="kv-list" style="margin-bottom:16px">
+                <span class="k">Endepunkt</span>
+                <span class="v">POST @Url</span>
+                <span class="k">Autentisering</span>
+                <span class="v">Authorization: Bearer &lt;token&gt;</span>
+                <span class="k">Format</span>
+                <span class="v">application/json</span>
+                <span class="k">Token</span>
+                <span>
+                    @if (Hook is null)
+                    {
+                        <span class="muted">Genereres ved oppstart…</span>
+                    }
+                    else
+                    {
+                        <span class="token-row">
+                            <span class="token-val">@(_showToken ? Hook.Token : "whk_••••••••••••••••••••••••")</span>
+                            <button class="btn-sm" @onclick="() => _showToken = !_showToken">@(_showToken ? "Skjul" : "Vis")</button>
+                        </span>
+                    }
+                </span>
+            </div>
+
+            <div style="margin-bottom:18px">
+                <span class="sec-badge">🔒 HTTPS påkrevd (TLS)</span>
+                <span class="sec-badge">🔑 Token (konstant-tid)</span>
+                <span class="sec-badge">🇪🇺 EU-lagring</span>
+                <span class="sec-badge">🛡️ RLS — kun server</span>
+                <span class="sec-badge">🙈 Ingen PII i logg</span>
+            </div>
+
+            <h3 class="ww-h">Dataflyt</h3>
+            <ol class="flow-steps" style="margin-bottom:18px">
+                <li>Leverandør sender <strong>POST</strong> med JSON til endepunktet over <strong>HTTPS</strong>.</li>
+                <li>Forespørselen autentiseres med <strong>Bearer-token</strong> (konstant-tid). Ugyldig token → <code>401</code>.</li>
+                <li>Payloaden <strong>mappes til et kundekort</strong> (fødselsnummer blir kunde-ID for B2C, orgnr for B2B).</li>
+                <li>Kundekortet lagres i <strong>Supabase</strong> (EU, Postgres) med RLS — kun serveren har tilgang.</li>
+                <li>Søknaden dukker opp i <strong>Database</strong>-fanen og kan rutes videre via Logikk-matrise.</li>
+            </ol>
+
+            <h3 class="ww-h">Payload — send til utvikler</h3>
+            <pre class="code-block">curl -X POST @Url \
+  -H "Authorization: Bearer @(Hook?.Token ?? "<token>")" \
+  -H "Content-Type: application/json" \
+  -d '@PayloadExample'</pre>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Webhook? Hook { get; set; }
+    [Parameter] public string Url { get; set; } = "";
+    [Parameter] public string Name { get; set; } = "";
+
+    private bool _open;
+    private bool _showToken;
+
+    private const string PayloadExample = """
+{
+  "kunde_type": "B2C",
+  "fodselsnummer": "12345678901",
+  "fullt_navn": "Ola Nordmann",
+  "mobilnummer": "90012345",
+  "epost": "ola.nordmann@example.no",
+  "adresse": "Storgata 1",
+  "postnummer": "0150",
+  "poststed": "Oslo",
+  "sivilstatus": "Samboer",
+  "antall_barn_under_18": 2,
+  "boforhold": "Selveier/enebolig",
+  "arbeidssituasjon": "Fast ansatt",
+  "arbeidsgiver": "Eksempel AS",
+  "aarsinntekt_brutto": 720000,
+  "boligkostnad_mnd": 14500,
+  "boliggjeld": 2800000,
+  "studielaan": 180000,
+  "billaan": 0,
+  "forbruksgjeld": 95000,
+  "refinansieres_belop": 95000,
+  "aktiv_inkasso": false,
+  "onsket_laanebelop": 450000,
+  "onsket_lopetid_mnd": 60,
+  "laanetype": "Refinansiering",
+  "kontonummer": "12345678903"
+}
+""";
+}

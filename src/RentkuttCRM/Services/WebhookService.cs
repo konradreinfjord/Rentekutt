@@ -10,6 +10,8 @@ namespace RentkuttCRM.Services;
 public class WebhookService
 {
     public const string InboundName = "www.rentekutt.no";
+    public const string PrismatchName = "prismatch.no";
+    public static readonly string[] InboundNames = { InboundName, PrismatchName };
 
     private readonly Supabase.Client _client;
     private readonly ILogger<WebhookService> _log;
@@ -41,20 +43,16 @@ public class WebhookService
         try
         {
             await EnsureInitAsync();
-            var existing = await _client.From<Webhook>()
-                .Where(w => w.Direction == "inbound")
-                .Where(w => w.Name == InboundName)
-                .Get();
-            if (existing.Models.Count == 0)
+            var eksisterende = (await _client.From<Webhook>().Where(w => w.Direction == "inbound").Get())
+                .Models.Select(w => w.Name).ToHashSet();
+            foreach (var name in InboundNames)
             {
+                if (eksisterende.Contains(name)) continue;
                 await _client.From<Webhook>().Insert(new Webhook
                 {
-                    Name = InboundName,
-                    Direction = "inbound",
-                    Token = NewToken(),
-                    Active = true,
+                    Name = name, Direction = "inbound", Token = NewToken(), Active = true,
                 });
-                _log.LogInformation("Opprettet inbound webhook {Name}", InboundName);
+                _log.LogInformation("Opprettet inbound webhook {Name}", name);
             }
         }
         catch (Exception ex)
@@ -64,20 +62,22 @@ public class WebhookService
         }
     }
 
-    public async Task<Webhook?> GetInboundAsync()
+    public Task<Webhook?> GetInboundAsync() => GetByNameAsync(InboundName);
+
+    public async Task<Webhook?> GetByNameAsync(string name)
     {
-        if (!IsConfigured) { SeedStaging(); return _staging.FirstOrDefault(w => w.Direction == "inbound"); }
+        if (!IsConfigured) { SeedStaging(); return _staging.FirstOrDefault(w => w.Name == name); }
         try
         {
             await EnsureInitAsync();
             return await _client.From<Webhook>()
                 .Where(w => w.Direction == "inbound")
-                .Where(w => w.Name == InboundName)
+                .Where(w => w.Name == name)
                 .Single();
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Henting av webhook feilet");
+            _log.LogError(ex, "Henting av webhook {Name} feilet", name);
             return null;
         }
     }
@@ -159,8 +159,9 @@ public class WebhookService
 
     private void SeedStaging()
     {
-        if (_staging.Count > 0) return;
-        _staging.Add(new Webhook { Id = Guid.NewGuid(), Name = InboundName, Direction = "inbound", Token = NewToken(), Active = true });
+        foreach (var name in InboundNames)
+            if (_staging.All(w => w.Name != name))
+                _staging.Add(new Webhook { Id = Guid.NewGuid(), Name = name, Direction = "inbound", Token = NewToken(), Active = true });
     }
 
     private async Task EnsureInitAsync()

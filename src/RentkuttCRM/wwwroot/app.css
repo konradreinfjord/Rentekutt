@@ -61,6 +61,13 @@ a { color: var(--accent); text-decoration: none; }
     font-size: 10.5px; color: var(--warn); font-weight: 600; letter-spacing: .005em;
     background: var(--warn-soft); padding: 2.5px 8px; border-radius: 999px;
 }
+.topbar-clock { display: flex; align-items: center; gap: 9px; }
+.clock-time { font-family: var(--mono); font-weight: 600; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.clock-date { font-size: 12px; color: var(--text-muted); }
+.live-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--green); animation: live-pulse 1.6s ease-out infinite; }
+@keyframes live-pulse { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(3.2); opacity: 0; } }
+
 .topbar-user { display: flex; align-items: center; gap: 11px; }
 .user-name { font-weight: 550; font-size: 12.5px; }
 .user-role { font-size: 11.5px; color: var(--text-muted); }
@@ -237,6 +244,11 @@ a { color: var(--accent); text-decoration: none; }
 .summary-row .v { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
 .summary-big { font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; }
 .summary-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+.sc-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.sc-dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.sc-dot.bad { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.sc-status { font-size: 13px; color: var(--text-2); margin-top: 8px; font-weight: 500; }
 
 /* ---------- Webhook / API-info ---------- */
 .code-block {

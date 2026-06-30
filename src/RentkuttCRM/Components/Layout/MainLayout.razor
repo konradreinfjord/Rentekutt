@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject RentkuttCRM.Services.SessionState Session
 @inject NavigationManager Nav
 
@@ -13,7 +14,11 @@ else
         <NavSidebar />
         <div class="app-main">
             <header class="app-topbar">
-                <span></span>
+                <div class="topbar-clock">
+                    <span class="live-dot" title="Live"></span>
+                    <span class="clock-time">@_now.ToString("HH:mm:ss")</span>
+                    <span class="clock-date">@_now.ToString("dd.MM.yyyy")</span>
+                </div>
                 <div class="topbar-user">
                     <span class="user-name">@Session.UserName</span>
                     <span class="user-role">@Session.Role</span>
@@ -28,9 +33,23 @@ else
 }
 
 @code {
+    private DateTime _now = DateTime.Now;
+    private System.Threading.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        _timer = new System.Threading.Timer(_ =>
+        {
+            _now = DateTime.Now;
+            InvokeAsync(StateHasChanged);
+        }, null, 0, 1000);
+    }
+
     private void LogOut()
     {
         Session.SignOut();
         Nav.NavigateTo("/login", forceLoad: false);
     }
+
+    public void Dispose() => _timer?.Dispose();
 }

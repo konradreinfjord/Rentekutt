@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.WebhookService Webhooks
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
 @inject RentkuttCRM.Services.SettingsService Settings
+@inject RentkuttCRM.Services.EventService Events
 @inject NavigationManager Nav
 
 <PageTitle>Admin — Rentekutt</PageTitle>
@@ -19,7 +20,34 @@
     }
 </div>
 
-@if (_active == "Generelt")
+@if (_active == "Status")
+{
+    <div class="section">
+        <h2>Tilkoblinger</h2>
+        <p class="page-sub" style="margin:-4px 0 16px">Live oversikt over systemer og sist mottatte data. Grønn = OK / nylig data, rød = ikke tilkoblet / ingen data.</p>
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="sc-head"><span class="sc-dot @(Users.IsConfigured ? "ok" : "bad")"></span> Database (Supabase)</div>
+                <div class="sc-status">@(Users.IsConfigured ? "Tilkoblet" : "Ikke tilkoblet")</div>
+                <div class="summary-sub">Postgres · EU (Sweden)</div>
+            </div>
+            <div class="summary-card">
+                <div class="sc-head"><span class="sc-dot @(LinkMobility.ErKonfigurert ? "ok" : "bad")"></span> SMS (LinkMobility)</div>
+                <div class="sc-status">@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</div>
+                <div class="summary-sub">2FA-koder</div>
+            </div>
+            @foreach (var w in _inboundWebhooks)
+            {
+                <div class="summary-card">
+                    <div class="sc-head"><span class="sc-dot @(WebhookFresh(w) ? "ok" : "bad")"></span> @w.Name</div>
+                    <div class="sc-status">@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.ToLocalTime():dd.MM HH:mm}" : "Ingen data mottatt")</div>
+                    <div class="summary-sub">@(w.LastReceivedInfo ?? "Inbound endepunkt")</div>
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (_active == "Generelt")
 {
     <div class="section">
         <h2>SLA-frister</h2>
@@ -71,30 +99,6 @@ else if (_active == "Partnere")
 }
 else if (_active == "Brukere")
 {
-    <div class="section">
-        <h2>Roller og tilgang</h2>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Rettighet</th>
-                    @foreach (var r in _roles) { <th>@r</th> }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var perm in _permissions)
-                {
-                    <tr>
-                        <td>@perm.Name</td>
-                        @foreach (var allowed in perm.Access)
-                        {
-                            <td>@if (allowed) { <span class="check">✓</span> } else { <span class="muted">—</span> }</td>
-                        }
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
     <div class="section">
         <h2>Brukere <span class="pill pill-warn">@_userRows.Count</span></h2>
         @if (_loadingUsers)
@@ -170,95 +174,46 @@ else if (_active == "Brukere")
         }
     </div>
 
+    <div class="section">
+        <h2>Roller og tilgang</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Rettighet</th>
+                    @foreach (var r in _roles) { <th>@r</th> }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var perm in _permissions)
+                {
+                    <tr>
+                        <td>@perm.Name</td>
+                        @foreach (var allowed in perm.Access)
+                        {
+                            <td>@if (allowed) { <span class="check">✓</span> } else { <span class="muted">—</span> }</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Tilgang — IP-whitelist</h2>
+        <p class="page-sub" style="margin:-4px 0 10px">Begrens hvilke IP-adresser brukere kan logge inn fra (komma-/linjeseparert). Tom = ingen begrensning.</p>
+        <div class="rule-builder">
+            <div class="rb-field" style="flex:1; min-width:260px"><label>Tillatte IP-er</label><input class="rb-input" @bind="_loginIpList" placeholder="f.eks. 84.208.0.10, 51.120.0.5" /></div>
+            <button class="btn-primary rb-add" @onclick="SaveLoginIp">Lagre</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_loginIpMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_loginIpMsg</p>
+        }
+    </div>
 }
 else if (_active == "API og Data")
 {
-    <div class="webhook-widget">
-        <div class="ww-header" @onclick="() => _webhookOpen = !_webhookOpen">
-            <div class="ww-title">
-                <span class="ww-chevron @(_webhookOpen ? "open" : "")">▸</span>
-                <strong>@WebhookService.InboundName</strong>
-                <span class="ww-tag">inbound endepunkt</span>
-            </div>
-            <div class="ww-meta">
-                @if (_webhook?.LastReceivedAt is { } t)
-                {
-                    <span class="ww-last">Sist mottatt @t.ToLocalTime().ToString("dd.MM.yyyy HH:mm") · @_webhook.LastReceivedInfo</span>
-                }
-                else
-                {
-                    <span class="ww-last muted">Ingen data mottatt ennå</span>
-                }
-                <span class="status on">Aktiv</span>
-            </div>
-        </div>
-
-        @if (_webhookOpen)
-        {
-            <div class="ww-body">
-                <p class="page-sub" style="margin:0 0 16px">
-                    Mottar lånesøknader (finansielle data + fødselsnummer) fra ekstern leverandør og mapper dem til kundekort.
-                </p>
-
-                <div class="kv-list" style="margin-bottom:16px">
-                    <span class="k">Endepunkt</span>
-                    <span class="v">POST @WebhookUrl</span>
-                    <span class="k">Autentisering</span>
-                    <span class="v">Authorization: Bearer &lt;token&gt;</span>
-                    <span class="k">Format</span>
-                    <span class="v">application/json</span>
-                    <span class="k">Token</span>
-                    <span>
-                        @if (_webhook is null)
-                        {
-                            <span class="muted">Genereres ved oppstart…</span>
-                        }
-                        else
-                        {
-                            <span class="token-row">
-                                <span class="token-val">@(_showToken ? _webhook.Token : "whk_••••••••••••••••••••••••")</span>
-                                <button class="btn-sm" @onclick="() => _showToken = !_showToken">@(_showToken ? "Skjul" : "Vis")</button>
-                            </span>
-                        }
-                    </span>
-                </div>
-
-                <div style="margin-bottom:18px">
-                    <span class="sec-badge">🔒 HTTPS påkrevd (TLS)</span>
-                    <span class="sec-badge">🔑 Token (konstant-tid)</span>
-                    <span class="sec-badge">🇪🇺 EU-lagring</span>
-                    <span class="sec-badge">🛡️ RLS — kun server</span>
-                    <span class="sec-badge">🙈 Ingen PII i logg</span>
-                </div>
-
-                <h3 class="ww-h">IP-whitelist</h3>
-                <p class="page-sub" style="margin:0 0 8px; font-size:12px">Kun disse IP-ene får sende data (komma-/linjeseparert). Tom = alle tillatt.</p>
-                <div class="rule-builder" style="margin-bottom:18px">
-                    <div class="rb-field" style="flex:1; min-width:240px"><label>Tillatte IP-er</label><input class="rb-input" @bind="_ipList" placeholder="f.eks. 13.74.0.10, 51.120.0.5" /></div>
-                    <button class="btn-primary rb-add" @onclick="SaveIpAllowlist">Lagre</button>
-                </div>
-                @if (!string.IsNullOrEmpty(_ipMsg))
-                {
-                    <p class="page-sub" style="margin:-8px 0 14px">@_ipMsg</p>
-                }
-
-                <h3 class="ww-h">Dataflyt</h3>
-                <ol class="flow-steps" style="margin-bottom:18px">
-                    <li>Leverandør (f.eks. lead-portal) sender <strong>POST</strong> med JSON til endepunktet over <strong>HTTPS</strong>.</li>
-                    <li>Forespørselen autentiseres med <strong>Bearer-token</strong> — sammenlignet i konstant tid. Ugyldig token → <code>401</code>.</li>
-                    <li>Payloaden <strong>mappes til et kundekort</strong> (fødselsnummer blir kunde-ID for B2C, orgnr for B2B).</li>
-                    <li>Kundekortet lagres i <strong>Supabase</strong> (EU, Postgres) med RLS — kun serveren har tilgang.</li>
-                    <li>Søknaden dukker opp i <strong>Database</strong>-fanen og kan rutes videre via Logikk-matrise.</li>
-                </ol>
-
-                <h3 class="ww-h">Payload — send til utvikler</h3>
-                <pre class="code-block">curl -X POST @WebhookUrl \
-  -H "Authorization: Bearer @(_webhook?.Token ?? "<token>")" \
-  -H "Content-Type: application/json" \
-  -d '@PayloadExample'</pre>
-            </div>
-        }
-    </div>
+    <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
 
     <div class="webhook-widget">
         <div class="ww-header" @onclick="() => _lmOpen = !_lmOpen">
@@ -348,35 +303,8 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
                         <td><span class="status off">Ikke tilkoblet</span></td>
                     </tr>
                 }
-                @foreach (var i in _integrations)
-                {
-                    <tr>
-                        <td>@i.Name</td>
-                        <td><span class="type-tag">Annet</span></td>
-                        <td>
-                            <select class="inline-select" @bind="i.Method">
-                                @foreach (var m in _methods) { <option value="@m">@m</option> }
-                            </select>
-                        </td>
-                        <td><span class="status off">Ikke tilkoblet</span></td>
-                    </tr>
-                }
             </tbody>
         </table>
-    </div>
-
-    <div class="section">
-        <h2>Ny integrasjon</h2>
-        <div class="rule-builder">
-            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_niName" placeholder="f.eks. Kreditz" /></div>
-            <div class="rb-field rb-op" style="max-width:180px">
-                <label>Metode</label>
-                <select class="rb-input" @bind="_niMethod">
-                    @foreach (var m in _methods) { <option value="@m">@m</option> }
-                </select>
-            </div>
-            <button class="btn-primary rb-add" @onclick="AddIntegration">Legg til integrasjon</button>
-        </div>
     </div>
 
     <div class="section">
@@ -386,6 +314,36 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
             <li>Database: Supabase (Postgres)</li>
             <li>Backup: daglig, 30 dagers oppbevaring</li>
         </ul>
+    </div>
+}
+else if (_active == "Prismatch.no")
+{
+    <p class="page-sub" style="margin:-4px 0 16px">Inbound endepunkt for leads fra Prismatch — samme format og sikkerhet som www.rentekutt.no.</p>
+    <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
+}
+else if (_active == "Hendelseslogg")
+{
+    <div class="section">
+        <h2>Hendelseslogg <span class="pill pill-warn">@_events.Count</span></h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Systemhendelser (siste 100). Ingen personopplysninger logges.</p>
+        <table class="data-table">
+            <thead><tr><th>Tidspunkt</th><th>Type</th><th>Beskrivelse</th><th>Kilde</th></tr></thead>
+            <tbody>
+                @if (_events.Count == 0)
+                {
+                    <tr><td colspan="4" class="empty-row">Ingen hendelser ennå.</td></tr>
+                }
+                @foreach (var e in _events)
+                {
+                    <tr>
+                        <td class="mono-cell">@e.Tidspunkt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</td>
+                        <td><span class="type-tag">@e.Type</span></td>
+                        <td>@e.Beskrivelse</td>
+                        <td class="muted">@e.Kilde</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     </div>
 }
 else if (_active == "Logikk-matrise")
@@ -543,11 +501,22 @@ else if (_active == "GDPR")
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         await LoadUsersAsync();
         _webhook = await Webhooks.GetInboundAsync();
-        _ipList = _webhook?.IpAllowlist ?? "";
+        _webhookPrismatch = await Webhooks.GetByNameAsync(WebhookService.PrismatchName);
+        _inboundWebhooks = new[] { _webhook, _webhookPrismatch }.Where(w => w is not null).Select(w => w!).ToList();
+        _events = await Events.ListAsync(100);
         _smsMaxHour = await Settings.GetIntAsync(TwoFactorService.KeyMaxPerHour, TwoFactorService.DefaultMaxPerHour);
         _smsMax24h = await Settings.GetIntAsync(TwoFactorService.KeyMaxPer24h, TwoFactorService.DefaultMaxPer24h);
         _gdprAnonMonths = await Settings.GetIntAsync("gdpr_anonymize_months", 12);
         _gdprDeleteMonths = await Settings.GetIntAsync("gdpr_delete_months", 24);
+        _loginIpList = await Settings.GetAsync("login_ip_allowlist") ?? "";
+    }
+
+    private string _loginIpList = "";
+    private string? _loginIpMsg;
+    private async Task SaveLoginIp()
+    {
+        await Settings.SetAsync("login_ip_allowlist", _loginIpList);
+        _loginIpMsg = "IP-whitelist lagret.";
     }
 
     private int _smsMaxHour = TwoFactorService.DefaultMaxPerHour;
@@ -562,51 +531,14 @@ else if (_active == "GDPR")
         _smsMsg = "Rategrense lagret.";
     }
 
-    private string _ipList = "";
-    private string? _ipMsg;
-    private async Task SaveIpAllowlist()
-    {
-        if (_webhook is null) return;
-        await Webhooks.SetIpAllowlistAsync(_webhook.Id, _ipList);
-        _webhook.IpAllowlist = _ipList;
-        _ipMsg = "IP-whitelist lagret.";
-    }
-
-    // ---- Inbound webhook ----
+    // ---- Inbound webhooks + status + hendelser ----
     private Webhook? _webhook;
-    private bool _showToken;
-    private bool _webhookOpen;
+    private Webhook? _webhookPrismatch;
+    private List<Webhook> _inboundWebhooks = new();
+    private List<Hendelse> _events = new();
     private bool _lmOpen;
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
-    private const string PayloadExample = """
-{
-  "kunde_type": "B2C",
-  "fodselsnummer": "12345678901",
-  "fullt_navn": "Ola Nordmann",
-  "mobilnummer": "90012345",
-  "epost": "ola.nordmann@example.no",
-  "adresse": "Storgata 1",
-  "postnummer": "0150",
-  "poststed": "Oslo",
-  "sivilstatus": "Samboer",
-  "antall_barn_under_18": 2,
-  "boforhold": "Selveier/enebolig",
-  "arbeidssituasjon": "Fast ansatt",
-  "arbeidsgiver": "Eksempel AS",
-  "aarsinntekt_brutto": 720000,
-  "boligkostnad_mnd": 14500,
-  "boliggjeld": 2800000,
-  "studielaan": 180000,
-  "billaan": 0,
-  "forbruksgjeld": 95000,
-  "refinansieres_belop": 95000,
-  "aktiv_inkasso": false,
-  "onsket_laanebelop": 450000,
-  "onsket_lopetid_mnd": 60,
-  "laanetype": "Refinansiering",
-  "kontonummer": "12345678903"
-}
-""";
+    private static bool WebhookFresh(Webhook w) => w.Active && w.LastReceivedAt is { } t && t > DateTime.UtcNow.AddDays(-7);
 
     // ---- Brukeradministrasjon ----
     private List<UserRow> _userRows = new();
@@ -661,10 +593,12 @@ else if (_active == "GDPR")
         var (ok, error) = await Users.CreateUserAsync(_nuEmail, _nuName, _nuRole, _nuPassword, _nuMobil);
         if (ok)
         {
+            await Events.LogAsync("Bruker", $"Ny bruker opprettet (rolle: {_nuRole})", "Admin");
             _userMsg = $"Bruker {_nuEmail} opprettet.";
             _nuName = _nuEmail = _nuPassword = _nuMobil = "";
             _nuRole = "Saksbehandler";
             await LoadUsersAsync();
+            _events = await Events.ListAsync(100);
         }
         else
         {
@@ -673,8 +607,8 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "Generelt", "Partnere", "Brukere", "Logikk-matrise", "API og Data", "GDPR" };
-    private string _active = "Generelt";
+    private readonly string[] _tabs = { "Status", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "API og Data", "Prismatch.no", "GDPR", "Hendelseslogg" };
+    private string _active = "Status";
 
     // ---- GDPR: anonymisering + sletting ----
     private int _gdprAnonMonths = 12;
@@ -797,22 +731,7 @@ else if (_active == "GDPR")
         new("Følg opp tilbud", "24"),
     };
 
-    // Manuelle integrasjoner (i tillegg til de som auto-opprettes fra banker/leadkilder)
-    private class Integration { public string Name { get; set; } = ""; public string Method { get; set; } = "Webhook"; }
-    private readonly List<Integration> _integrations = new();
-
     private static readonly string[] _methods = { "Webhook", "API (REST)", "Manuell", "FTP/SFTP", "E-post" };
 
-    private string _niName = "", _niMethod = "Webhook";
-
-    private void AddIntegration()
-    {
-        var name = _niName.Trim();
-        if (string.IsNullOrWhiteSpace(name)) return;
-        _integrations.Add(new Integration { Name = name, Method = _niMethod });
-        _niName = "";
-        _niMethod = "Webhook";
-    }
-
-    private int ApiRowCount => _banks.Count + _sources.Count + _integrations.Count;
+    private int ApiRowCount => _banks.Count + _sources.Count;
 }
