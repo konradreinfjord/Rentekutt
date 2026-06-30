@@ -489,8 +489,8 @@ else if (_active == "Beregningsmodell")
             <div class="ff"><label>Nominell rente (%)</label><input type="number" step="0.01" @bind="_berRente" /></div>
             <div class="ff"><label>Løpetid (år)</label><input type="number" @bind="_berLopetid" /></div>
             <div class="ff"><label>Stresstest-påslag (prosentpoeng)</label><input type="number" step="0.1" @bind="_berStress" /></div>
-            <div class="ff"><label>SIFO per voksen (kr/mnd)</label><input type="number" @bind="_berSifoVoksen" /></div>
-            <div class="ff"><label>SIFO per barn (kr/mnd)</label><input type="number" @bind="_berSifoBarn" /></div>
+            <div class="ff"><label>SIFO voksen — fallback uten fnr (kr/mnd)</label><input type="number" @bind="_berSifoVoksen" /></div>
+            <div class="ff"><label>SIFO individkostnad per barn (kr/mnd)</label><input type="number" @bind="_berSifoBarn" /></div>
         </div>
         <button class="btn-primary" style="margin-top:14px" @onclick="SaveBeregning">Lagre</button>
         @if (!string.IsNullOrEmpty(_berMsg))
@@ -503,7 +503,7 @@ else if (_active == "Beregningsmodell")
         <h2>Slik beregnes hvert kundekort</h2>
         <ol class="flow-steps">
             <li><strong>Netto månedsinntekt</strong> = progressiv skatt (trygdeavgift, minstefradrag, personfradrag, alminnelig 22 % og trinnskatt) beregnet per person på søker + medsøker, ÷ 12</li>
-            <li><strong>Levekostnad</strong> = SIFO per voksen × antall voksne + SIFO per barn × antall barn</li>
+            <li><strong>Levekostnad (SIFO)</strong> = individkostnad per voksen etter <em>alder + kjønn</em> (utledet av fødselsnummer) + barns individkostnad + husholdsfelleskostnad og bilkostnad etter husstandsstørrelse</li>
             <li><strong>Gjeldsbetjening</strong> = annuitet av (eksisterende gjeld − refinansiert beløp + ønsket lån) ved <em>stresstestet</em> rente, over ønsket løpetid</li>
             <li><strong>Likviditet</strong> = netto inntekt − levekostnad − boligkostnad − barnebidrag − gjeldsbetjening</li>
             <li><strong>Belåningsgrad</strong> = (boliggjeld + ønsket lån) ÷ boligverdi</li>

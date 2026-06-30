@@ -20,9 +20,18 @@
     <p style="margin:0; color:var(--text-2)">@Behovssammendrag</p>
 </div>
 
-@{ var ber = BeregningService.Beregn(_k, _berParams); }
+@{
+    var ber = BeregningService.Beregn(_k, _berParams);
+    var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
+    var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
+}
 <div class="form-card beregn-card">
     <h2>Beregningsmodell</h2>
+    <p class="page-sub" style="margin:0 0 12px">
+        Søker: @(alderS is int sa ? $"{sa} år ({(kjS == 'M' ? "M" : "K")})" : "alder ukjent")@*
+        *@@(_k.HarMedsoker || alderM is not null ? $" · Medsøker: {(alderM is int ma ? $"{ma} år ({(kjM == 'M' ? "M" : "K")})" : "alder ukjent")}" : "")@*
+        *@ · @(_k.AntallBarnUnder18 ?? 0) barn@(_k.AntallBiler is int biler && biler > 0 ? $" · {biler} bil" : "")
+    </p>
     <div class="db-stats">
         <div class="db-box @(ber.Likviditet >= 0 ? "accent-green" : "")"><span class="db-box-num">@($"{ber.Likviditet:N0}")</span><span class="db-box-lbl">Likviditet/mnd</span></div>
         <div class="db-box"><span class="db-box-num">@($"{ber.Belaningsgrad:N1}") %</span><span class="db-box-lbl">Belåningsgrad</span></div>
