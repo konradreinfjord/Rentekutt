@@ -35,21 +35,21 @@
         }
         else
         {
-            <EditForm Model="@model" OnValidSubmit="HandleVerify">
+            <div>
                 <p class="page-sub" style="margin:0 0 14px">Vi sendte en engangskode på SMS. Skriv den inn for å fullføre innloggingen.</p>
                 <div class="form-field">
                     <label>SMS-kode</label>
-                    <InputText @bind-Value="_code" placeholder="6-sifret kode" autocomplete="one-time-code" />
+                    <input @bind="_code" placeholder="6-sifret kode" autocomplete="one-time-code" inputmode="numeric" />
                 </div>
                 @if (!string.IsNullOrEmpty(_error))
                 {
                     <div class="login-error">@_error</div>
                 }
-                <button type="submit" class="btn-primary full" disabled="@_busy">
+                <button class="btn-primary full" @onclick="HandleVerify" disabled="@_busy">
                     @(_busy ? "Verifiserer…" : "Bekreft kode")
                 </button>
                 <p class="login-note">Feil nummer? <a href="/login" @onclick:preventDefault @onclick="Reset">Start på nytt</a></p>
-            </EditForm>
+            </div>
         }
 
         @if (_step == 1 && !Users.IsConfigured)
@@ -76,43 +76,58 @@
     {
         _busy = true;
         _error = null;
-
-        var result = await Users.SignInAsync(model.Email, model.Password);
-        if (result is not { Ok: true, User: not null })
+        try
         {
-            _error = result.Error ?? "Innlogging feilet.";
-            _busy = false;
-            return;
-        }
+            var result = await Users.SignInAsync(model.Email, model.Password);
+            if (result is not { Ok: true, User: not null })
+            {
+                _error = result.Error ?? "Innlogging feilet.";
+                _busy = false;
+                return;
+            }
 
-        var user = result.User;
-        // 2FA håndheves kun når den er på OG vi faktisk kan sende SMS (konfigurert + mobil).
-        if (user.TwoFactorEnabled && TwoFactor.KanSende(user))
+            var user = result.User;
+            // 2FA håndheves kun når den er på OG vi faktisk kan sende SMS (konfigurert + mobil).
+            if (user.TwoFactorEnabled && TwoFactor.KanSende(user))
+            {
+                var (sent, error) = await TwoFactor.SendKodeAsync(user);
+                if (!sent) { _error = error; _busy = false; return; }
+                _pending = user;
+                _step = 2;
+                _busy = false;
+                return;
+            }
+
+            Session.SignIn(user);
+            Nav.NavigateTo("/crm");
+        }
+        catch (Exception ex)
         {
-            var (sent, error) = await TwoFactor.SendKodeAsync(user);
-            if (!sent) { _error = error; _busy = false; return; }
-            _pending = user;
-            _step = 2;
+            _error = "Teknisk feil ved innlogging: " + ex.Message;
             _busy = false;
-            return;
         }
-
-        Session.SignIn(user);
-        Nav.NavigateTo("/crm");
     }
 
     private void HandleVerify()
     {
         _busy = true;
         _error = null;
-        if (_pending is not null && TwoFactor.Verifiser(_pending.Email, _code))
+        try
         {
-            Session.SignIn(_pending);
-            Nav.NavigateTo("/crm");
-            return;
+            if (_pending is not null && TwoFactor.Verifiser(_pending.Email, _code))
+            {
+                Session.SignIn(_pending);
+                Nav.NavigateTo("/crm");
+                return;
+            }
+            _error = "Feil eller utløpt kode.";
+            _busy = false;
         }
-        _error = "Feil eller utløpt kode.";
-        _busy = false;
+        catch (Exception ex)
+        {
+            _error = "Teknisk feil: " + ex.Message;
+            _busy = false;
+        }
     }
 
     private void Reset()
