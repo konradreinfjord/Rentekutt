@@ -481,13 +481,13 @@ else if (_active == "Beregningsmodell")
     <div class="form-card">
         <h2>Beregningsmodell — parametere</h2>
         <p class="page-sub" style="margin:0 0 16px">
-            Forenklet finansieringsevne-/likviditetsmodell (SIFO-levekostnader, stresstestet gjeldsbetjening, rentefradrag).
-            Disse forutsetningene driver beregningen på hvert kundekort.
+            Finansieringsevne-/likviditetsmodell: progressiv lønnsskatt (2024-satser), SIFO-levekostnader
+            og stresstestet gjeldsbetjening. Disse forutsetningene driver beregningen på hvert kundekort,
+            som bruker alle innkomne søknadsfelt (inntekt, medsøker, husholdning, gjeld, refinansiering, boligverdi).
         </p>
         <div class="form-grid">
             <div class="ff"><label>Nominell rente (%)</label><input type="number" step="0.01" @bind="_berRente" /></div>
             <div class="ff"><label>Løpetid (år)</label><input type="number" @bind="_berLopetid" /></div>
-            <div class="ff"><label>Effektiv skattesats (%)</label><input type="number" @bind="_berSkatt" /></div>
             <div class="ff"><label>Stresstest-påslag (prosentpoeng)</label><input type="number" step="0.1" @bind="_berStress" /></div>
             <div class="ff"><label>SIFO per voksen (kr/mnd)</label><input type="number" @bind="_berSifoVoksen" /></div>
             <div class="ff"><label>SIFO per barn (kr/mnd)</label><input type="number" @bind="_berSifoBarn" /></div>
@@ -502,9 +502,9 @@ else if (_active == "Beregningsmodell")
     <div class="form-card">
         <h2>Slik beregnes hvert kundekort</h2>
         <ol class="flow-steps">
-            <li><strong>Netto månedsinntekt</strong> = (brutto årsinntekt + medsøker + andre) ÷ 12 × (1 − skatt)</li>
+            <li><strong>Netto månedsinntekt</strong> = progressiv skatt (trygdeavgift, minstefradrag, personfradrag, alminnelig 22 % og trinnskatt) beregnet per person på søker + medsøker, ÷ 12</li>
             <li><strong>Levekostnad</strong> = SIFO per voksen × antall voksne + SIFO per barn × antall barn</li>
-            <li><strong>Gjeldsbetjening</strong> = annuitet av (bolig + studie + bil + forbruk + ønsket lån) ved <em>stresstestet</em> rente</li>
+            <li><strong>Gjeldsbetjening</strong> = annuitet av (eksisterende gjeld − refinansiert beløp + ønsket lån) ved <em>stresstestet</em> rente, over ønsket løpetid</li>
             <li><strong>Likviditet</strong> = netto inntekt − levekostnad − boligkostnad − barnebidrag − gjeldsbetjening</li>
             <li><strong>Belåningsgrad</strong> = (boliggjeld + ønsket lån) ÷ boligverdi</li>
             <li><strong>Maks lån</strong> = beløpet som gir likviditet = 0</li>
@@ -588,17 +588,17 @@ else if (_active == "GDPR")
         _loginMaxFailHour = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFailHour, SupabaseUserService.DefaultMaxFailHour);
         _loginMaxFail24h = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFail24h, SupabaseUserService.DefaultMaxFail24h);
         var bp = await Beregning.HentParametreAsync();
-        _berRente = bp.Rente; _berLopetid = bp.LopetidAar; _berSkatt = bp.Skattesats;
+        _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
     }
 
     // ---- Beregningsmodell ----
-    private decimal _berRente, _berSkatt, _berStress, _berSifoVoksen, _berSifoBarn;
+    private decimal _berRente, _berStress, _berSifoVoksen, _berSifoBarn;
     private int _berLopetid;
     private string? _berMsg;
     private async Task SaveBeregning()
     {
-        await Beregning.LagreParametreAsync(new BeregningParametre(_berRente, _berLopetid, _berSkatt, _berStress, _berSifoVoksen, _berSifoBarn));
+        await Beregning.LagreParametreAsync(new BeregningParametre(_berRente, _berLopetid, _berStress, _berSifoVoksen, _berSifoBarn));
         _berMsg = "Lagret.";
     }
 
