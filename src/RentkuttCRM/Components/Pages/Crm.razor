@@ -42,7 +42,7 @@ else
         <div class="priority-grid">
             @foreach (var s in _statuser)
             {
-                <div class="priority-card" @onclick='() => Nav.NavigateTo("/crm/database")' style="cursor:pointer">
+                <div class="priority-card" @onclick='() => Nav.NavigateTo("/crm/database")' style="cursor:pointer; border-top:2px solid @StatusFarge(s)">
                     <div class="priority-count">@_statusCount.GetValueOrDefault(s, 0)</div>
                     <div class="priority-label">@s</div>
                 </div>

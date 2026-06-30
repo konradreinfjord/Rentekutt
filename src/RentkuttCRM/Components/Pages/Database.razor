@@ -21,7 +21,7 @@
     <div class="db-box accent-amber"><span class="db-box-num">@View.Count(k => k.Status == "Åpen")</span><span class="db-box-lbl">Åpne</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2C")</span><span class="db-box-lbl">B2C</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2B")</span><span class="db-box-lbl">B2B</span></div>
-    <div class="db-box"><span class="db-box-num">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0) / 1_000_000:N1}") mill</span><span class="db-box-lbl">Samlet beløp</span></div>
+    <div class="db-box"><span class="db-box-num">@SamletBelop<span class="db-box-unit">@SamletEnhet</span></span><span class="db-box-lbl">Samlet beløp</span></div>
 </div>
 
 <div class="db-toolbar">
@@ -186,6 +186,10 @@ else
     private List<Partner> _partnere = new();
     private BeregningParametre _berParams = BeregningService.Standard;
     private BeregningResultat Ber(Kundekort k) => BeregningService.Beregn(k, _berParams);
+
+    private decimal SamletSum => View.Sum(k => k.OnsketLaanebelop ?? 0);
+    private string SamletBelop => SamletSum >= 1_000_000 ? $"{SamletSum / 1_000_000:N1}" : $"{SamletSum / 1_000:N0}";
+    private string SamletEnhet => SamletSum >= 1_000_000 ? "mill kr" : "k kr";
 
     private async Task DelegateBank(Kundekort k, ChangeEventArgs e)
     {
