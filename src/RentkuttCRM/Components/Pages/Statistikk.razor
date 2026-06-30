@@ -7,7 +7,7 @@
 <PageTitle>Statistikk — Rentekutt</PageTitle>
 
 <h1 class="page-title">Statistikk</h1>
-<p class="page-sub">Konvertering, volum og opptjening.</p>
+<p class="page-sub">Kontaktstrøm, konvertering, provisjon, lånevolum og cashflow.</p>
 
 @if (_loading)
 {
@@ -15,88 +15,279 @@
 }
 else
 {
-    <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-value">@_total</div><div class="kpi-label">Søknader</div></div>
-        <div class="kpi-card"><div class="kpi-value">@($"{_kvalRate:N0}") %</div><div class="kpi-label">Kvalifiseringsrate (sendt bank)</div></div>
-        <div class="kpi-card"><div class="kpi-value">@($"{_closeRate:N0}") %</div><div class="kpi-label">Close rate (fullført)</div></div>
-        <div class="kpi-card"><div class="kpi-value">@($"{_formidlet:N0}") kr</div><div class="kpi-label">Formidlet volum (fullført)</div></div>
-        <div class="kpi-card"><div class="kpi-value">@($"{_opptjent:N0}") kr</div><div class="kpi-label">Opptjent provisjon (fullført)</div></div>
+    @* ---------- Tidsfilter + parameter ---------- *@
+    <div class="stat-filter">
+        <div class="period-seg">
+            @foreach (var pp in _perioder)
+            {
+                <button class="@(_periode == pp.Verdi ? "active" : "")" @onclick="() => _periode = pp.Verdi">@pp.Navn</button>
+            }
+        </div>
+        <select class="db-select" @bind="_leadskilde">
+            <option value="">Alle leadskilder</option>
+            @foreach (var ls in Leadskilder) { <option value="@ls">@ls</option> }
+        </select>
+        <select class="db-select" @bind="_bankFilter">
+            <option value="">Alle banker</option>
+            @foreach (var p in _partnere) { <option value="@p.Navn">@p.Navn</option> }
+        </select>
+        <span class="stat-period-info">@Rows.Count søknader i utvalget</span>
     </div>
 
-    <div class="section">
-        <h2>Konverteringstrakt</h2>
-        <div class="funnel">
-            @foreach (var f in _funnel)
-            {
-                <div class="funnel-step">
-                    <div class="funnel-bar" style="width:@(_total == 0 ? 0 : 100 * f.Antall / _total)%; min-width:40px">@f.Antall</div>
-                    <div class="funnel-label">@f.Navn <span class="muted">(@(_total == 0 ? 0 : 100 * f.Antall / _total) %)</span></div>
-                </div>
-            }
+    var rows = Rows;
+    var total = rows.Count;
+    var fullfort = rows.Where(k => k.Status == KundekortService.StatusFullfort).ToList();
+    var avslatt = rows.Where(k => k.Status == "Avslått").ToList();
+    var aktive = rows.Where(k => k.Status != KundekortService.StatusFullfort && k.Status != "Avslått").ToList();
+
+    var konv = total == 0 ? 0 : 100.0 * fullfort.Count / total;
+    var laanevolum = fullfort.Sum(k => k.OnsketLaanebelop ?? 0);
+    var pipelineVolum = aktive.Sum(k => k.OnsketLaanebelop ?? 0);
+    var forventetVolum = aktive.Sum(k => (k.OnsketLaanebelop ?? 0) * (decimal)Sannsynlighet(k.Status));
+    var opptjent = fullfort.Sum(Provisjon);
+    var forventetProv = aktive.Sum(k => Provisjon(k) * (decimal)Sannsynlighet(k.Status));
+
+    @* ---------- Nøkkeltall (metric-strip) ---------- *@
+    <div class="metric-strip">
+        <div class="metric">
+            <div class="metric-num">@total</div>
+            <div class="metric-label">Kontaktstrøm</div>
+            <div class="metric-sub">nye søknader i perioden</div>
+        </div>
+        <div class="metric">
+            <div class="metric-num">@($"{konv:N0}")<span class="metric-unit">%</span></div>
+            <div class="metric-label">Konvertering</div>
+            <div class="metric-sub">@fullfort.Count fullført av @total</div>
+        </div>
+        <div class="metric">
+            <div class="metric-num">@Mnok(laanevolum)<span class="metric-unit">@MnokEnhet(laanevolum)</span></div>
+            <div class="metric-label">Lånevolum</div>
+            <div class="metric-sub">formidlet (utbetalt)</div>
+        </div>
+        <div class="metric">
+            <div class="metric-num">@Mnok(forventetVolum)<span class="metric-unit">@MnokEnhet(forventetVolum)</span></div>
+            <div class="metric-label">Forventet volum</div>
+            <div class="metric-sub">vektet pipeline (@Mnok(pipelineVolum) @MnokEnhet(pipelineVolum) brutto)</div>
+        </div>
+        <div class="metric">
+            <div class="metric-num">@($"{opptjent:N0}")<span class="metric-unit">kr</span></div>
+            <div class="metric-label">Opptjent provisjon</div>
+            <div class="metric-sub">realisert</div>
+        </div>
+        <div class="metric">
+            <div class="metric-num">@($"{forventetProv:N0}")<span class="metric-unit">kr</span></div>
+            <div class="metric-label">Forventet provisjon</div>
+            <div class="metric-sub">vektet pipeline</div>
         </div>
     </div>
 
+    <div class="stat-cols">
+        @* ---------- Kontaktstrøm per leadskilde ---------- *@
+        <div class="section">
+            <h2>Kontaktstrøm</h2>
+            <table class="data-table">
+                <thead><tr><th>Leadskilde</th><th class="num">Søknader</th><th class="num">Andel</th></tr></thead>
+                <tbody>
+                    @foreach (var g in rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde).OrderByDescending(g => g.Count()))
+                    {
+                        <tr>
+                            <td><span class="kilde-badge @KundekortService.KildeBadgeKlasse(g.Key)">@g.Key</span></td>
+                            <td class="num">@g.Count()</td>
+                            <td class="num">@($"{(total == 0 ? 0 : 100.0 * g.Count() / total):N0}") %</td>
+                        </tr>
+                    }
+                    @if (total == 0)
+                    {
+                        <tr><td colspan="3" class="empty-row">Ingen data i perioden.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* ---------- Lånevolum-fordeling ---------- *@
+        <div class="section">
+            <h2>Lånevolum</h2>
+            <table class="data-table">
+                <thead><tr><th>Kategori</th><th class="num">Antall</th><th class="num">Volum</th></tr></thead>
+                <tbody>
+                    <tr><td><span class="vol-dot" style="background:#266f32"></span>Formidlet (utbetalt)</td><td class="num">@fullfort.Count</td><td class="num">@($"{laanevolum:N0}") kr</td></tr>
+                    <tr><td><span class="vol-dot" style="background:#1f5fc4"></span>Aktiv pipeline</td><td class="num">@aktive.Count</td><td class="num">@($"{pipelineVolum:N0}") kr</td></tr>
+                    <tr><td><span class="vol-dot" style="background:#0f8a8a"></span>Forventet (vektet)</td><td class="num">—</td><td class="num">@($"{forventetVolum:N0}") kr</td></tr>
+                    <tr><td><span class="vol-dot" style="background:#b42318"></span>Avslått</td><td class="num">@avslatt.Count</td><td class="num">@($"{avslatt.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @* ---------- Konvertering per bank ---------- *@
     <div class="section">
-        <h2>Søknader per status</h2>
-        <table class="data-table" style="max-width:420px">
-            <thead><tr><th>Status</th><th>Antall</th></tr></thead>
+        <h2>Konvertering per bank</h2>
+        <table class="data-table">
+            <thead>
+                <tr><th>Bank</th><th class="num">Delegert</th><th class="num">Fullført</th><th>Konvertering</th><th class="num">Lånevolum</th><th class="num">Provisjon</th></tr>
+            </thead>
             <tbody>
-                @foreach (var s in _statuser)
+                @foreach (var b in BankRader(rows))
                 {
-                    <tr><td>@s</td><td class="mono-cell">@_rows.Count(k => k.Status == s)</td></tr>
+                    <tr>
+                        <td>@b.Navn</td>
+                        <td class="num">@b.Delegert</td>
+                        <td class="num">@b.Fullfort</td>
+                        <td>
+                            <div class="minibar-cell">
+                                <div class="minibar"><div class="minibar-fill" style="width:@(b.Konv.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div></div>
+                                <span class="minibar-pct">@($"{b.Konv:N0}") %</span>
+                            </div>
+                        </td>
+                        <td class="num">@($"{b.Volum:N0}") kr</td>
+                        <td class="num">@($"{b.Provisjon:N0}") kr</td>
+                    </tr>
                 }
+                @if (!BankRader(rows).Any())
+                {
+                    <tr><td colspan="6" class="empty-row">Ingen delegerte søknader i perioden.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* ---------- Cashflow-analyse ---------- *@
+    <div class="section">
+        <h2>Cashflow-analyse</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Forventet provisjonsinngang vektet på sannsynlighet per pipeline-steg.</p>
+        <table class="data-table">
+            <thead>
+                <tr><th>Steg</th><th class="num">Antall</th><th class="num">Lånevolum</th><th class="num">Sannsynlighet</th><th class="num">Forventet provisjon</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _cashflowSteg)
+                {
+                    var srows = rows.Where(k => k.Status == s).ToList();
+                    var svol = srows.Sum(k => k.OnsketLaanebelop ?? 0);
+                    var sprov = srows.Sum(Provisjon) * (decimal)Sannsynlighet(s);
+                    <tr>
+                        <td><span class="vol-dot" style="background:@StatusFarge(s)"></span>@s</td>
+                        <td class="num">@srows.Count</td>
+                        <td class="num">@($"{svol:N0}") kr</td>
+                        <td class="num">@($"{Sannsynlighet(s) * 100:N0}") %</td>
+                        <td class="num">@($"{sprov:N0}") kr</td>
+                    </tr>
+                }
+                <tr class="cf-sum">
+                    <td>Total forventet cashflow</td>
+                    <td class="num">@aktive.Count <span class="muted">+ @fullfort.Count</span></td>
+                    <td class="num"></td>
+                    <td class="num"></td>
+                    <td class="num">@($"{opptjent + forventetProv:N0}") kr</td>
+                </tr>
             </tbody>
         </table>
     </div>
 }
 
 @code {
-    private List<Kundekort> _rows = new();
+    private List<Kundekort> _all = new();
+    private List<Partner> _partnere = new();
+    private Dictionary<string, Partner> _partnerMap = new();
     private bool _loading = true;
 
-    private int _total;
-    private double _kvalRate, _closeRate;
-    private decimal _formidlet, _opptjent;
+    private string _periode = "30";
+    private string _leadskilde = "";
+    private string _bankFilter = "";
 
-    private readonly string[] _statuser = KundekortService.Statuser;
-    private record FunnelStep(string Navn, int Antall);
-    private List<FunnelStep> _funnel = new();
+    private readonly (string Verdi, string Navn)[] _perioder =
+    {
+        ("7", "7 dager"), ("30", "30 dager"), ("90", "90 dager"), ("ytd", "I år"), ("all", "Alle")
+    };
+
+    // Pipeline-steg for cashflow (uten Avslått).
+    private readonly string[] _cashflowSteg =
+        { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt" };
+
+    private IEnumerable<string> Leadskilder =>
+        _all.Select(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde).Distinct().OrderBy(x => x);
+
+    private List<Kundekort> Rows
+    {
+        get
+        {
+            IEnumerable<Kundekort> q = _all;
+            if (_periode != "all")
+            {
+                var fra = _periode switch
+                {
+                    "7" => DateTime.Now.Date.AddDays(-6),
+                    "90" => DateTime.Now.Date.AddDays(-89),
+                    "ytd" => new DateTime(DateTime.Now.Year, 1, 1),
+                    _ => DateTime.Now.Date.AddDays(-29),
+                };
+                q = q.Where(k => k.CreatedAt.ToLocalTime().Date >= fra);
+            }
+            if (!string.IsNullOrEmpty(_leadskilde))
+                q = q.Where(k => (string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde) == _leadskilde);
+            if (!string.IsNullOrEmpty(_bankFilter))
+                q = q.Where(k => k.DelegertBank == _bankFilter);
+            return q.ToList();
+        }
+    }
+
+    private record BankRad(string Navn, int Delegert, int Fullfort, double Konv, decimal Volum, decimal Provisjon);
+
+    private IEnumerable<BankRad> BankRader(List<Kundekort> rows)
+    {
+        foreach (var p in _partnere)
+        {
+            var delegert = rows.Where(k => k.DelegertBank == p.Navn).ToList();
+            if (delegert.Count == 0) continue;
+            var fullf = delegert.Where(k => k.Status == KundekortService.StatusFullfort).ToList();
+            yield return new BankRad(
+                p.Navn, delegert.Count, fullf.Count,
+                delegert.Count == 0 ? 0 : 100.0 * fullf.Count / delegert.Count,
+                fullf.Sum(k => k.OnsketLaanebelop ?? 0),
+                fullf.Sum(Provisjon));
+        }
+    }
+
+    private decimal Provisjon(Kundekort k)
+    {
+        if (!string.IsNullOrWhiteSpace(k.DelegertBank) && _partnerMap.TryGetValue(k.DelegertBank, out var p))
+            return (k.OnsketLaanebelop ?? 0) * (ParseDec(p.Provisjon) / 100m) + ParseDec(p.Engangssum);
+        return 0;
+    }
+
+    // Sannsynlighet for at en søknad ender i utbetaling, per status.
+    private static double Sannsynlighet(string status) => status switch
+    {
+        "Åpen" => 0.10,
+        "Pågår" => 0.25,
+        "Manuell behandling" => 0.20,
+        "Sendt bank" => 0.45,
+        "Tilbud utsendt" => 0.70,
+        "Fullført og utbetalt" => 1.0,
+        _ => 0.0,
+    };
+
+    private static string StatusFarge(string status) => status switch
+    {
+        "Åpen" => "#2f8a3e",
+        "Pågår" => "#1f5fc4",
+        "Manuell behandling" => "#c2740a",
+        "Sendt bank" => "#6b3fc4",
+        "Tilbud utsendt" => "#0f8a8a",
+        "Fullført og utbetalt" => "#266f32",
+        "Avslått" => "#b42318",
+        _ => "#9aa0a8",
+    };
+
+    private static string Mnok(decimal v) => v >= 1_000_000 ? $"{v / 1_000_000:N0}" : $"{v / 1_000:N0}";
+    private static string MnokEnhet(decimal v) => v >= 1_000_000 ? "MNOK" : "kNOK";
 
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        _rows = await Kundekort.ListAsync();
-        var partnere = await Partners.ListAsync();
-
-        _total = _rows.Count;
-
-        // Kumulativ funnel: en sak som er "Fullført" har også vært "Sendt bank" osv.
-        int Tellfra(params string[] statuser) => _rows.Count(k => statuser.Contains(k.Status));
-        var sendt = Tellfra("Sendt bank", "Tilbud utsendt", "Fullført og utbetalt");
-        var fullfort = Tellfra(KundekortService.StatusFullfort);
-
-        _kvalRate = _total == 0 ? 0 : 100.0 * sendt / _total;
-        _closeRate = _total == 0 ? 0 : 100.0 * fullfort / _total;
-        _formidlet = _rows.Where(k => k.Status == KundekortService.StatusFullfort).Sum(k => k.OnsketLaanebelop ?? 0);
-
-        // Opptjent provisjon: per fullført sak, bruk satsen til banken den er delegert til.
-        var partnerMap = partnere
-            .GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
-        foreach (var k in _rows.Where(k => k.Status == KundekortService.StatusFullfort))
-        {
-            if (!string.IsNullOrWhiteSpace(k.DelegertBank) && partnerMap.TryGetValue(k.DelegertBank, out var p))
-                _opptjent += (k.OnsketLaanebelop ?? 0) * (ParseDec(p.Provisjon) / 100m) + ParseDec(p.Engangssum);
-        }
-
-        _funnel = new()
-        {
-            new("Søknader", _total),
-            new("Kvalifisert", Tellfra("Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt")),
-            new("Sendt til bank", sendt),
-            new("Tilbud utsendt", Tellfra("Tilbud utsendt", "Fullført og utbetalt")),
-            new("Fullført", fullfort),
-        };
-
+        _all = await Kundekort.ListAsync();
+        _partnere = await Partners.ListAsync();
+        _partnerMap = _partnere.GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
         _loading = false;
     }
 
