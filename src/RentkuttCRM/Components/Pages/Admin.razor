@@ -67,17 +67,18 @@ else if (_active == "Partnere")
     <div class="section">
         <h2>Bankpartnere & provisjonssatser <span class="pill pill-warn">@_banks.Count</span></h2>
         <table class="data-table">
-            <thead><tr><th>Bank</th><th>Provisjon %</th></tr></thead>
+            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th></tr></thead>
             <tbody>
                 @if (_banks.Count == 0)
                 {
-                    <tr><td colspan="2" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
+                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
                 }
                 @foreach (var b in _banks)
                 {
                     <tr>
                         <td>@b.Name</td>
                         <td><input class="inline-input" value="@b.Rate" /> %</td>
+                        <td><input class="inline-input" style="width:90px" value="@b.Engangssum" /> kr</td>
                     </tr>
                 }
             </tbody>
@@ -92,7 +93,8 @@ else if (_active == "Partnere")
         <h2>Ny partner</h2>
         <div class="rule-builder">
             <div class="rb-field"><label>Banknavn</label><input class="rb-input" @bind="_nbName" placeholder="f.eks. DNB" /></div>
-            <div class="rb-field rb-op" style="max-width:140px"><label>Provisjon %</label><input class="rb-input" @bind="_nbRate" placeholder="1,20" /></div>
+            <div class="rb-field rb-op" style="max-width:130px"><label>Provisjon %</label><input class="rb-input" @bind="_nbRate" placeholder="1,20" /></div>
+            <div class="rb-field rb-op" style="max-width:170px"><label>Engangssum (kr)</label><input class="rb-input" @bind="_nbEngangssum" placeholder="0" /></div>
             <button class="btn-primary rb-add" @onclick="AddBank">Legg til partner</button>
         </div>
     </div>
@@ -715,11 +717,11 @@ else if (_active == "GDPR")
         new("Brukeradmin",       new[]{ false, false, false, true }),
     };
 
-    private class BankRate { public string Name { get; set; } = ""; public string Rate { get; set; } = ""; public string Method { get; set; } = "Webhook"; }
+    private class BankRate { public string Name { get; set; } = ""; public string Rate { get; set; } = ""; public string Engangssum { get; set; } = ""; public string Method { get; set; } = "Webhook"; }
     private readonly List<BankRate> _banks = new();
 
     // Ny partner (kan legges til, ikke fjernes)
-    private string _nbName = "", _nbRate = "";
+    private string _nbName = "", _nbRate = "", _nbEngangssum = "";
 
     private void AddBank()
     {
@@ -727,9 +729,15 @@ else if (_active == "GDPR")
         if (string.IsNullOrWhiteSpace(name)) return;
         if (_banks.Any(b => b.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return;
         // Oppretter også en API-rad (under "API og Data") for denne partneren.
-        _banks.Add(new BankRate { Name = name, Rate = string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim() });
+        _banks.Add(new BankRate
+        {
+            Name = name,
+            Rate = string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim(),
+            Engangssum = string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim(),
+        });
         _nbName = "";
         _nbRate = "";
+        _nbEngangssum = "";
     }
 
     private class Source { public string Name { get; set; } = ""; public bool Active { get; set; } = true; public string Method { get; set; } = "Webhook"; }

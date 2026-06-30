@@ -389,7 +389,8 @@ a { color: var(--accent); text-decoration: none; }
 .bullet-list { line-height: 1.85; color: var(--text-2); padding-left: 18px; font-size: 12.5px; }
 
 /* ---------- Login ---------- */
-.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: var(--bg); }
+.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: #f5f2ec; }
+.login-logo { width: 188px; height: auto; display: block; margin: 0 auto; }
 .login-card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--r-lg); padding: 38px 34px; width: 100%; max-width: 364px;
