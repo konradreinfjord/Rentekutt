@@ -49,6 +49,37 @@ else
             }
         </div>
     </div>
+
+    <div class="section">
+        <h2>Leads siste 3 dager</h2>
+        <div class="daybar-wrap">
+            <div class="daybar-chart">
+                @foreach (var dag in _dager)
+                {
+                    <div class="daybar-col">
+                        <div class="daybar-total">@dag.Total</div>
+                        <div class="daybar-stack">
+                            @foreach (var s in _statuser)
+                            {
+                                var c = dag.PerStatus.GetValueOrDefault(s, 0);
+                                @if (c > 0)
+                                {
+                                    <div class="daybar-seg" style="height:@(((double)c / _maxDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@StatusFarge(s)" title="@s: @c"></div>
+                                }
+                            }
+                        </div>
+                        <div class="daybar-label">@dag.Label</div>
+                    </div>
+                }
+            </div>
+            <div class="daybar-legend">
+                @foreach (var s in _statuser)
+                {
+                    <span class="legend-item"><span class="legend-dot" style="background:@StatusFarge(s)"></span>@s</span>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 @code {
@@ -60,7 +91,23 @@ else
     private decimal _pipeline;
     private bool _loading = true;
 
+    private List<DagBar> _dager = new();
+    private int _maxDag = 1;
+    private record DagBar(string Label, Dictionary<string, int> PerStatus, int Total);
+
     private readonly string[] _statuser = KundekortService.Statuser;
+
+    private static string StatusFarge(string status) => status switch
+    {
+        "Ny" => "#2f8a3e",                  // grønn
+        "Pågår" => "#1f5fc4",               // blå
+        "Manuell behandling" => "#c2740a",  // amber
+        "Sendt bank" => "#6b3fc4",          // lilla
+        "Tilbud utsendt" => "#0f8a8a",      // teal
+        "Fullført og utbetalt" => "#266f32",// mørk grønn
+        "Avslått" => "#b42318",             // rød
+        _ => "#9aa0a8"
+    };
 
     private string Fornavn => (Session.UserName ?? "der").Split(' ')[0];
 
@@ -80,6 +127,18 @@ else
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
         _statusCount = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+
+        var idag = DateTime.Now.Date;
+        _dager = new();
+        for (var i = 2; i >= 0; i--)
+        {
+            var d = idag.AddDays(-i);
+            var dagLeads = _rows.Where(k => k.CreatedAt.ToLocalTime().Date == d).ToList();
+            var perStatus = dagLeads.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+            var label = i == 0 ? "I dag" : i == 1 ? "I går" : d.ToString("dd.MM");
+            _dager.Add(new DagBar(label, perStatus, dagLeads.Count));
+        }
+        _maxDag = Math.Max(1, _dager.Max(d => d.Total));
 
         _loading = false;
     }
