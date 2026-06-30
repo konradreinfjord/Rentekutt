@@ -58,8 +58,7 @@ public class TwoFactorService
         var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
         _codes[key] = (code, now.Add(Levetid));
 
-        var (ok, _, detalj) = await _sms.SendSmsAsync(
-            user.Mobilnummer, $"Din Rentekutt-innloggingskode: {code} (gyldig i 5 minutter).");
+        var (ok, _, detalj) = await _sms.SendSmsAsync(user.Mobilnummer, $"Kode: {code}");
         if (!ok)
         {
             // Rull tilbake reservasjonen ved sendefeil.
