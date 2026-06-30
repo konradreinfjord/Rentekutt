@@ -26,21 +26,21 @@
 
 <div class="db-toolbar">
     <button class="btn-add" title="Opprett kunde" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+</button>
-    <input class="db-search" @bind="_search" @bind:event="oninput" placeholder="Søk i alle felt — navn, bank, kommune, adresse, postnr, telefon …" />
-    <select class="db-select" @bind="_statusFilter">
+    <input class="db-search" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" placeholder="Søk i alle felt — navn, bank, kommune, adresse, postnr, telefon …" />
+    <select class="db-select" @bind="_statusFilter" @bind:after="ResetPage">
         <option value="">Alle statuser</option>
         @foreach (var s in _statuses) { <option value="@s">@s</option> }
     </select>
-    <select class="db-select" @bind="_typeFilter">
+    <select class="db-select" @bind="_typeFilter" @bind:after="ResetPage">
         <option value="">Alle typer</option>
         <option value="B2C">B2C</option>
         <option value="B2B">B2B</option>
     </select>
-    <select class="db-select" @bind="_bankFilter">
+    <select class="db-select" @bind="_bankFilter" @bind:after="ResetPage">
         <option value="">Alle banker</option>
         @foreach (var b in BankListe) { <option value="@b.Navn">@b.Navn (@b.Antall)</option> }
     </select>
-    <select class="db-select" @bind="_kommuneFilter">
+    <select class="db-select" @bind="_kommuneFilter" @bind:after="ResetPage">
         <option value="">Alle områder</option>
         @foreach (var o in KommuneListe) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
     </select>
@@ -60,15 +60,15 @@ else
             <tr>
                 @Header("status", "Status")
                 @Header("delegert", "Delegert til bank")
+                @Header("navn", "Navn")
+                @Header("epost", "E-post")
+                @Header("personnr", "Personnr")
+                @Header("telefon", "Telefon")
                 @Header("type", "Type")
                 @Header("kilde", "Leadskilde")
                 @Header("laanetype", "Lånetype")
                 @Header("bank", "Bank")
                 @Header("belop", "Ønsket beløp")
-                @Header("navn", "Navn")
-                @Header("personnr", "Personnr")
-                @Header("telefon", "Telefon")
-                @Header("epost", "E-post")
                 @Header("kommune", "Kommune")
                 @Header("postnr", "Postnr")
                 @Header("adresse", "Adresse")
@@ -84,20 +84,30 @@ else
             {
                 <tr><td colspan="19" class="empty-row">Ingen treff.</td></tr>
             }
-            @foreach (var k in View)
+            @foreach (var k in PagedView)
             {
-                <tr>
-                    <td>
+                <tr class="row-link" @onclick="() => Open(k.Id)">
+                    <td @onclick:stopPropagation="true">
                         <select class="inline-select" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
                         </select>
                     </td>
-                    <td>
+                    <td @onclick:stopPropagation="true">
                         <select class="inline-select" @onchange="e => DelegateBank(k, e)">
                             <option value="">— ingen —</option>
                             @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>
                     </td>
+                    <td>
+                        <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
+                        @if (CaseCount(k.KundeId) > 1)
+                        {
+                            <span class="multi-badge" title="@CaseCount(k.KundeId) søknader på denne kunden">@CaseCount(k.KundeId) søknader</span>
+                        }
+                    </td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Kilde))
@@ -112,16 +122,6 @@ else
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
-                    <td>
-                        <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
-                        @if (CaseCount(k.KundeId) > 1)
-                        {
-                            <span class="multi-badge" title="@CaseCount(k.KundeId) søknader på denne kunden">@CaseCount(k.KundeId) søknader</span>
-                        }
-                    </td>
-                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
-                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
-                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
                     <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
@@ -131,7 +131,7 @@ else
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Eier))
                         {
-                            <button class="btn-sm" @onclick="() => TakeOwnership(k)">Ta eierskap</button>
+                            <button class="btn-sm" @onclick="() => TakeOwnership(k)" @onclick:stopPropagation="true">Ta eierskap</button>
                         }
                         else
                         {
@@ -144,6 +144,17 @@ else
         </tbody>
     </table>
     </div>
+
+    @if (PageCount > 1)
+    {
+        <div class="pager">
+            <button class="pager-btn" disabled="@(_page == 0)" @onclick="() => _page = 0" title="Første">«</button>
+            <button class="pager-btn" disabled="@(_page == 0)" @onclick="() => _page--">‹ Forrige</button>
+            <span class="pager-info">Side @(_page + 1) av @PageCount · viser @(PageStart)–@(PageEnd) av @View.Count</span>
+            <button class="pager-btn" disabled="@(_page >= PageCount - 1)" @onclick="() => _page++">Neste ›</button>
+            <button class="pager-btn" disabled="@(_page >= PageCount - 1)" @onclick="() => _page = PageCount - 1" title="Siste">»</button>
+        </div>
+    }
 }
 
 @code {
@@ -208,6 +219,21 @@ else
         k.Laanetype, k.Status, k.KundeType, k.EierNavn, k.Notater, k.Kilde, k.DelegertBank,
         k.OnsketLaanebelop?.ToString()
     }.Where(x => !string.IsNullOrEmpty(x))).ToLowerInvariant();
+
+    private const int PageSize = 50;
+    private int _page;
+    private void ResetPage() => _page = 0;
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(View.Count / (double)PageSize));
+    private int PageStart => View.Count == 0 ? 0 : _page * PageSize + 1;
+    private int PageEnd => Math.Min(View.Count, (_page + 1) * PageSize);
+    private IEnumerable<Kundekort> PagedView
+    {
+        get
+        {
+            if (_page > PageCount - 1) _page = PageCount - 1;
+            return View.Skip(_page * PageSize).Take(PageSize);
+        }
+    }
 
     private List<Kundekort> View
     {
