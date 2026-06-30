@@ -18,13 +18,10 @@
 
 <div class="db-stats">
     <div class="db-box accent-green"><span class="db-box-num">@View.Count</span><span class="db-box-lbl">Søknader</span></div>
-    <div class="db-box"><span class="db-box-num">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0) / 1_000_000:N1}") mill</span><span class="db-box-lbl">Samlet beløp</span></div>
+    <div class="db-box accent-amber"><span class="db-box-num">@View.Count(k => k.Status == "Åpen")</span><span class="db-box-lbl">Åpne</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2C")</span><span class="db-box-lbl">B2C</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2B")</span><span class="db-box-lbl">B2B</span></div>
-    @foreach (var s in _statuses)
-    {
-        <div class="db-box"><span class="db-box-num">@View.Count(k => k.Status == s)</span><span class="db-box-lbl">@s</span></div>
-    }
+    <div class="db-box"><span class="db-box-num">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0) / 1_000_000:N1}") mill</span><span class="db-box-lbl">Samlet beløp</span></div>
 </div>
 
 <div class="db-toolbar">

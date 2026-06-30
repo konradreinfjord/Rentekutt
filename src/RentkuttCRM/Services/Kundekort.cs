@@ -85,7 +85,7 @@ public class Kundekort : BaseModel
     [Column("kilde")] public string? Kilde { get; set; }
     [Column("delegert_bank")] public string? DelegertBank { get; set; }
 
-    [Column("status")] public string Status { get; set; } = "Ny";
+    [Column("status")] public string Status { get; set; } = "Åpen";
 
     // Eierskap til saken
     [Column("eier")] public string? Eier { get; set; }
