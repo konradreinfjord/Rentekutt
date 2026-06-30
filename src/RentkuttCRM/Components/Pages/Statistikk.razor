@@ -2,6 +2,7 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Kundekort
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.SettingsService Settings
 @inject NavigationManager Nav
 
 <PageTitle>Statistikk — Rentekutt</PageTitle>
@@ -46,6 +47,11 @@ else
     var forventetVolum = aktive.Sum(k => (k.OnsketLaanebelop ?? 0) * (decimal)Sannsynlighet(k.Status));
     var opptjent = fullfort.Sum(Provisjon);
     var forventetProv = aktive.Sum(k => Provisjon(k) * (decimal)Sannsynlighet(k.Status));
+
+    var perDag = total / (double)PeriodeDager;
+    var perUke = perDag * 7;
+    var perMnd = perDag * 30;
+    var gjsnDager = total == 0 ? 0 : rows.Average(DagerSiden);
 
     @* ---------- Nøkkeltall (metric-strip) ---------- *@
     <div class="metric-strip">
@@ -151,6 +157,94 @@ else
         </table>
     </div>
 
+    @* ---------- Tidsbruk ---------- *@
+    <div class="section">
+        <h2>Tidsbruk</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Gjennomstrømning og liggetid målt mot fastsatte krav — for å benchmarke agenter.</p>
+
+        <div class="mal-bar">
+            <label>Krav: maks <input type="number" step="0.5" min="0" @bind="_malDager" /> dager per sak</label>
+            <label>Krav: minst <input type="number" min="0" @bind="_malSakerUke" /> saker per agent / uke</label>
+            <button class="btn-sm" @onclick="SaveMal">Lagre krav</button>
+            @if (!string.IsNullOrEmpty(_malMsg)) { <span class="muted">@_malMsg</span> }
+        </div>
+
+        <div class="metric-strip" style="margin:14px 0 18px">
+            <div class="metric"><div class="metric-num">@($"{perDag:N1}")</div><div class="metric-label">Saker / dag</div><div class="metric-sub">over @PeriodeDager dager</div></div>
+            <div class="metric"><div class="metric-num">@($"{perUke:N1}")</div><div class="metric-label">Saker / uke</div></div>
+            <div class="metric"><div class="metric-num">@($"{perMnd:N0}")</div><div class="metric-label">Saker / måned</div></div>
+            <div class="metric"><div class="metric-num @(gjsnDager <= (double)_malDager ? "mal-ok" : "mal-bad")">@($"{gjsnDager:N1}")</div><div class="metric-label">Gj.snitt dager / sak</div><div class="metric-sub">krav: maks @($"{_malDager:N0}")</div></div>
+        </div>
+
+        <div class="stat-cols">
+            <div>
+                <h3 class="stat-subhead">Per status</h3>
+                <table class="data-table">
+                    <thead><tr><th>Status</th><th class="num">Antall</th><th class="num">Gj.snitt dager</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in rows.GroupBy(k => k.Status).OrderBy(g => Array.IndexOf(KundekortService.Statuser, g.Key)))
+                        {
+                            <tr>
+                                <td><span class="vol-dot" style="background:@StatusFarge(g.Key)"></span>@g.Key</td>
+                                <td class="num">@g.Count()</td>
+                                <td class="num">@($"{g.Average(DagerSiden):N1}")</td>
+                            </tr>
+                        }
+                        @if (total == 0)
+                        {
+                            <tr><td colspan="3" class="empty-row">Ingen data i perioden.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div>
+                <h3 class="stat-subhead">Hos bank</h3>
+                <table class="data-table">
+                    <thead><tr><th>Bank</th><th class="num">Saker</th><th class="num">Gj.snitt dager</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in rows.Where(k => !string.IsNullOrWhiteSpace(k.DelegertBank)).GroupBy(k => k.DelegertBank!).OrderByDescending(g => g.Average(DagerSiden)))
+                        {
+                            <tr>
+                                <td>@g.Key</td>
+                                <td class="num">@g.Count()</td>
+                                <td class="num">@($"{g.Average(DagerSiden):N1}")</td>
+                            </tr>
+                        }
+                        @if (!rows.Any(k => !string.IsNullOrWhiteSpace(k.DelegertBank)))
+                        {
+                            <tr><td colspan="3" class="empty-row">Ingen delegerte saker i perioden.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <h3 class="stat-subhead" style="margin:20px 0 8px">Per bruker — raskest først (benchmark mot krav)</h3>
+        <table class="data-table">
+            <thead><tr><th>Bruker</th><th class="num">Eide saker</th><th class="num">Saker/uke</th><th class="num">Gj.snitt dager</th><th>Status</th></tr></thead>
+            <tbody>
+                @foreach (var g in rows.Where(k => !string.IsNullOrWhiteSpace(k.Eier)).GroupBy(k => k.Eier!).OrderBy(g => g.Average(DagerSiden)))
+                {
+                    var uke = g.Count() / (double)PeriodeDager * 7;
+                    var avgD = g.Average(DagerSiden);
+                    var raskNok = avgD <= (double)_malDager;
+                    var nokSaker = uke >= _malSakerUke;
+                    <tr>
+                        <td>@(string.IsNullOrWhiteSpace(g.First().EierNavn) ? g.Key : g.First().EierNavn)</td>
+                        <td class="num">@g.Count()</td>
+                        <td class="num @(nokSaker ? "mal-ok" : "mal-bad")">@($"{uke:N1}")</td>
+                        <td class="num @(raskNok ? "mal-ok" : "mal-bad")">@($"{avgD:N1}")</td>
+                        <td>@(raskNok && nokSaker ? "✓ Innfrir krav" : raskNok ? "Treg volum" : nokSaker ? "For lang tid" : "Under krav")</td>
+                    </tr>
+                }
+                @if (!rows.Any(k => !string.IsNullOrWhiteSpace(k.Eier)))
+                {
+                    <tr><td colspan="5" class="empty-row">Ingen aktive eiere i perioden.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
     @* ---------- Cashflow-analyse ---------- *@
     <div class="section">
         <h2>Cashflow-analyse</h2>
@@ -194,6 +288,29 @@ else
     private string _periode = "30";
     private string _leadskilde = "";
     private string _bankFilter = "";
+
+    // Krav/mål for benchmarking av agenter (lagres i innstillinger).
+    private const string KeyMalDager = "mal_dager_per_sak";
+    private const string KeyMalSakerUke = "mal_saker_uke";
+    private decimal _malDager = 14m;
+    private int _malSakerUke = 10;
+    private string? _malMsg;
+
+    private async Task SaveMal()
+    {
+        await Settings.SetAsync(KeyMalDager, _malDager.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await Settings.SetAsync(KeyMalSakerUke, _malSakerUke.ToString());
+        _malMsg = "Lagret.";
+    }
+
+    private int PeriodeDager => _periode switch
+    {
+        "7" => 7,
+        "90" => 90,
+        "ytd" => Math.Max(1, (int)(DateTime.Now.Date - new DateTime(DateTime.Now.Year, 1, 1)).TotalDays + 1),
+        "all" => _all.Count == 0 ? 1 : Math.Max(1, (int)(DateTime.Now.Date - _all.Min(k => k.CreatedAt.ToLocalTime().Date)).TotalDays + 1),
+        _ => 30,
+    };
 
     private readonly (string Verdi, string Navn)[] _perioder =
     {
@@ -279,6 +396,9 @@ else
         _ => "#9aa0a8",
     };
 
+    // Dager siden siste statusendring (updated_at oppdateres av DB-trigger).
+    private static double DagerSiden(Kundekort k) => Math.Max(0, (DateTime.UtcNow - k.UpdatedAt).TotalDays);
+
     private static string Mnok(decimal v) => v >= 1_000_000 ? $"{v / 1_000_000:N0}" : $"{v / 1_000:N0}";
     private static string MnokEnhet(decimal v) => v >= 1_000_000 ? "MNOK" : "kNOK";
 
@@ -288,6 +408,8 @@ else
         _all = await Kundekort.ListAsync();
         _partnere = await Partners.ListAsync();
         _partnerMap = _partnere.GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
+        _malDager = await Settings.GetDecimalAsync(KeyMalDager, 14m);
+        _malSakerUke = await Settings.GetIntAsync(KeyMalSakerUke, 10);
         _loading = false;
     }
 
