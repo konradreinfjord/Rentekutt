@@ -69,33 +69,6 @@ else if (_active == "Partnere")
         </div>
     </div>
 }
-else if (_active == "Leadkilder")
-{
-    <div class="section">
-        <h2>Leadkilder <span class="pill pill-warn">@_sources.Count</span></h2>
-        <table class="data-table">
-            <thead><tr><th>Kilde</th><th>Aktiv</th></tr></thead>
-            <tbody>
-                @if (_sources.Count == 0)
-                {
-                    <tr><td colspan="2" class="empty-row">Ingen leadkilder ennå — legg til under.</td></tr>
-                }
-                @foreach (var s in _sources)
-                {
-                    <tr><td>@s.Name</td><td><span class="status @(s.Active ? "on" : "off")">@(s.Active ? "På" : "Av")</span></td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>Ny leadkilde</h2>
-        <div class="rule-builder">
-            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_nsName" placeholder="f.eks. Prismatch" /></div>
-            <button class="btn-primary rb-add" @onclick="AddSource">Legg til leadkilde</button>
-        </div>
-    </div>
-}
 else if (_active == "Brukere")
 {
     <div class="section">
@@ -700,7 +673,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "Generelt", "Partnere", "Leadkilder", "Brukere", "Logikk-matrise", "API og Data", "GDPR" };
+    private readonly string[] _tabs = { "Generelt", "Partnere", "Brukere", "Logikk-matrise", "API og Data", "GDPR" };
     private string _active = "Generelt";
 
     // ---- GDPR: anonymisering + sletting ----
@@ -813,18 +786,6 @@ else if (_active == "GDPR")
 
     private class Source { public string Name { get; set; } = ""; public bool Active { get; set; } = true; public string Method { get; set; } = "Webhook"; }
     private readonly List<Source> _sources = new();
-
-    // Ny leadkilde (oppretter også en API-rad)
-    private string _nsName = "";
-
-    private void AddSource()
-    {
-        var name = _nsName.Trim();
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (_sources.Any(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return;
-        _sources.Add(new Source { Name = name, Active = true });
-        _nsName = "";
-    }
 
     private record Sla(string Label, string Hours);
     private readonly Sla[] _slas =
