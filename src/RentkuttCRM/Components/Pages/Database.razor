@@ -21,7 +21,7 @@
 
 <div class="db-toolbar">
     <button class="btn-primary" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+ Opprett kunde</button>
-    <input class="db-search" @bind="_search" @bind:event="oninput" placeholder="Søk navn, kunde-ID eller lånetype" />
+    <input class="db-search" @bind="_search" @bind:event="oninput" placeholder="Søk i alle felt — navn, bank, kommune, adresse, postnr, telefon …" />
     <select class="db-select" @bind="_statusFilter">
         <option value="">Alle statuser</option>
         @foreach (var s in _statuses) { <option value="@s">@s</option> }
@@ -130,6 +130,14 @@ else
 
     private int CaseCount(string kundeId) => _caseCount.GetValueOrDefault(kundeId, 1);
 
+    private static string Searchable(Kundekort k) => string.Join(" ", new[]
+    {
+        k.KundeId, k.FulltNavn, k.Foedselsnummer, k.Mobilnummer, k.Epost,
+        k.Adresse, k.Postnummer, k.Poststed, k.Kommune, k.NavarendeBank,
+        k.Laanetype, k.Status, k.KundeType, k.EierNavn, k.Notater,
+        k.OnsketLaanebelop?.ToString()
+    }.Where(x => !string.IsNullOrEmpty(x))).ToLowerInvariant();
+
     private List<Kundekort> View
     {
         get
@@ -138,11 +146,13 @@ else
 
             if (!string.IsNullOrWhiteSpace(_search))
             {
-                var s = _search.Trim().ToLowerInvariant();
+                // Universalfilter: hvert søkeord må finnes i ett av datafeltene.
+                var terms = _search.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 q = q.Where(k =>
-                    (k.KundeId?.ToLowerInvariant().Contains(s) ?? false)
-                    || (k.FulltNavn?.ToLowerInvariant().Contains(s) ?? false)
-                    || (k.Laanetype?.ToLowerInvariant().Contains(s) ?? false));
+                {
+                    var hay = Searchable(k);
+                    return terms.All(t => hay.Contains(t));
+                });
             }
             if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
             if (!string.IsNullOrEmpty(_typeFilter)) q = q.Where(k => k.KundeType == _typeFilter);
