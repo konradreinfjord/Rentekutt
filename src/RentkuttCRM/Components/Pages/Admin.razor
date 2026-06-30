@@ -601,7 +601,7 @@ else if (_active == "GDPR")
     </div>
 
     <div class="form-card">
-        <h2>Slik ser en anonymisert sak ut</h2>
+        <h2>Slik ser en anonymisert søknad ut</h2>
         <p class="page-sub" style="margin:0">
             Etter @_gdprAnonMonths måneder lagres f.eks. kun:
             «<strong>Ola Nordmann (90012345)</strong> sendte en lånesøknad <strong>12.03.2026</strong>» —
@@ -859,8 +859,8 @@ else if (_active == "GDPR")
     private record Perm(string Name, bool[] Access);
     private readonly Perm[] _permissions =
     {
-        new("Lese saker",        new[]{ true,  true,  true,  true }),
-        new("Redigere saker",    new[]{ true,  false, true,  true }),
+        new("Lese søknader",     new[]{ true,  true,  true,  true }),
+        new("Redigere søknader", new[]{ true,  false, true,  true }),
         new("Kvalifisere",       new[]{ true,  false, true,  true }),
         new("Sende lead",        new[]{ true,  false, true,  true }),
         new("Kundedata",         new[]{ true,  true,  true,  true }),

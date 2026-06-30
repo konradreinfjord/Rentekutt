@@ -17,7 +17,7 @@
 }
 
 <div class="db-stats">
-    <div class="db-box accent-green"><span class="db-box-num">@View.Count</span><span class="db-box-lbl">Saker</span></div>
+    <div class="db-box accent-green"><span class="db-box-num">@View.Count</span><span class="db-box-lbl">Søknader</span></div>
     <div class="db-box"><span class="db-box-num">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0) / 1_000_000:N1}") mill</span><span class="db-box-lbl">Samlet beløp</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2C")</span><span class="db-box-lbl">B2C</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2B")</span><span class="db-box-lbl">B2B</span></div>
@@ -104,7 +104,7 @@ else
                         <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
                         @if (CaseCount(k.KundeId) > 1)
                         {
-                            <span class="multi-badge" title="@CaseCount(k.KundeId) saker på denne kunden">@CaseCount(k.KundeId) saker</span>
+                            <span class="multi-badge" title="@CaseCount(k.KundeId) søknader på denne kunden">@CaseCount(k.KundeId) søknader</span>
                         }
                     </td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>

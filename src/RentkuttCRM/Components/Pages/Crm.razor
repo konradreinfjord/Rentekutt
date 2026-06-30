@@ -24,14 +24,14 @@
 else
 {
     <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-value">@_nye24</div><div class="kpi-label">Nye saker (24t)</div></div>
-        <div class="kpi-card"><div class="kpi-value">@_rows.Count</div><div class="kpi-label">Totalt saker</div></div>
-        <div class="kpi-card"><div class="kpi-value">@_mine</div><div class="kpi-label">Mine saker</div></div>
+        <div class="kpi-card"><div class="kpi-value">@_nye24</div><div class="kpi-label">Nye søknader (24t)</div></div>
+        <div class="kpi-card"><div class="kpi-value">@_rows.Count</div><div class="kpi-label">Totalt søknader</div></div>
+        <div class="kpi-card"><div class="kpi-value">@_mine</div><div class="kpi-label">Mine søknader</div></div>
         <div class="kpi-card"><div class="kpi-value">@($"{_pipeline / 1_000_000:N1}") mill</div><div class="kpi-label">Pipeline-verdi</div></div>
     </div>
 
     <div class="section">
-        <h2>Saker per status</h2>
+        <h2>Søknader per status</h2>
         <div class="priority-grid">
             @foreach (var s in _statuser)
             {
