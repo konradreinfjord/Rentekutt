@@ -164,6 +164,19 @@
 
 <div class="form-actions">
     <button class="btn-primary" @onclick="Save" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre kundekort")</button>
+    @if (_isEdit)
+    {
+        @if (!_confirmDelete)
+        {
+            <button class="btn-danger-solid" @onclick="() => _confirmDelete = true">Slett kundekort</button>
+        }
+        else
+        {
+            <span class="confirm-text">Sikker? Dette kan ikke angres.</span>
+            <button class="btn-danger-solid" @onclick="Delete">Ja, slett permanent</button>
+            <button class="btn-logout" @onclick="() => _confirmDelete = false">Avbryt</button>
+        }
+    }
     @if (!string.IsNullOrEmpty(_msg))
     {
         <span class="form-msg @(_ok ? "ok" : "err")">@_msg</span>
@@ -178,6 +191,13 @@
     private bool _saving;
     private bool _ok;
     private string? _msg;
+    private bool _confirmDelete;
+
+    private async Task Delete()
+    {
+        await Svc.DeleteAsync(_k.Id);
+        Nav.NavigateTo("/crm/database");
+    }
 
     protected override async Task OnInitializedAsync()
     {

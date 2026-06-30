@@ -142,6 +142,17 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
     }
 
+    public async Task DeleteAsync(Guid id)
+    {
+        if (!IsConfigured) { _staging.RemoveAll(x => x.Id == id); return; }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Where(x => x.Id == id).Delete();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Sletting av kundekort feilet"); }
+    }
+
     public async Task<Kundekort?> GetAsync(Guid id)
     {
         if (!IsConfigured) return _staging.FirstOrDefault(x => x.Id == id);

@@ -44,9 +44,10 @@ else
     <table class="data-table">
         <thead>
             <tr>
-                @Header("id", "Kunde-ID")
                 <th>Status</th>
                 @Header("navn", "Navn")
+                <th>Personnr</th>
+                <th>Telefon</th>
                 @Header("type", "Type")
                 @Header("laanetype", "Lånetype")
                 @Header("belop", "Ønsket beløp")
@@ -58,24 +59,25 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="9" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="10" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
                 <tr>
-                    <td class="mono-cell">
-                        @k.KundeId
-                        @if (CaseCount(k.KundeId) > 1)
-                        {
-                            <span class="multi-badge" title="@CaseCount(k.KundeId) saker på denne kunden">@CaseCount(k.KundeId) saker</span>
-                        }
-                    </td>
                     <td>
                         <select class="inline-select" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
                         </select>
                     </td>
-                    <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
+                    <td>
+                        @(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)
+                        @if (CaseCount(k.KundeId) > 1)
+                        {
+                            <span class="multi-badge" title="@CaseCount(k.KundeId) saker på denne kunden">@CaseCount(k.KundeId) saker</span>
+                        }
+                    </td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
