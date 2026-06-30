@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using Supabase.Postgrest;
 using Supabase.Postgrest.Attributes;
 using Supabase.Postgrest.Models;
@@ -12,8 +13,9 @@ public class Partner : BaseModel
     [Column("provisjon")] public string? Provisjon { get; set; }
     [Column("engangssum")] public string? Engangssum { get; set; }
 
-    // Transient (ikke persistert) — metode-valg i API-fanen.
-    public string Method { get; set; } = "Webhook";
+    // Transient (ikke persistert) — metode-valg i API-fanen. JsonIgnore så den
+    // ikke sendes til databasen (ingen Method-kolonne der).
+    [JsonIgnore] public string Method { get; set; } = "Webhook";
 }
 
 /// <summary>Bankpartnere lagret i databasen (med staging-fallback).</summary>
