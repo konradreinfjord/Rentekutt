@@ -160,12 +160,6 @@ a { color: var(--accent); text-decoration: none; }
 .kilde-prismatch { background: #ecf7ee; color: var(--green-dark); border-color: #c9e6cd; }
 .kilde-noytral { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
 
-.nokkelinfo { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.nk-laanetype { font-weight: 600; color: var(--ink); font-size: 12.5px; line-height: 1.2; }
-.nk-tags { display: flex; gap: 5px; flex-wrap: wrap; }
-.nk-pill { display: inline-flex; align-items: center; height: 19px; padding: 0 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; line-height: 1; border: 1px solid var(--border-strong); white-space: nowrap; }
-.nk-type-c { background: #f3eefe; color: #6b3fc4; border-color: #e6dcfb; }
-.nk-type-b { background: #eef4ff; color: #1f5fc4; border-color: #d8e6ff; }
 
 /* ---------- Priority ---------- */
 .priority-grid {
