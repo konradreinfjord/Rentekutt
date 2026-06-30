@@ -21,13 +21,18 @@
 </div>
 
 @{
-    var ber = BeregningService.Beregn(_k, _berParams);
+    var (ber, linjer) = BeregningService.Detaljert(_k, _berParams);
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
 }
 <div class="form-card beregn-card">
-    <h2>Beregningsmodell</h2>
-    <p class="page-sub" style="margin:0 0 12px">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+        <h2 style="margin:0">Beregningsmodell</h2>
+        <button type="button" class="btn-link" @onclick="() => _visBreakdown = !_visBreakdown">
+            @(_visBreakdown ? "Skjul breakdown ▲" : "Vis full breakdown ▼")
+        </button>
+    </div>
+    <p class="page-sub" style="margin:8px 0 12px">
         Søker: @(alderS is int sa ? $"{sa} år ({(kjS == 'M' ? "M" : "K")})" : "alder ukjent")@*
         *@@(_k.HarMedsoker || alderM is not null ? $" · Medsøker: {(alderM is int ma ? $"{ma} år ({(kjM == 'M' ? "M" : "K")})" : "alder ukjent")}" : "")@*
         *@ · @(_k.AntallBarnUnder18 ?? 0) barn@(_k.AntallBiler is int biler && biler > 0 ? $" · {biler} bil" : "")
@@ -38,13 +43,38 @@
         <div class="db-box"><span class="db-box-num">@($"{ber.Gjeldsgrad:N1}")×</span><span class="db-box-lbl">Gjeldsgrad</span></div>
         <div class="db-box"><span class="db-box-num">@($"{ber.MaksLaan:N0}")</span><span class="db-box-lbl">Maks lån</span></div>
     </div>
-    <div class="kv-list" style="margin-top:12px; grid-template-columns:200px 1fr">
-        <span class="k">Netto månedsinntekt</span><span class="v">@($"{ber.MndInntektNetto:N0}") kr</span>
-        <span class="k">− Levekostnad (SIFO)</span><span class="v">@($"{ber.Levekostnad:N0}") kr</span>
-        <span class="k">− Boligkostnad</span><span class="v">@($"{ber.Boligkostnad:N0}") kr</span>
-        <span class="k">− Gjeldsbetjening (stresstestet)</span><span class="v">@($"{ber.Gjeldsbetjening:N0}") kr</span>
-        <span class="k">= Fri likviditet</span><span class="v"><strong>@($"{ber.Likviditet:N0}") kr</strong></span>
-    </div>
+
+    @if (_visBreakdown)
+    {
+        <table class="breakdown-tbl">
+            <thead><tr><th>Komponent</th><th>Kildefelt</th><th>Formel</th><th class="num">Beløp/mnd</th></tr></thead>
+            <tbody>
+                @foreach (var grp in linjer.GroupBy(l => l.Seksjon))
+                {
+                    <tr class="brk-seksjon"><td colspan="4">@grp.Key</td></tr>
+                    @foreach (var l in grp)
+                    {
+                        <tr class="@(l.ErSum ? "brk-sum" : "")">
+                            <td>@l.Komponent</td>
+                            <td class="brk-kilde">@l.Kilde</td>
+                            <td class="brk-formel">@l.Formel</td>
+                            <td class="num">@($"{l.Belop:N0}") kr</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="kv-list" style="margin-top:12px; grid-template-columns:220px 1fr">
+            <span class="k">Netto månedsinntekt</span><span class="v">@($"{ber.MndInntektNetto:N0}") kr</span>
+            <span class="k">− Levekostnad (SIFO)</span><span class="v">@($"{ber.Levekostnad:N0}") kr</span>
+            <span class="k">− Boligkostnad</span><span class="v">@($"{ber.Boligkostnad:N0}") kr</span>
+            <span class="k">− Gjeldsbetjening (stresstestet)</span><span class="v">@($"{ber.Gjeldsbetjening:N0}") kr</span>
+            <span class="k">= Fri likviditet</span><span class="v"><strong>@($"{ber.Likviditet:N0}") kr</strong></span>
+        </div>
+    }
 </div>
 
 @* Kundetype *@
@@ -222,6 +252,7 @@
     private string? _msg;
     private bool _confirmDelete;
     private BeregningParametre _berParams = BeregningService.Standard;
+    private bool _visBreakdown;
 
     private async Task Delete()
     {

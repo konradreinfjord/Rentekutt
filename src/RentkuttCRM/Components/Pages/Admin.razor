@@ -510,6 +510,60 @@ else if (_active == "Beregningsmodell")
             <li><strong>Maks lån</strong> = beløpet som gir likviditet = 0</li>
         </ol>
     </div>
+
+    <div class="form-card">
+        <h2>Feltmapping — hvilke søknadsfelt brukes</h2>
+        <table class="breakdown-tbl">
+            <thead><tr><th>Modellkomponent</th><th>Kildefelt (kundekort)</th><th>Formel / behandling</th></tr></thead>
+            <tbody>
+                <tr><td>Netto inntekt</td><td>aarsinntekt_brutto, medsoker_inntekt (ev. ektefelle_inntekt), andre_inntekter</td><td>progressiv skatt per person ÷ 12</td></tr>
+                <tr><td>Individkostnad voksne</td><td>foedselsnummer, medsoker_foedselsnummer</td><td>alder + kjønn → SIFO sum 1-5</td></tr>
+                <tr><td>Barnekostnad</td><td>antall_barn_under_18</td><td>antall × SIFO-barn (param)</td></tr>
+                <tr><td>Husholdsfelleskostnad</td><td>utledet husstandsstørrelse (voksne + barn)</td><td>SIFO-tabell per antall personer</td></tr>
+                <tr><td>Bilkostnad</td><td>antall_biler</td><td>antall × SIFO bildrift per husstand</td></tr>
+                <tr><td>Faste bokostnader</td><td>boligkostnad_mnd, barnebidrag_betalt_mnd</td><td>trekkes direkte</td></tr>
+                <tr><td>Gjeld</td><td>boliggjeld, studielaan, billaan, forbruksgjeld, refinansieres_belop, onsket_laanebelop</td><td>eksisterende − refi + ønsket</td></tr>
+                <tr><td>Gjeldsbetjening</td><td>onsket_lopetid_mnd</td><td>annuitet ved rente + stresstest</td></tr>
+                <tr><td>Belåningsgrad</td><td>boliggjeld, onsket_laanebelop, boligverdi</td><td>(boliggjeld + ønsket) ÷ boligverdi</td></tr>
+            </tbody>
+        </table>
+        <p class="page-sub" style="margin-top:10px">Åpne et kundekort og trykk «Vis full breakdown» for å se den linje-for-linje med faktiske tall.</p>
+    </div>
+
+    <div class="form-card">
+        <h2>SIFO-referansetabeller <span class="page-sub" style="font-weight:400">(fra Beregningsmodell.xlsx)</span></h2>
+        <h3 style="margin:14px 0 6px">Individkostnad pr. mnd — sum 1-5 (mat, klær, helse, fritid, reise)</h3>
+        <table class="breakdown-tbl">
+            <thead>
+                <tr><th>Alder fra</th>
+                    @foreach (var a in BeregningService.SifoAldersTerskel) { <th class="num">@a år</th> }
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Kvinne</td>@foreach (var v in BeregningService.SifoIndivKvinne) { <td class="num">@($"{v:N0}")</td> }</tr>
+                <tr><td>Mann</td>@foreach (var v in BeregningService.SifoIndivMann) { <td class="num">@($"{v:N0}")</td> }</tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin:18px 0 6px">Husholds- og bilkostnad pr. mnd — etter antall personer</h3>
+        <table class="breakdown-tbl">
+            <thead>
+                <tr><th>Antall personer</th>@for (var i = 1; i <= 7; i++) { <th class="num">@i</th> }</tr>
+            </thead>
+            <tbody>
+                <tr><td>Husholdsfelleskostnad</td>@foreach (var v in BeregningService.SifoHushold) { <td class="num">@($"{v:N0}")</td> }</tr>
+                <tr><td>Bilkostnad (per bil)</td>@foreach (var v in BeregningService.SifoBil) { <td class="num">@($"{v:N0}")</td> }</tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin:18px 0 6px">Progressiv inntektsskatt (2024)</h3>
+        <ul class="page-sub" style="margin:0; padding-left:18px; line-height:1.7">
+            <li>Trygdeavgift 7,8 % av brutto</li>
+            <li>Minstefradrag 46 % (maks 109 950) + personfradrag 88 250</li>
+            <li>Alminnelig inntektsskatt 22 % av grunnlag</li>
+            <li>Trinnskatt: 1,7 % (208 050) · 4,0 % (292 850) · 13,6 % (670 000) · 16,6 % (937 900) · 17,6 % (1 350 000+)</li>
+        </ul>
+    </div>
 }
 else if (_active == "GDPR")
 {
