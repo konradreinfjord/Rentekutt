@@ -2,11 +2,17 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Database — Rentekutt</PageTitle>
 
 <h1 class="page-title">Database</h1>
 <p class="page-sub">Alle kundekort og lånesøknader.</p>
+
+@if (_copied is not null)
+{
+    <div class="copy-toast">Kopiert: @_copied ✓</div>
+}
 
 <div class="db-stats">
     <div class="db-box accent-green"><span class="db-box-num">@View.Count</span><span class="db-box-lbl">Saker</span></div>
@@ -84,15 +90,15 @@ else
                         </select>
                     </td>
                     <td>
-                        @(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)
+                        <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
                         @if (CaseCount(k.KundeId) > 1)
                         {
                             <span class="multi-badge" title="@CaseCount(k.KundeId) saker på denne kunden">@CaseCount(k.KundeId) saker</span>
                         }
                     </td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
-                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
-                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
                     <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
@@ -250,4 +256,16 @@ else
     }
 
     private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
+
+    private string? _copied;
+    private async Task Copy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+        _copied = value;
+        StateHasChanged();
+        await Task.Delay(1400);
+        _copied = null;
+        StateHasChanged();
+    }
 }

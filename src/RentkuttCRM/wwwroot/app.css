@@ -197,6 +197,9 @@ a { color: var(--accent); text-decoration: none; }
 .mono-cell { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 .empty-row { text-align: center; color: var(--text-muted); font-style: italic; padding: 20px 14px !important; }
 .multi-badge { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--orange); background: #f8a74222; border: 1px solid #f8a74255; padding: 1px 7px; border-radius: 999px; font-family: var(--mono); }
+.copyable { cursor: pointer; }
+.copyable:hover { color: var(--green-dark); text-decoration: underline dotted; }
+.copy-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 18px; border-radius: 999px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-md); z-index: 60; }
 
 /* ---------- Skjema (kundekort) ---------- */
 .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 13px 16px; margin-bottom: 11px; box-shadow: var(--shadow-sm); }
