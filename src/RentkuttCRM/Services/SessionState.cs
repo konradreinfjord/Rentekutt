@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 namespace RentkuttCRM.Services;
@@ -8,11 +9,12 @@ namespace RentkuttCRM.Services;
 /// </summary>
 public class SessionState
 {
-    public SessionState(IHostEnvironment env)
+    public SessionState(IHostEnvironment env, IConfiguration config)
     {
-        // Lokalt (Development): logg automatisk inn en utviklerbruker, så man slipper
-        // å logge inn på nytt etter hver omstart. Gjelder ALDRI i produksjon.
-        if (env.IsDevelopment())
+        // Auto-login KUN lokalt: krever både Development OG det eksplisitte flagget
+        // DevAutoLogin (satt i launchSettings, som ikke deployes). Dermed kan auto-login
+        // ALDRI slå inn i produksjon — selv om miljøet ved en feil settes til Development.
+        if (env.IsDevelopment() && config.GetValue<bool>("DevAutoLogin"))
             SignIn(new UserRow(Guid.Empty, "dev@rentekutt.no", "Lokal Utvikler", "Administrator", true));
     }
 

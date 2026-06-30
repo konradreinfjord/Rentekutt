@@ -39,9 +39,19 @@ public class SupabaseUserService
     private static bool _seeded;
     private bool _initialized;
 
-    public SupabaseUserService(Supabase.Client client, IConfiguration cfg, ILogger<SupabaseUserService> log)
+    private readonly SettingsService _settings;
+    // Sporing av feilede innloggingsforsøk per e-post (mot brute-force).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<DateTime>> _failedLogins = new();
+
+    public const string KeyMaxFailHour = "login_max_fail_hour";
+    public const string KeyMaxFail24h = "login_max_fail_24h";
+    public const int DefaultMaxFailHour = 5;
+    public const int DefaultMaxFail24h = 20;
+
+    public SupabaseUserService(Supabase.Client client, IConfiguration cfg, SettingsService settings, ILogger<SupabaseUserService> log)
     {
         _client = client;
+        _settings = settings;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
@@ -65,19 +75,32 @@ public class SupabaseUserService
             return new SignInResult(true, null, new UserRow(u?.Id ?? Guid.Empty, email, name, role, true));
         }
 
+        // Brute-force-sperre: blokker hvis for mange feilforsøk i vinduet.
+        var maxHour = await _settings.GetIntAsync(KeyMaxFailHour, DefaultMaxFailHour);
+        var max24 = await _settings.GetIntAsync(KeyMaxFail24h, DefaultMaxFail24h);
+        if (ErLaast(email, maxHour, max24))
+            return new SignInResult(false, "For mange feilforsøk. Prøv igjen senere.", null);
+
         try
         {
             await EnsureReadyAsync();
             var user = await _client.From<AppUser>().Where(x => x.Email == email).Single();
             if (user is null)
+            {
+                RegistrerFeil(email);
                 return new SignInResult(false, "Feil e-post eller passord.", null);
+            }
             if (!user.Active)
                 return new SignInResult(false, "Brukeren er deaktivert.", null);
 
             var verify = _hasher.VerifyHashedPassword(user, user.PasswordHash, password);
             if (verify == PasswordVerificationResult.Failed)
+            {
+                RegistrerFeil(email);
                 return new SignInResult(false, "Feil e-post eller passord.", null);
+            }
 
+            NullstillFeil(email);
             return new SignInResult(true, null, ToRow(user));
         }
         catch (Exception ex)
@@ -86,6 +109,25 @@ public class SupabaseUserService
             return new SignInResult(false, "Teknisk feil ved innlogging. Prøv igjen.", null);
         }
     }
+
+    private static bool ErLaast(string email, int maxHour, int max24)
+    {
+        if (!_failedLogins.TryGetValue(email, out var l)) return false;
+        lock (l)
+        {
+            var na = DateTime.UtcNow;
+            l.RemoveAll(t => t < na.AddHours(-24));
+            return l.Count(t => t >= na.AddHours(-1)) >= maxHour || l.Count >= max24;
+        }
+    }
+
+    private static void RegistrerFeil(string email)
+    {
+        var l = _failedLogins.GetOrAdd(email, _ => new List<DateTime>());
+        lock (l) l.Add(DateTime.UtcNow);
+    }
+
+    private static void NullstillFeil(string email) => _failedLogins.TryRemove(email, out _);
 
     // ---------- Brukeradministrasjon ----------
     public async Task<List<UserRow>> ListUsersAsync()

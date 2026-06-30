@@ -498,6 +498,20 @@ else if (_active == "GDPR")
             ingen detaljer om beløp, inntekt eller gjeld.
         </p>
     </div>
+
+    <div class="form-card">
+        <h2>Innlogging — brute-force-sperre</h2>
+        <p class="page-sub" style="margin:0 0 12px">Maks antall feilede innloggingsforsøk per bruker før kontoen midlertidig sperres.</p>
+        <div class="rule-builder">
+            <div class="rb-field rb-op" style="max-width:150px"><label>Maks feil per time</label><input class="rb-input" type="number" min="1" @bind="_loginMaxFailHour" /></div>
+            <div class="rb-field rb-op" style="max-width:150px"><label>Maks feil per 24t</label><input class="rb-input" type="number" min="1" @bind="_loginMaxFail24h" /></div>
+            <button class="btn-primary rb-add" @onclick="SaveLoginLimits">Lagre</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_loginLimitMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_loginLimitMsg</p>
+        }
+    </div>
 }
 
 @code {
@@ -514,6 +528,8 @@ else if (_active == "GDPR")
         _gdprAnonMonths = await Settings.GetIntAsync("gdpr_anonymize_months", 12);
         _gdprDeleteMonths = await Settings.GetIntAsync("gdpr_delete_months", 24);
         _loginIpList = await Settings.GetAsync("login_ip_allowlist") ?? "";
+        _loginMaxFailHour = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFailHour, SupabaseUserService.DefaultMaxFailHour);
+        _loginMaxFail24h = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFail24h, SupabaseUserService.DefaultMaxFail24h);
     }
 
     private string _loginIpList = "";
@@ -630,6 +646,19 @@ else if (_active == "GDPR")
     private int _gdprAnonMonths = 12;
     private int _gdprDeleteMonths = 24;
     private string? _gdprMsg;
+
+    // Brute-force-sperre på login
+    private int _loginMaxFailHour = SupabaseUserService.DefaultMaxFailHour;
+    private int _loginMaxFail24h = SupabaseUserService.DefaultMaxFail24h;
+    private string? _loginLimitMsg;
+    private async Task SaveLoginLimits()
+    {
+        if (_loginMaxFailHour < 1) _loginMaxFailHour = 1;
+        if (_loginMaxFail24h < 1) _loginMaxFail24h = 1;
+        await Settings.SetAsync(SupabaseUserService.KeyMaxFailHour, _loginMaxFailHour.ToString());
+        await Settings.SetAsync(SupabaseUserService.KeyMaxFail24h, _loginMaxFail24h.ToString());
+        _loginLimitMsg = "Lagret.";
+    }
     private async Task SaveGdpr()
     {
         if (_gdprAnonMonths < 1) _gdprAnonMonths = 1;
