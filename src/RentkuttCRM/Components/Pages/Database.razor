@@ -31,6 +31,14 @@
         <option value="B2C">B2C</option>
         <option value="B2B">B2B</option>
     </select>
+    <select class="db-select" @bind="_bankFilter">
+        <option value="">Alle banker</option>
+        @foreach (var b in BankListe) { <option value="@b.Navn">@b.Navn (@b.Antall)</option> }
+    </select>
+    <select class="db-select" @bind="_kommuneFilter">
+        <option value="">Alle områder</option>
+        @foreach (var o in KommuneListe) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
+    </select>
     <div class="db-spacer"></div>
     <span class="db-count">@View.Count av @_rows.Count</span>
 </div>
@@ -115,6 +123,20 @@ else
     private string _search = "";
     private string _statusFilter = "";
     private string _typeFilter = "";
+    private string _bankFilter = "";
+    private string _kommuneFilter = "";
+
+    private IEnumerable<(string Navn, int Antall)> BankListe => _rows
+        .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank))
+        .GroupBy(k => k.NavarendeBank!)
+        .Select(g => (g.Key, g.Count()))
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1);
+
+    private IEnumerable<(string Navn, int Antall)> KommuneListe => _rows
+        .Where(k => !string.IsNullOrWhiteSpace(k.Kommune))
+        .GroupBy(k => k.Kommune!)
+        .Select(g => (g.Key, g.Count()))
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1);
     private string _sortField = "opprettet";
     private bool _sortAsc = false;
 
@@ -158,6 +180,8 @@ else
             }
             if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
             if (!string.IsNullOrEmpty(_typeFilter)) q = q.Where(k => k.KundeType == _typeFilter);
+            if (!string.IsNullOrEmpty(_bankFilter)) q = q.Where(k => k.NavarendeBank == _bankFilter);
+            if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
 
             Func<Kundekort, object?> key = _sortField switch
             {
