@@ -101,11 +101,13 @@ else
                     <td>
                         <div class="nokkelinfo">
                             <span class="nk-laanetype">@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</span>
-                            @if (!string.IsNullOrWhiteSpace(k.Kilde))
-                            {
-                                <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span>
-                            }
-                            <span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span>
+                            <div class="nk-tags">
+                                @if (!string.IsNullOrWhiteSpace(k.Kilde))
+                                {
+                                    <span class="nk-pill @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span>
+                                }
+                                <span class="nk-pill @(k.KundeType == "B2C" ? "nk-type-c" : "nk-type-b")">@k.KundeType</span>
+                            </div>
                         </div>
                     </td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
