@@ -10,11 +10,6 @@
         <h1 class="page-title">Hei, @Fornavn 👋</h1>
         <p class="page-sub">Her er oversikten din for i dag.</p>
     </div>
-    <div class="dash-actions">
-        <button class="btn-primary" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+ Opprett kunde</button>
-        <button class="btn-logout" @onclick='() => Nav.NavigateTo("/crm/database")'>Database</button>
-        <button class="btn-logout" @onclick='() => Nav.NavigateTo("/crm/oppfolging")'>Mine oppfølginger</button>
-    </div>
 </div>
 
 @if (_loading)
