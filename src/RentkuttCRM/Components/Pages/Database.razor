@@ -44,16 +44,16 @@ else
     <table class="data-table">
         <thead>
             <tr>
-                <th>Status</th>
+                @Header("status", "Status")
                 @Header("navn", "Navn")
-                <th>Personnr</th>
-                <th>Telefon</th>
-                <th>Kommune</th>
-                <th>Postnr</th>
-                <th>Adresse</th>
+                @Header("personnr", "Personnr")
+                @Header("telefon", "Telefon")
+                @Header("kommune", "Kommune")
+                @Header("postnr", "Postnr")
+                @Header("adresse", "Adresse")
                 @Header("type", "Type")
                 @Header("laanetype", "Lånetype")
-                <th>Bank</th>
+                @Header("bank", "Bank")
                 @Header("belop", "Ønsket beløp")
                 @Header("opprettet", "Opprettet")
                 @Header("eier", "Eier")
@@ -161,10 +161,15 @@ else
 
             Func<Kundekort, object?> key = _sortField switch
             {
-                "id" => k => k.KundeId,
-                "navn" => k => k.FulltNavn,
+                "navn" => k => k.FulltNavn ?? "",
+                "personnr" => k => k.Foedselsnummer ?? "",
+                "telefon" => k => k.Mobilnummer ?? "",
+                "kommune" => k => k.Kommune ?? "",
+                "postnr" => k => k.Postnummer ?? "",
+                "adresse" => k => k.Adresse ?? "",
                 "type" => k => k.KundeType,
-                "laanetype" => k => k.Laanetype,
+                "laanetype" => k => k.Laanetype ?? "",
+                "bank" => k => k.NavarendeBank ?? "",
                 "belop" => k => k.OnsketLaanebelop ?? 0,
                 "status" => k => k.Status,
                 "eier" => k => k.EierNavn ?? k.Eier ?? "",

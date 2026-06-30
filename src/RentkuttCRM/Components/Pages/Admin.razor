@@ -108,13 +108,20 @@ else if (_active == "Brukere")
         else
         {
             <table class="data-table">
-                <thead><tr><th>Navn</th><th>E-post</th><th>Rolle</th><th>2FA</th><th>Nytt passord</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Navn</th><th>E-post</th><th>Mobil (2FA)</th><th>Rolle</th><th>2FA</th><th>Nytt passord</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var u in _userRows)
                     {
                         <tr>
                             <td>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</td>
                             <td class="mono-cell">@u.Email</td>
+                            <td>
+                                <span class="token-row">
+                                    <input class="inline-input" style="width:110px" placeholder="+47…"
+                                           value="@MobilInput(u)" @onchange="e => SetMobilInput(u.Id, e)" />
+                                    <button class="btn-sm" @onclick="() => SaveMobil(u)">Lagre</button>
+                                </span>
+                            </td>
                             <td>
                                 <select class="inline-select" @onchange="e => ChangeRole(u, e)">
                                     @foreach (var r in SupabaseUserService.Roles)
@@ -579,6 +586,17 @@ else if (_active == "GDPR")
     private async Task ToggleTwoFactor(UserRow u)
     {
         await Users.SetTwoFactorAsync(u.Id, !u.TwoFactorEnabled);
+        await LoadUsersAsync();
+    }
+
+    private readonly Dictionary<Guid, string> _mobilInputs = new();
+    private string MobilInput(UserRow u) => _mobilInputs.TryGetValue(u.Id, out var v) ? v : (u.Mobilnummer ?? "");
+    private void SetMobilInput(Guid id, ChangeEventArgs e) => _mobilInputs[id] = e.Value?.ToString() ?? "";
+    private async Task SaveMobil(UserRow u)
+    {
+        await Users.SetMobilAsync(u.Id, _mobilInputs.GetValueOrDefault(u.Id, u.Mobilnummer ?? ""));
+        _mobilInputs.Remove(u.Id);
+        _pwMsg = $"Mobilnummer oppdatert for {u.Email}.";
         await LoadUsersAsync();
     }
 

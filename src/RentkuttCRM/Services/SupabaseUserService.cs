@@ -239,6 +239,23 @@ public class SupabaseUserService
 
     private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active, u.Mobilnummer, u.TwoFactorEnabled);
 
+    public async Task SetMobilAsync(Guid id, string? mobil)
+    {
+        mobil = string.IsNullOrWhiteSpace(mobil) ? null : mobil.Trim();
+        if (!IsConfigured)
+        {
+            var u = _staging.FirstOrDefault(x => x.Id == id);
+            if (u is not null) u.Mobilnummer = mobil;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<AppUser>().Where(x => x.Id == id).Set(x => x.Mobilnummer!, mobil!).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av mobilnummer feilet"); }
+    }
+
     public async Task SetTwoFactorAsync(Guid id, bool enabled)
     {
         if (!IsConfigured)
