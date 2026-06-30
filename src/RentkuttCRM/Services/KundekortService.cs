@@ -126,6 +126,22 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
     }
 
+    public async Task SetStatusAsync(Guid id, string status)
+    {
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) k.Status = status;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.Status, status).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
+    }
+
     public async Task<Kundekort?> GetAsync(Guid id)
     {
         if (!IsConfigured) return _staging.FirstOrDefault(x => x.Id == id);

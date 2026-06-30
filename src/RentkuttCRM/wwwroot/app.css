@@ -214,6 +214,10 @@ a { color: var(--accent); text-decoration: none; }
 .ff input:focus, .ff select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 .ff-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
 .ff-check input { width: 16px; height: 16px; accent-color: var(--green); }
+.note-area { width: 100%; min-height: 70px; resize: vertical; font-family: inherit; font-size: 13px; color: var(--text); background: #fffdf5; border: 1px solid #efe6c4; border-radius: var(--r-sm); padding: 9px 11px; }
+.note-area:focus { outline: none; border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.note-card { border-left: 3px solid var(--orange); }
+.summary-top { border-left: 3px solid var(--green); background: var(--green-soft); }
 .form-actions { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
 .form-msg { font-size: 13px; font-weight: 500; }
 .form-msg.ok { color: var(--green-dark); }
@@ -245,6 +249,10 @@ a { color: var(--accent); text-decoration: none; }
 .summary-row .v { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
 .summary-big { font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; }
 .summary-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+.db-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding: 11px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); font-size: 12.5px; color: var(--text-2); box-shadow: var(--shadow-sm); }
+.db-stat { white-space: nowrap; }
+.db-stat strong { color: var(--ink); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.db-sep { width: 1px; height: 16px; background: var(--border-strong); }
 .sc-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .sc-dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }

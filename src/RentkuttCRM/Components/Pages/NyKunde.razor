@@ -8,6 +8,17 @@
 <h1 class="page-title">@(_isEdit ? "Kundekort" : "Ny kunde")</h1>
 <p class="page-sub">Lånesøknad med kunde- og lånedata.</p>
 
+@* Notater + behovssammendrag øverst *@
+<div class="form-card note-card">
+    <h2>Notater</h2>
+    <textarea class="note-area" @bind="_k.Notater" placeholder="Skriv notater om kunden / saken her…"></textarea>
+</div>
+
+<div class="form-card summary-top">
+    <h2>Kundens behov</h2>
+    <p style="margin:0; color:var(--text-2)">@Behovssammendrag</p>
+</div>
+
 @* Kundetype *@
 <div class="form-card">
     <h2>Kundetype</h2>
@@ -17,7 +28,7 @@
     </div>
     <div class="form-grid" style="margin-top:16px">
         <div class="ff">
-            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer (9 siffer)" : "Fødselsnummer (11 siffer)")</label>
+            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(valgfritt hvis mobil oppgis)</span></label>
             <input @bind="_k.KundeId" disabled="@_isEdit" placeholder="@(_k.KundeType == "B2B" ? "9 siffer" : "11 siffer")" />
         </div>
     </div>
@@ -178,11 +189,36 @@
         }
     }
 
+    private string Behovssammendrag
+    {
+        get
+        {
+            var deler = new List<string>();
+            deler.Add(_k.KundeType == "B2B" ? "Bedrift" : "Privatperson");
+            if (!string.IsNullOrWhiteSpace(_k.Laanetype)) deler.Add($"ønsker {_k.Laanetype.ToLower()}");
+            if (_k.OnsketLaanebelop is > 0) deler.Add($"på {_k.OnsketLaanebelop:N0} kr");
+            if (_k.OnsketLopetidMnd is > 0) deler.Add($"over {_k.OnsketLopetidMnd} mnd");
+            var s = string.Join(" ", deler) + ".";
+            if (!string.IsNullOrWhiteSpace(_k.NavarendeBank)) s += $" Nåværende bank: {_k.NavarendeBank}.";
+            return s;
+        }
+    }
+
     private async Task Save()
     {
         _saving = true;
         _msg = null;
-        var (ok, error) = await Svc.SaveAsync(_k, strict: true);
+        // Tillat enten fødselsnr/orgnr eller mobilnummer som identifikator.
+        if (string.IsNullOrWhiteSpace(_k.KundeId) && !string.IsNullOrWhiteSpace(_k.Mobilnummer))
+            _k.KundeId = new string(_k.Mobilnummer.Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(_k.KundeId))
+        {
+            _ok = false;
+            _msg = "Oppgi fødselsnummer/orgnr eller mobilnummer.";
+            _saving = false;
+            return;
+        }
+        var (ok, error) = await Svc.SaveAsync(_k, strict: false);
         _ok = ok;
         if (ok)
         {

@@ -34,11 +34,11 @@ else
         <thead>
             <tr>
                 @Header("id", "Kunde-ID")
+                <th>Status</th>
                 @Header("navn", "Navn")
                 @Header("type", "Type")
                 @Header("laanetype", "Lånetype")
                 @Header("belop", "Ønsket beløp")
-                @Header("status", "Status")
                 @Header("opprettet", "Opprettet")
                 @Header("eier", "Eier")
                 <th></th>
@@ -59,11 +59,15 @@ else
                             <span class="multi-badge" title="@CaseCount(k.KundeId) saker på denne kunden">@CaseCount(k.KundeId) saker</span>
                         }
                     </td>
+                    <td>
+                        <select class="inline-select" @onchange="e => ChangeStatus(k, e)">
+                            @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
+                        </select>
+                    </td>
                     <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
-                    <td><span class="status on">@k.Status</span></td>
                     <td>@Dt(k.CreatedAt)</td>
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Eier))
@@ -81,41 +85,15 @@ else
         </tbody>
     </table>
 
-    <div class="section" style="margin-top:24px">
-        <h2>Oppsummert</h2>
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h3>Totalt</h3>
-                <div class="summary-big">@View.Count</div>
-                <div class="summary-sub">kundekort i visningen</div>
-            </div>
-            <div class="summary-card">
-                <h3>Ønsket lånebeløp</h3>
-                <div class="summary-big">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</div>
-                <div class="summary-sub">sum av visningen</div>
-            </div>
-            <div class="summary-card">
-                <h3>Status</h3>
-                @foreach (var g in View.GroupBy(k => k.Status).OrderByDescending(g => g.Count()))
-                {
-                    <div class="summary-row"><span>@g.Key</span><span class="v">@g.Count()</span></div>
-                }
-            </div>
-            <div class="summary-card">
-                <h3>Lånetype</h3>
-                @foreach (var g in View.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Uten" : k.Laanetype!).OrderByDescending(g => g.Count()))
-                {
-                    <div class="summary-row"><span>@g.Key</span><span class="v">@g.Count()</span></div>
-                }
-            </div>
-            <div class="summary-card">
-                <h3>Kundetype</h3>
-                @foreach (var g in View.GroupBy(k => k.KundeType).OrderByDescending(g => g.Count()))
-                {
-                    <div class="summary-row"><span>@g.Key</span><span class="v">@g.Count()</span></div>
-                }
-            </div>
-        </div>
+    <div class="db-summary">
+        <span class="db-stat"><strong>@View.Count</strong> saker</span>
+        <span class="db-stat"><strong>@($"{View.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</strong> samlet</span>
+        <span class="db-stat">@View.Count(k => k.KundeType == "B2C") B2C · @View.Count(k => k.KundeType == "B2B") B2B</span>
+        <span class="db-sep"></span>
+        @foreach (var g in View.GroupBy(k => k.Status).OrderByDescending(g => g.Count()))
+        {
+            <span class="db-stat">@g.Key <strong>@g.Count()</strong></span>
+        }
     </div>
 }
 
@@ -199,6 +177,13 @@ else
     }
 
     private static string Dt(DateTime d) => d == default ? "—" : d.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+
+    private async Task ChangeStatus(Kundekort k, ChangeEventArgs e)
+    {
+        var status = e.Value?.ToString() ?? k.Status;
+        k.Status = status;
+        await Svc.SetStatusAsync(k.Id, status);
+    }
 
     private async Task TakeOwnership(Kundekort k)
     {

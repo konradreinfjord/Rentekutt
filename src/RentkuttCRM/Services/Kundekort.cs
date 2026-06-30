@@ -80,6 +80,8 @@ public class Kundekort : BaseModel
     [Column("navarende_bank")] public string? NavarendeBank { get; set; }
     [Column("kommune")] public string? Kommune { get; set; }
 
+    [Column("notater")] public string? Notater { get; set; }
+
     [Column("status")] public string Status { get; set; } = "Ny";
 
     // Eierskap til saken
