@@ -55,6 +55,7 @@ else
 
     var bankSyklus = BankSyklustider(rows);
     var maxSyklus = bankSyklus.Count == 0 ? 1.0 : Math.Max(1.0, bankSyklus.Max(b => b.Snitt));
+    var bankRader = BankRader(rows).ToList();
 
     @* ---------- Nøkkeltall (metric-strip) ---------- *@
     <div class="section widget">
@@ -179,7 +180,7 @@ else
                 <tr><th>Bank</th><th class="num">Delegert</th><th class="num">Fullført</th><th>Konvertering</th><th class="num">Lånevolum</th><th class="num">Provisjon</th></tr>
             </thead>
             <tbody>
-                @foreach (var b in BankRader(rows))
+                @foreach (var b in bankRader)
                 {
                     <tr>
                         <td>@b.Navn</td>
@@ -195,7 +196,7 @@ else
                         <td class="num">@($"{b.Provisjon:N0}") kr</td>
                     </tr>
                 }
-                @if (!BankRader(rows).Any())
+                @if (bankRader.Count == 0)
                 {
                     <tr><td colspan="6" class="empty-row">Ingen delegerte søknader i perioden.</td></tr>
                 }
@@ -276,8 +277,9 @@ else
                     var avgD = g.Average(DagerSiden);
                     var raskNok = avgD <= (double)_malDager;
                     var nokSaker = uke >= _malSakerUke;
+                    var eierNavn = g.FirstOrDefault()?.EierNavn;
                     <tr>
-                        <td>@(string.IsNullOrWhiteSpace(g.First().EierNavn) ? g.Key : g.First().EierNavn)</td>
+                        <td>@(string.IsNullOrWhiteSpace(eierNavn) ? g.Key : eierNavn)</td>
                         <td class="num">@g.Count()</td>
                         <td class="num @(nokSaker ? "mal-ok" : "mal-bad")">@($"{uke:N1}")</td>
                         <td class="num @(raskNok ? "mal-ok" : "mal-bad")">@($"{avgD:N1}")</td>

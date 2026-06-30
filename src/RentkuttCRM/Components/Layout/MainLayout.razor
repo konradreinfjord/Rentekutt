@@ -26,7 +26,16 @@ else
                 </div>
             </header>
             <main class="app-content">
-                @Body
+                <ErrorBoundary @ref="_errorBoundary">
+                    <ChildContent>@Body</ChildContent>
+                    <ErrorContent>
+                        <div class="form-card" style="max-width:520px;margin:40px auto;text-align:center">
+                            <h2>Noe gikk galt</h2>
+                            <p class="page-sub">Siden støtte på en uventet feil. Prøv igjen, eller gå tilbake til dashbordet.</p>
+                            <button class="btn-primary" @onclick="NullstillFeil">Prøv igjen</button>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
             </main>
         </div>
     </div>
@@ -35,6 +44,12 @@ else
 @code {
     private DateTime _now = DateTime.Now;
     private System.Threading.Timer? _timer;
+    private ErrorBoundary? _errorBoundary;
+
+    private void NullstillFeil() => _errorBoundary?.Recover();
+
+    // Nullstill feilgrensen ved navigasjon, så en feil på én side ikke henger igjen.
+    protected override void OnParametersSet() => _errorBoundary?.Recover();
 
     protected override void OnInitialized()
     {

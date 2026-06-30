@@ -13,6 +13,9 @@ builder.Services.AddScoped(_ => new Client(
     supabaseKey,
     new SupabaseOptions { AutoConnectRealtime = false }));
 
+// Response-komprimering (Brotli/Gzip) — mindre payload, raskere lasting.
+builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
+
 // Web API (controllers) + Swagger – beholdes som før.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -81,6 +84,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseResponseCompression();
 app.UseStaticFiles();
 app.UseAntiforgery();
 

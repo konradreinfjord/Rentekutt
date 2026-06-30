@@ -1,4 +1,5 @@
 @page "/crm/database"
+@implements IDisposable
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.PartnerService Partners
@@ -167,23 +168,27 @@ else
     private string _bankFilter = "";
     private string _kommuneFilter = "";
 
-    private IEnumerable<(string Navn, int Antall)> BankListe => _rows
+    // Facet-listene avhenger kun av _rows (settes ved init) — beregn én gang, ikke per render.
+    private IEnumerable<(string Navn, int Antall)>? _bankListe;
+    private IEnumerable<(string Navn, int Antall)> BankListe => _bankListe ??= _rows
         .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank))
         .GroupBy(k => k.NavarendeBank!)
         .Select(g => (g.Key, g.Count()))
-        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1);
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
 
-    private IEnumerable<(string Navn, int Antall)> KommuneListe => _rows
+    private IEnumerable<(string Navn, int Antall)>? _kommuneListe;
+    private IEnumerable<(string Navn, int Antall)> KommuneListe => _kommuneListe ??= _rows
         .Where(k => !string.IsNullOrWhiteSpace(k.Kommune))
         .GroupBy(k => k.Kommune!)
         .Select(g => (g.Key, g.Count()))
-        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1);
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
     private string _sortField = "opprettet";
     private bool _sortAsc = false;
 
     private readonly string[] _statuses = KundekortService.Statuser;
 
     private Dictionary<string, int> _caseCount = new();
+    private Dictionary<Guid, string> _searchCache = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -192,12 +197,23 @@ else
         _partnere = await Partners.ListAsync();
         _berParams = await Beregning.HentParametreAsync();
         _caseCount = _rows.GroupBy(k => k.KundeId).ToDictionary(g => g.Key, g => g.Count());
+        _searchCache = _rows.ToDictionary(k => k.Id, Searchable);
         _loading = false;
     }
 
     private List<Partner> _partnere = new();
     private BeregningParametre _berParams = BeregningService.Standard;
-    private BeregningResultat Ber(Kundekort k) => BeregningService.Beregn(k, _berParams);
+
+    // Beregn er deterministisk per kundekort (inntekt/gjeld/fnr) og brukes i både
+    // sortering og rad-render — cache så den kjøres én gang per kort, ikke per kolonne/sammenligning.
+    private readonly Dictionary<Guid, BeregningResultat> _berCache = new();
+    private BeregningResultat Ber(Kundekort k)
+    {
+        if (_berCache.TryGetValue(k.Id, out var r)) return r;
+        r = BeregningService.Beregn(k, _berParams);
+        _berCache[k.Id] = r;
+        return r;
+    }
 
     private decimal SamletSum => View.Sum(k => k.OnsketLaanebelop ?? 0);
     private string SamletBelop => SamletSum >= 1_000_000 ? $"{SamletSum / 1_000_000:N0}" : $"{SamletSum / 1_000:N0}";
@@ -207,7 +223,15 @@ else
     {
         var bank = e.Value?.ToString();
         k.DelegertBank = string.IsNullOrWhiteSpace(bank) ? null : bank;
+        InvaliderRad(k);
         await Svc.SetDelegertBankAsync(k.Id, k.DelegertBank);
+    }
+
+    // Et felt på en rad endret seg — invalider filter/sort-cache og radens søkestreng.
+    private void InvaliderRad(Kundekort k)
+    {
+        InvaliderView();
+        _searchCache[k.Id] = Searchable(k);
     }
 
     private int CaseCount(string kundeId) => _caseCount.GetValueOrDefault(kundeId, 1);
@@ -235,10 +259,19 @@ else
         }
     }
 
+    // Memoiser det filtrerte/sorterte settet — getteren refereres mange ganger per render
+    // (stats-bokser, paginering, foreach). Recompute kun når filter/sort/data endres.
+    private List<Kundekort>? _viewCache;
+    private string _viewKey = "";
+    private void InvaliderView() => _viewCache = null;
+
     private List<Kundekort> View
     {
         get
         {
+            var cacheKey = $"{_rows.Count}|{_search}|{_statusFilter}|{_typeFilter}|{_bankFilter}|{_kommuneFilter}|{_sortField}|{_sortAsc}";
+            if (_viewCache is not null && cacheKey == _viewKey) return _viewCache;
+
             IEnumerable<Kundekort> q = _rows;
 
             if (!string.IsNullOrWhiteSpace(_search))
@@ -247,7 +280,7 @@ else
                 var terms = _search.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 q = q.Where(k =>
                 {
-                    var hay = Searchable(k);
+                    var hay = _searchCache.GetValueOrDefault(k.Id) ?? Searchable(k);
                     return terms.All(t => hay.Contains(t));
                 });
             }
@@ -278,7 +311,8 @@ else
                 _ => k => k.CreatedAt,
             };
             q = _sortAsc ? q.OrderBy(key) : q.OrderByDescending(key);
-            return q.ToList();
+            _viewKey = cacheKey;
+            return _viewCache = q.ToList();
         }
     }
 
@@ -310,6 +344,7 @@ else
     {
         var status = e.Value?.ToString() ?? k.Status;
         k.Status = status;
+        InvaliderRad(k);
         await Svc.SetStatusAsync(k.Id, status);
     }
 
@@ -319,6 +354,7 @@ else
         await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier);
         k.Eier = eier;
         k.EierNavn = Session.UserName ?? eier;
+        InvaliderRad(k);
     }
 
     private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
@@ -331,7 +367,11 @@ else
         _copied = value;
         StateHasChanged();
         await Task.Delay(1400);
+        if (_disposed) return;          // unngå render etter at brukeren har navigert bort
         _copied = null;
         StateHasChanged();
     }
+
+    private bool _disposed;
+    public void Dispose() => _disposed = true;
 }
