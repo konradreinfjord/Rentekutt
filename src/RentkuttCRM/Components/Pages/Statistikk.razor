@@ -79,13 +79,13 @@ else
         _closeRate = _total == 0 ? 0 : 100.0 * fullfort / _total;
         _formidlet = _rows.Where(k => k.Status == "Fullført").Sum(k => k.OnsketLaanebelop ?? 0);
 
-        // Opptjent provisjon = gjennomsnittlig partnersats anvendt på fullført volum.
-        // (Estimat — kundekort knyttes ikke til en bestemt partner ennå.)
-        if (partnere.Count > 0)
+        // Opptjent provisjon: per fullført sak, bruk satsen til banken den er delegert til.
+        var partnerMap = partnere
+            .GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
+        foreach (var k in _rows.Where(k => k.Status == "Fullført"))
         {
-            var avgProv = partnere.Average(p => ParseDec(p.Provisjon));
-            var avgEngang = partnere.Average(p => ParseDec(p.Engangssum));
-            _opptjent = _formidlet * (avgProv / 100m) + fullfort * avgEngang;
+            if (!string.IsNullOrWhiteSpace(k.DelegertBank) && partnerMap.TryGetValue(k.DelegertBank, out var p))
+                _opptjent += (k.OnsketLaanebelop ?? 0) * (ParseDec(p.Provisjon) / 100m) + ParseDec(p.Engangssum);
         }
 
         _funnel = new()

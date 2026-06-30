@@ -1,6 +1,7 @@
 @page "/crm/database"
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.PartnerService Partners
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -59,6 +60,7 @@ else
         <thead>
             <tr>
                 @Header("status", "Status")
+                @Header("delegert", "Delegert til bank")
                 @Header("navn", "Navn")
                 @Header("personnr", "Personnr")
                 @Header("telefon", "Telefon")
@@ -79,7 +81,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="16" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="17" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
@@ -87,6 +89,12 @@ else
                     <td>
                         <select class="inline-select" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
+                        </select>
+                    </td>
+                    <td>
+                        <select class="inline-select" @onchange="e => DelegateBank(k, e)">
+                            <option value="">— ingen —</option>
+                            @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>
                     </td>
                     <td>
@@ -158,8 +166,18 @@ else
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         _rows = await Svc.ListAsync();
+        _partnere = await Partners.ListAsync();
         _caseCount = _rows.GroupBy(k => k.KundeId).ToDictionary(g => g.Key, g => g.Count());
         _loading = false;
+    }
+
+    private List<Partner> _partnere = new();
+
+    private async Task DelegateBank(Kundekort k, ChangeEventArgs e)
+    {
+        var bank = e.Value?.ToString();
+        k.DelegertBank = string.IsNullOrWhiteSpace(bank) ? null : bank;
+        await Svc.SetDelegertBankAsync(k.Id, k.DelegertBank);
     }
 
     private int CaseCount(string kundeId) => _caseCount.GetValueOrDefault(kundeId, 1);
@@ -168,7 +186,7 @@ else
     {
         k.KundeId, k.FulltNavn, k.Foedselsnummer, k.Mobilnummer, k.Epost,
         k.Adresse, k.Postnummer, k.Poststed, k.Kommune, k.NavarendeBank,
-        k.Laanetype, k.Status, k.KundeType, k.EierNavn, k.Notater, k.Kilde,
+        k.Laanetype, k.Status, k.KundeType, k.EierNavn, k.Notater, k.Kilde, k.DelegertBank,
         k.OnsketLaanebelop?.ToString()
     }.Where(x => !string.IsNullOrEmpty(x))).ToLowerInvariant();
 
@@ -208,6 +226,7 @@ else
                 "bank" => k => k.NavarendeBank ?? "",
                 "belop" => k => k.OnsketLaanebelop ?? 0,
                 "status" => k => k.Status,
+                "delegert" => k => k.DelegertBank ?? "",
                 "eier" => k => k.EierNavn ?? k.Eier ?? "",
                 _ => k => k.CreatedAt,
             };

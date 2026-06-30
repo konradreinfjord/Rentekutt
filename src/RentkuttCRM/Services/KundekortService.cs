@@ -153,6 +153,23 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Sletting av kundekort feilet"); }
     }
 
+    public async Task SetDelegertBankAsync(Guid id, string? bank)
+    {
+        bank = string.IsNullOrWhiteSpace(bank) ? null : bank;
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) k.DelegertBank = bank;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.DelegertBank!, bank ?? "").Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Delegering til bank feilet"); }
+    }
+
     public async Task<Kundekort?> GetAsync(Guid id)
     {
         if (!IsConfigured) return _staging.FirstOrDefault(x => x.Id == id);
