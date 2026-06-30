@@ -127,10 +127,16 @@ public class SoknadPayload
     public Kundekort ToKundekort()
     {
         var type = string.Equals(KundeType, "B2B", StringComparison.OrdinalIgnoreCase) ? "B2B" : "B2C";
+
+        // Id-prioritet: fødselsnr/orgnr → mobilnummer (kun siffer) → fallback (genereres i SaveAsync).
+        var primaer = (type == "B2B" ? Orgnr : Fodselsnummer)?.Trim();
+        var mobilSiffer = new string((Mobilnummer ?? "").Where(char.IsDigit).ToArray());
+        var id = !string.IsNullOrWhiteSpace(primaer) ? primaer : mobilSiffer;
+
         return new Kundekort
         {
             KundeType = type,
-            KundeId = (type == "B2B" ? Orgnr : Fodselsnummer)?.Trim() ?? "",
+            KundeId = id ?? "",
             Foedselsnummer = Fodselsnummer,
             FulltNavn = FulltNavn,
             Mobilnummer = Mobilnummer,

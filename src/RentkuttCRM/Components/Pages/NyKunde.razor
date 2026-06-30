@@ -180,7 +180,7 @@
     {
         _saving = true;
         _msg = null;
-        var (ok, error) = await Svc.SaveAsync(_k);
+        var (ok, error) = await Svc.SaveAsync(_k, strict: true);
         _ok = ok;
         if (ok)
         {

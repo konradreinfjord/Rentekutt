@@ -27,14 +27,26 @@ public class KundekortService
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
     }
 
-    public async Task<(bool ok, string? error)> SaveAsync(Kundekort k)
+    /// <param name="strict">Når true (manuelt skjema) kreves korrekt fødselsnr/orgnr-lengde.
+    /// Når false (API/webhook) opprettes saken uansett — id = fødselsnr → mobil → fallback.</param>
+    public async Task<(bool ok, string? error)> SaveAsync(Kundekort k, bool strict = false)
     {
-        // B2C: id = fødselsnummer. B2B: id = orgnr.
         k.KundeId = (k.KundeId ?? "").Trim();
-        var expected = k.KundeType == "B2B" ? 9 : 11;
-        if (k.KundeId.Length != expected)
-            return (false, $"{(k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer")} må være {expected} siffer.");
-        if (k.KundeType == "B2C") k.Foedselsnummer = k.KundeId;
+
+        if (strict)
+        {
+            var expected = k.KundeType == "B2B" ? 9 : 11;
+            if (k.KundeId.Length != expected)
+                return (false, $"{(k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer")} må være {expected} siffer.");
+        }
+        else if (string.IsNullOrWhiteSpace(k.KundeId))
+        {
+            // Verken fødselsnr eller mobil — opprett saken med en generert id.
+            k.KundeId = "lead-" + Guid.NewGuid().ToString("N")[..12];
+        }
+
+        if (k.KundeType == "B2C" && string.IsNullOrWhiteSpace(k.Foedselsnummer) && k.KundeId.Length == 11)
+            k.Foedselsnummer = k.KundeId;
 
         if (!IsConfigured)
         {
