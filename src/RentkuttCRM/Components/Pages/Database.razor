@@ -62,6 +62,11 @@ else
             <tr>
                 @Header("status", "Status")
                 @Header("delegert", "Delegert til bank")
+                @Header("type", "Type")
+                @Header("kilde", "Leadskilde")
+                @Header("laanetype", "Lånetype")
+                @Header("bank", "Bank")
+                @Header("belop", "Ønsket beløp")
                 @Header("navn", "Navn")
                 @Header("personnr", "Personnr")
                 @Header("telefon", "Telefon")
@@ -69,11 +74,6 @@ else
                 @Header("kommune", "Kommune")
                 @Header("postnr", "Postnr")
                 @Header("adresse", "Adresse")
-                @Header("type", "Type")
-                @Header("kilde", "Leadskilde")
-                @Header("laanetype", "Lånetype")
-                @Header("bank", "Bank")
-                @Header("belop", "Ønsket beløp")
                 @Header("belaning", "Belåningsgrad")
                 @Header("likviditet", "Likviditet")
                 @Header("opprettet", "Opprettet")
@@ -100,19 +100,6 @@ else
                             @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>
                     </td>
-                    <td>
-                        <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
-                        @if (CaseCount(k.KundeId) > 1)
-                        {
-                            <span class="multi-badge" title="@CaseCount(k.KundeId) søknader på denne kunden">@CaseCount(k.KundeId) søknader</span>
-                        }
-                    </td>
-                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
-                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
-                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
-                    <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
-                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
-                    <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Kilde))
@@ -127,6 +114,19 @@ else
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                    <td>
+                        <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
+                        @if (CaseCount(k.KundeId) > 1)
+                        {
+                            <span class="multi-badge" title="@CaseCount(k.KundeId) søknader på denne kunden">@CaseCount(k.KundeId) søknader</span>
+                        }
+                    </td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
                     <td>@{ var br = Ber(k); }@(br.Belaningsgrad > 0 ? $"{br.Belaningsgrad:N1} %" : "—")</td>
                     <td class="@(Ber(k).Likviditet < 0 ? "neg-tall" : "")">@($"{Ber(k).Likviditet:N0}") kr</td>
                     <td>@Dt(k.CreatedAt)</td>
