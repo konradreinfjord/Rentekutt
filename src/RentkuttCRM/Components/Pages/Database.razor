@@ -24,6 +24,17 @@
     <span class="db-count">@View.Count av @_rows.Count</span>
 </div>
 
+<div class="db-stats">
+    <div class="db-box"><span class="db-box-num">@View.Count</span><span class="db-box-lbl">saker</span></div>
+    <div class="db-box"><span class="db-box-num">@($"{View.Sum(k => k.OnsketLaanebelop ?? 0) / 1_000_000:N1}") mill</span><span class="db-box-lbl">samlet</span></div>
+    <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2C")</span><span class="db-box-lbl">B2C</span></div>
+    <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2B")</span><span class="db-box-lbl">B2B</span></div>
+    @foreach (var g in View.GroupBy(k => k.Status).OrderByDescending(g => g.Count()).Take(4))
+    {
+        <div class="db-box"><span class="db-box-num">@g.Count()</span><span class="db-box-lbl">@g.Key</span></div>
+    }
+</div>
+
 @if (_loading)
 {
     <p class="page-sub">Laster…</p>
@@ -85,16 +96,6 @@ else
         </tbody>
     </table>
 
-    <div class="db-summary">
-        <span class="db-stat"><strong>@View.Count</strong> saker</span>
-        <span class="db-stat"><strong>@($"{View.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</strong> samlet</span>
-        <span class="db-stat">@View.Count(k => k.KundeType == "B2C") B2C · @View.Count(k => k.KundeType == "B2B") B2B</span>
-        <span class="db-sep"></span>
-        @foreach (var g in View.GroupBy(k => k.Status).OrderByDescending(g => g.Count()))
-        {
-            <span class="db-stat">@g.Key <strong>@g.Count()</strong></span>
-        }
-    </div>
 }
 
 @code {

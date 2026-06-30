@@ -249,10 +249,10 @@ a { color: var(--accent); text-decoration: none; }
 .summary-row .v { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
 .summary-big { font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; }
 .summary-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
-.db-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding: 11px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); font-size: 12.5px; color: var(--text-2); box-shadow: var(--shadow-sm); }
-.db-stat { white-space: nowrap; }
-.db-stat strong { color: var(--ink); font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.db-sep { width: 1px; height: 16px; background: var(--border-strong); }
+.db-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.db-box { display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 7px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: var(--shadow-sm); }
+.db-box-num { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.db-box-lbl { font-size: 10.5px; color: var(--text-muted); margin-top: 1px; font-weight: 500; }
 .sc-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .sc-dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
