@@ -71,6 +71,7 @@ public class WebhookController : ControllerBase
             }
 
             var k = MapFlexible(flat);
+            k.Kilde = KildeLabel(hook.Name);
             var (ok, error) = await _kundekort.SaveAsync(k);
             if (!ok) { _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
 
@@ -86,6 +87,13 @@ public class WebhookController : ControllerBase
         await _events.LogAsync("Webhook", $"{opprettet} lead(s) mottatt ({sisteInfo})", hook.Name);
         return Ok(new { status = "mottatt", opprettet });
     }
+
+    private static string KildeLabel(string hookName) => hookName switch
+    {
+        WebhookService.PrismatchName => "Prismatch",
+        WebhookService.InboundName => "Rentekutt.no",
+        _ => hookName,
+    };
 
     private string? ExtractToken()
     {

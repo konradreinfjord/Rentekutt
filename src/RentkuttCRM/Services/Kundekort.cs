@@ -81,6 +81,7 @@ public class Kundekort : BaseModel
     [Column("kommune")] public string? Kommune { get; set; }
 
     [Column("notater")] public string? Notater { get; set; }
+    [Column("kilde")] public string? Kilde { get; set; }
 
     [Column("status")] public string Status { get; set; } = "Ny";
 

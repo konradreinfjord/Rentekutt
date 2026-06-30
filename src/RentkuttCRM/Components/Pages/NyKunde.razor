@@ -238,6 +238,7 @@
             _saving = false;
             return;
         }
+        if (_k.Id == Guid.Empty && string.IsNullOrWhiteSpace(_k.Kilde)) _k.Kilde = "Manuell";
         var (ok, error) = await Svc.SaveAsync(_k, strict: false);
         _ok = ok;
         if (ok)

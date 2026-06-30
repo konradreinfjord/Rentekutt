@@ -60,6 +60,7 @@ else
                 @Header("postnr", "Postnr")
                 @Header("adresse", "Adresse")
                 @Header("type", "Type")
+                @Header("kilde", "Leadskilde")
                 @Header("laanetype", "Lånetype")
                 @Header("bank", "Bank")
                 @Header("belop", "Ønsket beløp")
@@ -71,7 +72,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="14" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="15" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
@@ -94,6 +95,7 @@ else
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Kilde) ? "—" : k.Kilde)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
@@ -158,7 +160,7 @@ else
     {
         k.KundeId, k.FulltNavn, k.Foedselsnummer, k.Mobilnummer, k.Epost,
         k.Adresse, k.Postnummer, k.Poststed, k.Kommune, k.NavarendeBank,
-        k.Laanetype, k.Status, k.KundeType, k.EierNavn, k.Notater,
+        k.Laanetype, k.Status, k.KundeType, k.EierNavn, k.Notater, k.Kilde,
         k.OnsketLaanebelop?.ToString()
     }.Where(x => !string.IsNullOrEmpty(x))).ToLowerInvariant();
 
@@ -192,6 +194,7 @@ else
                 "postnr" => k => k.Postnummer ?? "",
                 "adresse" => k => k.Adresse ?? "",
                 "type" => k => k.KundeType,
+                "kilde" => k => k.Kilde ?? "",
                 "laanetype" => k => k.Laanetype ?? "",
                 "bank" => k => k.NavarendeBank ?? "",
                 "belop" => k => k.OnsketLaanebelop ?? 0,
