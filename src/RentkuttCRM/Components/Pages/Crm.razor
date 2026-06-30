@@ -44,6 +44,7 @@ else
                 @foreach (var dag in _dager)
                 {
                     <div class="daybar-col" title="@dag.Label — @dag.Total leads">
+                        <div class="daybar-total">@(dag.Total > 0 ? dag.Total.ToString() : "")</div>
                         <div class="daybar-stack">
                             @foreach (var s in _statuser)
                             {
