@@ -56,6 +56,7 @@ else
                 @Header("navn", "Navn")
                 @Header("personnr", "Personnr")
                 @Header("telefon", "Telefon")
+                @Header("epost", "E-post")
                 @Header("kommune", "Kommune")
                 @Header("postnr", "Postnr")
                 @Header("adresse", "Adresse")
@@ -72,7 +73,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="15" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="16" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
@@ -91,6 +92,7 @@ else
                     </td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer)</td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
@@ -190,6 +192,7 @@ else
                 "navn" => k => k.FulltNavn ?? "",
                 "personnr" => k => k.Foedselsnummer ?? "",
                 "telefon" => k => k.Mobilnummer ?? "",
+                "epost" => k => k.Epost ?? "",
                 "kommune" => k => k.Kommune ?? "",
                 "postnr" => k => k.Postnummer ?? "",
                 "adresse" => k => k.Adresse ?? "",
