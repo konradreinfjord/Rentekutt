@@ -34,7 +34,7 @@
                         <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                         <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
                         <td><span class="status on">@k.Status</span></td>
-                        <td><button class="btn-sm" @onclick="() => Open(k.KundeId)">Åpne</button></td>
+                        <td><button class="btn-sm" @onclick="() => Open(k.Id)">Åpne</button></td>
                     </tr>
                 }
             </tbody>
@@ -54,5 +54,5 @@
         _loading = false;
     }
 
-    private void Open(string kundeId) => Nav.NavigateTo($"/crm/ny-kunde?id={kundeId}");
+    private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
 }

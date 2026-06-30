@@ -36,6 +36,7 @@
         </div>
         <div class="ff"><label>Ønsket lånebeløp (kr)</label><input type="number" @bind="_k.OnsketLaanebelop" /></div>
         <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
+        <div class="ff"><label>Nåværende bank</label><input @bind="_k.NavarendeBank" /></div>
     </div>
 </div>
 
@@ -49,6 +50,7 @@
         <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>
         <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
         <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
+        <div class="ff"><label>Kommune</label><input @bind="_k.Kommune" /></div>
     </div>
 </div>
 
@@ -169,9 +171,9 @@
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        if (!string.IsNullOrEmpty(Id))
+        if (Guid.TryParse(Id, out var caseId))
         {
-            var existing = await Svc.GetAsync(Id);
+            var existing = await Svc.GetAsync(caseId);
             if (existing is not null) { _k = existing; _isEdit = true; }
         }
     }

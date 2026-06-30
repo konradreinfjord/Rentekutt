@@ -10,9 +10,10 @@ namespace RentkuttCRM.Services;
 [Table("kundekort")]
 public class Kundekort : BaseModel
 {
-    [PrimaryKey("kunde_id", true)]
-    public string KundeId { get; set; } = "";
+    [PrimaryKey("id", false)]
+    public Guid Id { get; set; }
 
+    [Column("kunde_id")] public string KundeId { get; set; } = "";
     [Column("kunde_type")] public string KundeType { get; set; } = "B2C";
 
     // A. Søker
@@ -74,6 +75,10 @@ public class Kundekort : BaseModel
 
     // H. Utbetaling
     [Column("kontonummer")] public string? Kontonummer { get; set; }
+
+    // Bank-refinansiering (fra leads)
+    [Column("navarende_bank")] public string? NavarendeBank { get; set; }
+    [Column("kommune")] public string? Kommune { get; set; }
 
     [Column("status")] public string Status { get; set; } = "Ny";
 

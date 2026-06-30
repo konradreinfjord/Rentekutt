@@ -52,7 +52,13 @@ else
             @foreach (var k in View)
             {
                 <tr>
-                    <td class="mono-cell">@k.KundeId</td>
+                    <td class="mono-cell">
+                        @k.KundeId
+                        @if (CaseCount(k.KundeId) > 1)
+                        {
+                            <span class="multi-badge" title="@CaseCount(k.KundeId) saker på denne kunden">@CaseCount(k.KundeId) saker</span>
+                        }
+                    </td>
                     <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
@@ -69,7 +75,7 @@ else
                             <span>@(k.Eier == Session.Email ? "Deg" : k.EierNavn ?? k.Eier)</span>
                         }
                     </td>
-                    <td><button class="btn-sm" @onclick="() => Open(k.KundeId)">Åpne</button></td>
+                    <td><button class="btn-sm" @onclick="() => Open(k.Id)">Åpne</button></td>
                 </tr>
             }
         </tbody>
@@ -125,12 +131,17 @@ else
 
     private readonly string[] _statuses = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
 
+    private Dictionary<string, int> _caseCount = new();
+
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         _rows = await Svc.ListAsync();
+        _caseCount = _rows.GroupBy(k => k.KundeId).ToDictionary(g => g.Key, g => g.Count());
         _loading = false;
     }
+
+    private int CaseCount(string kundeId) => _caseCount.GetValueOrDefault(kundeId, 1);
 
     private List<Kundekort> View
     {
@@ -192,10 +203,10 @@ else
     private async Task TakeOwnership(Kundekort k)
     {
         var eier = Session.Email ?? Session.UserName ?? "ukjent";
-        await Svc.SetEierAsync(k.KundeId, eier, Session.UserName ?? eier);
+        await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier);
         k.Eier = eier;
         k.EierNavn = Session.UserName ?? eier;
     }
 
-    private void Open(string kundeId) => Nav.NavigateTo($"/crm/ny-kunde?id={kundeId}");
+    private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
 }

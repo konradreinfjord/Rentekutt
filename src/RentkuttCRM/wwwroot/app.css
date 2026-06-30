@@ -196,6 +196,7 @@ a { color: var(--accent); text-decoration: none; }
 .check { color: var(--green); font-weight: 700; }
 .mono-cell { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 .empty-row { text-align: center; color: var(--text-muted); font-style: italic; padding: 20px 14px !important; }
+.multi-badge { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--orange); background: #f8a74222; border: 1px solid #f8a74255; padding: 1px 7px; border-radius: 999px; font-family: var(--mono); }
 
 /* ---------- Skjema (kundekort) ---------- */
 .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 13px 16px; margin-bottom: 11px; box-shadow: var(--shadow-sm); }

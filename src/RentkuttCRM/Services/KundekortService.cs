@@ -50,7 +50,8 @@ public class KundekortService
 
         if (!IsConfigured)
         {
-            _staging.RemoveAll(x => x.KundeId == k.KundeId);
+            if (k.Id == Guid.Empty) k.Id = Guid.NewGuid();
+            _staging.RemoveAll(x => x.Id == k.Id);
             _staging.Add(k);
             return (true, null);
         }
@@ -58,7 +59,11 @@ public class KundekortService
         try
         {
             await EnsureReadyAsync();
-            await _client.From<Kundekort>().Upsert(k);
+            // Tom Id = ny sak (DB genererer id). Ellers oppdater eksisterende sak.
+            if (k.Id == Guid.Empty)
+                await _client.From<Kundekort>().Insert(k);
+            else
+                await _client.From<Kundekort>().Update(k);
             return (true, null);
         }
         catch (Exception ex)
@@ -100,12 +105,12 @@ public class KundekortService
         }
     }
 
-    /// <summary>Ta eierskap til en sak.</summary>
-    public async Task SetEierAsync(string kundeId, string eier, string eierNavn)
+    /// <summary>Ta eierskap til en sak (på sak-Id).</summary>
+    public async Task SetEierAsync(Guid id, string eier, string eierNavn)
     {
         if (!IsConfigured)
         {
-            var k = _staging.FirstOrDefault(x => x.KundeId == kundeId);
+            var k = _staging.FirstOrDefault(x => x.Id == id);
             if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; }
             return;
         }
@@ -113,7 +118,7 @@ public class KundekortService
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>()
-                .Where(x => x.KundeId == kundeId)
+                .Where(x => x.Id == id)
                 .Set(x => x.Eier!, eier)
                 .Set(x => x.EierNavn!, eierNavn)
                 .Update();
@@ -121,17 +126,17 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
     }
 
-    public async Task<Kundekort?> GetAsync(string kundeId)
+    public async Task<Kundekort?> GetAsync(Guid id)
     {
-        if (!IsConfigured) return _staging.FirstOrDefault(x => x.KundeId == kundeId);
+        if (!IsConfigured) return _staging.FirstOrDefault(x => x.Id == id);
         try
         {
             await EnsureReadyAsync();
-            return await _client.From<Kundekort>().Where(x => x.KundeId == kundeId).Single();
+            return await _client.From<Kundekort>().Where(x => x.Id == id).Single();
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Henting av kundekort {Id} feilet", kundeId);
+            _log.LogError(ex, "Henting av kundekort {Id} feilet", id);
             return null;
         }
     }
