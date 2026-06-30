@@ -4,6 +4,7 @@
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.WebhookService Webhooks
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
+@inject RentkuttCRM.Services.SettingsService Settings
 @inject NavigationManager Nav
 
 <PageTitle>Admin — Rentekutt</PageTitle>
@@ -130,7 +131,7 @@ else if (_active == "Brukere")
         else
         {
             <table class="data-table">
-                <thead><tr><th>Navn</th><th>E-post</th><th>Rolle</th><th>2FA</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Navn</th><th>E-post</th><th>Rolle</th><th>2FA</th><th>Nytt passord</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var u in _userRows)
                     {
@@ -150,6 +151,13 @@ else if (_active == "Brukere")
                                     @(u.TwoFactorEnabled ? "På" : "Av")
                                 </button>
                             </td>
+                            <td>
+                                <span class="token-row">
+                                    <input class="inline-input" type="password" style="width:96px" placeholder="nytt"
+                                           value="@PwInput(u.Id)" @onchange="e => SetPwInput(u.Id, e)" />
+                                    <button class="btn-sm" @onclick="() => SetPassword(u)">Sett</button>
+                                </span>
+                            </td>
                             <td><span class="status @(u.Active ? "on" : "off")">@(u.Active ? "Aktiv" : "Deaktivert")</span></td>
                             <td><button class="btn-sm btn-danger" @onclick="() => ToggleActive(u)">@(u.Active ? "Deaktiver" : "Aktiver")</button></td>
                         </tr>
@@ -158,6 +166,11 @@ else if (_active == "Brukere")
             </table>
         }
     </div>
+
+    @if (!string.IsNullOrEmpty(_pwMsg))
+    {
+        <p class="page-sub" style="margin:-8px 0 18px">@_pwMsg</p>
+    }
 
     <div class="section">
         <h2>Ny bruker</h2>
@@ -184,21 +197,6 @@ else if (_active == "Brukere")
         }
     </div>
 
-    <div class="section">
-        <h2>Endre passord</h2>
-        <div class="rule-builder">
-            <div class="rb-field" style="min-width:200px">
-                <label>Bruker</label>
-                <select class="rb-input" @bind="_pwUserId">
-                    <option value="">— velg bruker —</option>
-                    @foreach (var u in _userRows) { <option value="@u.Id">@u.Email</option> }
-                </select>
-            </div>
-            <div class="rb-field"><label>Nytt passord</label><input class="rb-input" type="password" @bind="_pwNew" placeholder="Minst 6 tegn" /></div>
-            <button class="btn-primary rb-add" @onclick="ChangePassword" disabled="@_pwBusy">@(_pwBusy ? "Lagrer…" : "Sett nytt passord")</button>
-        </div>
-        @if (!string.IsNullOrEmpty(_pwMsg)) { <p class="page-sub" style="margin-top:10px">@_pwMsg</p> }
-    </div>
 }
 else if (_active == "API og Data")
 {
@@ -314,6 +312,18 @@ else if (_active == "API og Data")
                     <span class="k">Token-URL</span><span class="v">@LinkMobility.TokenUrl</span>
                     <span class="k">Send-URL</span><span class="v">@LinkMobility.SendUrl</span>
                 </div>
+                <h3 class="ww-h">SMS-rategrense (per bruker)</h3>
+                <p class="page-sub" style="margin:0 0 8px; font-size:12px">Sikring mot misbruk og kostnad: maks antall innloggingskoder per bruker.</p>
+                <div class="rule-builder" style="margin-bottom:8px">
+                    <div class="rb-field rb-op" style="max-width:130px"><label>Maks per time</label><input class="rb-input" type="number" min="1" @bind="_smsMaxHour" /></div>
+                    <div class="rb-field rb-op" style="max-width:130px"><label>Maks per 24t</label><input class="rb-input" type="number" min="1" @bind="_smsMax24h" /></div>
+                    <button class="btn-primary rb-add" @onclick="SaveSmsLimits">Lagre</button>
+                </div>
+                @if (!string.IsNullOrEmpty(_smsMsg))
+                {
+                    <p class="page-sub" style="margin:0 0 16px; font-size:12px">@_smsMsg</p>
+                }
+
                 <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
                 <pre class="code-block">LinkMobility__ClientId      = &lt;klient-ID&gt;
 LinkMobility__ClientSecret  = &lt;klient-hemmelighet&gt;
@@ -548,6 +558,20 @@ else if (_active == "GDPR")
         await LoadUsersAsync();
         _webhook = await Webhooks.GetInboundAsync();
         _ipList = _webhook?.IpAllowlist ?? "";
+        _smsMaxHour = await Settings.GetIntAsync(TwoFactorService.KeyMaxPerHour, TwoFactorService.DefaultMaxPerHour);
+        _smsMax24h = await Settings.GetIntAsync(TwoFactorService.KeyMaxPer24h, TwoFactorService.DefaultMaxPer24h);
+    }
+
+    private int _smsMaxHour = TwoFactorService.DefaultMaxPerHour;
+    private int _smsMax24h = TwoFactorService.DefaultMaxPer24h;
+    private string? _smsMsg;
+    private async Task SaveSmsLimits()
+    {
+        if (_smsMaxHour < 1) _smsMaxHour = 1;
+        if (_smsMax24h < 1) _smsMax24h = 1;
+        await Settings.SetAsync(TwoFactorService.KeyMaxPerHour, _smsMaxHour.ToString());
+        await Settings.SetAsync(TwoFactorService.KeyMaxPer24h, _smsMax24h.ToString());
+        _smsMsg = "Rategrense lagret.";
     }
 
     private string _ipList = "";
@@ -603,20 +627,17 @@ else if (_active == "GDPR")
     private bool _creating;
     private string? _userMsg;
 
-    // Endre passord
-    private string _pwUserId = "", _pwNew = "";
-    private bool _pwBusy;
+    // Endre passord (per bruker-rad)
+    private readonly Dictionary<Guid, string> _pwInputs = new();
     private string? _pwMsg;
+    private string PwInput(Guid id) => _pwInputs.GetValueOrDefault(id, "");
+    private void SetPwInput(Guid id, ChangeEventArgs e) => _pwInputs[id] = e.Value?.ToString() ?? "";
 
-    private async Task ChangePassword()
+    private async Task SetPassword(UserRow u)
     {
-        _pwMsg = null;
-        if (!Guid.TryParse(_pwUserId, out var id)) { _pwMsg = "Velg en bruker."; return; }
-        _pwBusy = true;
-        var (ok, error) = await Users.SetPasswordAsync(id, _pwNew);
-        _pwMsg = ok ? "Passord oppdatert." : (error ?? "Kunne ikke endre passord.");
-        if (ok) _pwNew = "";
-        _pwBusy = false;
+        var (ok, error) = await Users.SetPasswordAsync(u.Id, _pwInputs.GetValueOrDefault(u.Id, ""));
+        _pwMsg = ok ? $"Passord oppdatert for {u.Email}." : (error ?? "Kunne ikke endre passord.");
+        if (ok) _pwInputs[u.Id] = "";
     }
 
     private async Task LoadUsersAsync()
