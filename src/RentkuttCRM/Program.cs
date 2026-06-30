@@ -19,9 +19,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Blazor (Interactive Server) – frontend i samme prosjekt.
-// DetailedErrors midlertidig på for å vise eksakt feil i nettleseren ved krasj.
+// DetailedErrors KUN i Development (aldri lekke stack traces til klient i prod).
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents(o => o.DetailedErrors = true);
+    .AddInteractiveServerComponents(o => o.DetailedErrors = builder.Environment.IsDevelopment());
 
 // Innloggings-tilstand per økt (staging).
 builder.Services.AddScoped<SessionState>();
@@ -68,9 +68,12 @@ using (var startupScope = app.Services.CreateScope())
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
 
-// Swagger eksponeres også i produksjon → https://rentkutt-crm.azurewebsites.net/swagger
-app.UseSwagger();
-app.UseSwaggerUI();
+// Swagger KUN i Development — eksponer ikke API-flaten i produksjon.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseStaticFiles();
 app.UseAntiforgery();
