@@ -24,7 +24,19 @@
 else
 {
     <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-value">@_nye24</div><div class="kpi-label">Nye søknader (24t)</div></div>
+        <div class="kpi-card">
+            <div class="kpi-value">@_nye24</div>
+            <div class="kpi-label">Nye søknader (24t)</div>
+            @if (_kilde24.Count > 0)
+            {
+                <div class="kpi-breakdown">
+                    @foreach (var (kilde, antall) in _kilde24)
+                    {
+                        <div class="kpi-brk-row"><span class="kilde-badge @KundekortService.KildeBadgeKlasse(kilde)">@kilde</span><span class="kpi-brk-num">@antall</span></div>
+                    }
+                </div>
+            }
+        </div>
         <div class="kpi-card"><div class="kpi-value">@_rows.Count</div><div class="kpi-label">Totalt søknader</div></div>
         <div class="kpi-card"><div class="kpi-value">@_mine</div><div class="kpi-label">Mine søknader</div></div>
         <div class="kpi-card"><div class="kpi-value">@($"{_pipeline / 1_000_000:N1}") mill</div><div class="kpi-label">Pipeline-verdi</div></div>
@@ -47,6 +59,7 @@ else
 @code {
     private List<Kundekort> _rows = new();
     private Dictionary<string, int> _statusCount = new();
+    private List<(string Kilde, int Antall)> _kilde24 = new();
     private int _nye24;
     private int _mine;
     private decimal _pipeline;
@@ -62,7 +75,13 @@ else
         _rows = await Svc.ListAsync();
 
         var na = DateTime.UtcNow;
-        _nye24 = _rows.Count(k => k.CreatedAt > na.AddHours(-24));
+        var siste24 = _rows.Where(k => k.CreatedAt > na.AddHours(-24)).ToList();
+        _nye24 = siste24.Count;
+        _kilde24 = siste24
+            .GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
+            .Select(g => (g.Key, g.Count()))
+            .OrderByDescending(x => x.Item2)
+            .ToList();
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
         _statusCount = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());

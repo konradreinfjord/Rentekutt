@@ -114,7 +114,16 @@ else
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
                     <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
-                    <td>@(string.IsNullOrWhiteSpace(k.Kilde) ? "—" : k.Kilde)</td>
+                    <td>
+                        @if (string.IsNullOrWhiteSpace(k.Kilde))
+                        {
+                            <span>—</span>
+                        }
+                        else
+                        {
+                            <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span>
+                        }
+                    </td>
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>

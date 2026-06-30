@@ -16,6 +16,15 @@ public class KundekortService
     public static readonly string[] Arbeidssituasjoner =
         { "Fast ansatt", "Selvstendig næringsdrivende", "Offentlig sektor", "Pensjonist", "Arbeidsledig", "Uføretrygdet", "Hjemmeværende", "Student" };
 
+    /// <summary>CSS-klasse for leadskilde-badge (rentekutt = hvit, prismatch = lys grønn).</summary>
+    public static string KildeBadgeKlasse(string? kilde)
+    {
+        var k = (kilde ?? "").ToLowerInvariant();
+        if (k.Contains("prismatch")) return "kilde-prismatch";
+        if (k.Contains("rentekutt")) return "kilde-rentekutt";
+        return "kilde-noytral";
+    }
+
     private readonly Supabase.Client _client;
     private readonly ILogger<KundekortService> _log;
     public bool IsConfigured { get; }
