@@ -188,8 +188,8 @@ else
     private BeregningResultat Ber(Kundekort k) => BeregningService.Beregn(k, _berParams);
 
     private decimal SamletSum => View.Sum(k => k.OnsketLaanebelop ?? 0);
-    private string SamletBelop => SamletSum >= 1_000_000 ? $"{SamletSum / 1_000_000:N1}" : $"{SamletSum / 1_000:N0}";
-    private string SamletEnhet => SamletSum >= 1_000_000 ? "mill kr" : "k kr";
+    private string SamletBelop => SamletSum >= 1_000_000 ? $"{SamletSum / 1_000_000:N0}" : $"{SamletSum / 1_000:N0}";
+    private string SamletEnhet => SamletSum >= 1_000_000 ? "MNOK" : "kNOK";
 
     private async Task DelegateBank(Kundekort k, ChangeEventArgs e)
     {
