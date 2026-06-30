@@ -58,7 +58,7 @@ else
     private double _kvalRate, _closeRate;
     private decimal _formidlet, _opptjent;
 
-    private readonly string[] _statuser = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
+    private readonly string[] _statuser = KundekortService.Statuser;
     private record FunnelStep(string Navn, int Antall);
     private List<FunnelStep> _funnel = new();
 
@@ -72,17 +72,17 @@ else
 
         // Kumulativ funnel: en sak som er "Fullført" har også vært "Sendt bank" osv.
         int Tellfra(params string[] statuser) => _rows.Count(k => statuser.Contains(k.Status));
-        var sendt = Tellfra("Sendt bank", "Tilbud", "Fullført");
-        var fullfort = Tellfra("Fullført");
+        var sendt = Tellfra("Sendt bank", "Tilbud utsendt", "Fullført og utbetalt");
+        var fullfort = Tellfra(KundekortService.StatusFullfort);
 
         _kvalRate = _total == 0 ? 0 : 100.0 * sendt / _total;
         _closeRate = _total == 0 ? 0 : 100.0 * fullfort / _total;
-        _formidlet = _rows.Where(k => k.Status == "Fullført").Sum(k => k.OnsketLaanebelop ?? 0);
+        _formidlet = _rows.Where(k => k.Status == KundekortService.StatusFullfort).Sum(k => k.OnsketLaanebelop ?? 0);
 
         // Opptjent provisjon: per fullført sak, bruk satsen til banken den er delegert til.
         var partnerMap = partnere
             .GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
-        foreach (var k in _rows.Where(k => k.Status == "Fullført"))
+        foreach (var k in _rows.Where(k => k.Status == KundekortService.StatusFullfort))
         {
             if (!string.IsNullOrWhiteSpace(k.DelegertBank) && partnerMap.TryGetValue(k.DelegertBank, out var p))
                 _opptjent += (k.OnsketLaanebelop ?? 0) * (ParseDec(p.Provisjon) / 100m) + ParseDec(p.Engangssum);
@@ -91,9 +91,9 @@ else
         _funnel = new()
         {
             new("Søknader", _total),
-            new("Kvalifisert", Tellfra("Bekreftet", "Sendt bank", "Tilbud", "Fullført")),
+            new("Kvalifisert", Tellfra("Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt")),
             new("Sendt til bank", sendt),
-            new("Tilbud", Tellfra("Tilbud", "Fullført")),
+            new("Tilbud utsendt", Tellfra("Tilbud utsendt", "Fullført og utbetalt")),
             new("Fullført", fullfort),
         };
 

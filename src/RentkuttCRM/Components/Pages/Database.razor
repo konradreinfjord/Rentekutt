@@ -158,7 +158,7 @@ else
     private string _sortField = "opprettet";
     private bool _sortAsc = false;
 
-    private readonly string[] _statuses = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
+    private readonly string[] _statuses = KundekortService.Statuser;
 
     private Dictionary<string, int> _caseCount = new();
 

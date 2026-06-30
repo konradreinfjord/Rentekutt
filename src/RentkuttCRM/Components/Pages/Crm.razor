@@ -80,7 +80,7 @@ else
     private decimal _pipeline;
     private bool _loading = true;
 
-    private readonly string[] _statuser = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
+    private readonly string[] _statuser = KundekortService.Statuser;
 
     private string Fornavn => (Session.UserName ?? "der").Split(' ')[0];
 
@@ -92,7 +92,7 @@ else
         var na = DateTime.UtcNow;
         _nye24 = _rows.Count(k => k.CreatedAt > na.AddHours(-24));
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
-        _pipeline = _rows.Where(k => k.Status is not ("Fullført" or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
+        _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
         _statusCount = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
         _nyeste = _rows.Where(k => k.Status == "Ny").OrderByDescending(k => k.CreatedAt).Take(10).ToList();
 

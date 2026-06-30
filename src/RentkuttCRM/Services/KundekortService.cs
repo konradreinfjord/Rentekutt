@@ -6,6 +6,10 @@ namespace RentkuttCRM.Services;
 /// </summary>
 public class KundekortService
 {
+    public static readonly string[] Statuser =
+        { "Ny", "Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+    public const string StatusFullfort = "Fullført og utbetalt";
+
     public static readonly string[] Laanetyper = { "Forbrukslån", "Refinansiering", "Boliglån" };
     public static readonly string[] Sivilstatuser = { "Singel", "Samboer", "Gift", "Skilt", "Separert", "Enke(mann)" };
     public static readonly string[] Boforhold = { "Selveier/enebolig", "Andel/borettslag", "Leier", "Hos foreldre" };
