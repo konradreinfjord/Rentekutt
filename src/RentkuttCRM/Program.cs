@@ -19,8 +19,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Blazor (Interactive Server) – frontend i samme prosjekt.
+// DetailedErrors midlertidig på for å vise eksakt feil i nettleseren ved krasj.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(o => o.DetailedErrors = true);
 
 // Innloggings-tilstand per økt (staging).
 builder.Services.AddScoped<SessionState>();

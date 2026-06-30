@@ -40,6 +40,9 @@ else
     {
         _timer = new System.Threading.Timer(_ =>
         {
+            // Oppdater kun klokka når man er innlogget (skjermen vises) — unngå
+            // å re-rendre login-siden hvert sekund (kan forstyrre innloggingen).
+            if (!Session.IsLoggedIn) return;
             _now = DateTime.Now;
             InvokeAsync(StateHasChanged);
         }, null, 0, 1000);
