@@ -1,6 +1,7 @@
 @page "/crm/ny-kunde"
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
@@ -17,6 +18,24 @@
 <div class="form-card summary-top">
     <h2>Kundens behov</h2>
     <p style="margin:0; color:var(--text-2)">@Behovssammendrag</p>
+</div>
+
+@{ var ber = BeregningService.Beregn(_k, _berParams); }
+<div class="form-card beregn-card">
+    <h2>Beregningsmodell</h2>
+    <div class="db-stats">
+        <div class="db-box @(ber.Likviditet >= 0 ? "accent-green" : "")"><span class="db-box-num">@($"{ber.Likviditet:N0}")</span><span class="db-box-lbl">Likviditet/mnd</span></div>
+        <div class="db-box"><span class="db-box-num">@($"{ber.Belaningsgrad:N1}") %</span><span class="db-box-lbl">Belåningsgrad</span></div>
+        <div class="db-box"><span class="db-box-num">@($"{ber.Gjeldsgrad:N1}")×</span><span class="db-box-lbl">Gjeldsgrad</span></div>
+        <div class="db-box"><span class="db-box-num">@($"{ber.MaksLaan:N0}")</span><span class="db-box-lbl">Maks lån</span></div>
+    </div>
+    <div class="kv-list" style="margin-top:12px; grid-template-columns:200px 1fr">
+        <span class="k">Netto månedsinntekt</span><span class="v">@($"{ber.MndInntektNetto:N0}") kr</span>
+        <span class="k">− Levekostnad (SIFO)</span><span class="v">@($"{ber.Levekostnad:N0}") kr</span>
+        <span class="k">− Boligkostnad</span><span class="v">@($"{ber.Boligkostnad:N0}") kr</span>
+        <span class="k">− Gjeldsbetjening (stresstestet)</span><span class="v">@($"{ber.Gjeldsbetjening:N0}") kr</span>
+        <span class="k">= Fri likviditet</span><span class="v"><strong>@($"{ber.Likviditet:N0}") kr</strong></span>
+    </div>
 </div>
 
 @* Kundetype *@
@@ -48,6 +67,7 @@
         <div class="ff"><label>Ønsket lånebeløp (kr)</label><input type="number" @bind="_k.OnsketLaanebelop" /></div>
         <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
         <div class="ff"><label>Nåværende bank</label><input @bind="_k.NavarendeBank" /></div>
+        <div class="ff"><label>Boligverdi (kr) — for belåningsgrad</label><input type="number" @bind="_k.Boligverdi" /></div>
     </div>
 </div>
 
@@ -192,6 +212,7 @@
     private bool _ok;
     private string? _msg;
     private bool _confirmDelete;
+    private BeregningParametre _berParams = BeregningService.Standard;
 
     private async Task Delete()
     {
@@ -202,6 +223,7 @@
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        _berParams = await Beregning.HentParametreAsync();
         if (Guid.TryParse(Id, out var caseId))
         {
             var existing = await Svc.GetAsync(caseId);

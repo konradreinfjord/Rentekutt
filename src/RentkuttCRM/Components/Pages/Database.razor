@@ -2,6 +2,7 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -73,6 +74,8 @@ else
                 @Header("laanetype", "Lånetype")
                 @Header("bank", "Bank")
                 @Header("belop", "Ønsket beløp")
+                @Header("belaning", "Belåningsgrad")
+                @Header("likviditet", "Likviditet")
                 @Header("opprettet", "Opprettet")
                 @Header("eier", "Eier")
                 <th></th>
@@ -81,7 +84,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="17" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="19" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
@@ -115,6 +118,8 @@ else
                     <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                    <td>@{ var br = Ber(k); }@(br.Belaningsgrad > 0 ? $"{br.Belaningsgrad:N1} %" : "—")</td>
+                    <td class="@(Ber(k).Likviditet < 0 ? "neg-tall" : "")">@($"{Ber(k).Likviditet:N0}") kr</td>
                     <td>@Dt(k.CreatedAt)</td>
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Eier))
@@ -167,11 +172,14 @@ else
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         _rows = await Svc.ListAsync();
         _partnere = await Partners.ListAsync();
+        _berParams = await Beregning.HentParametreAsync();
         _caseCount = _rows.GroupBy(k => k.KundeId).ToDictionary(g => g.Key, g => g.Count());
         _loading = false;
     }
 
     private List<Partner> _partnere = new();
+    private BeregningParametre _berParams = BeregningService.Standard;
+    private BeregningResultat Ber(Kundekort k) => BeregningService.Beregn(k, _berParams);
 
     private async Task DelegateBank(Kundekort k, ChangeEventArgs e)
     {
@@ -225,6 +233,8 @@ else
                 "laanetype" => k => k.Laanetype ?? "",
                 "bank" => k => k.NavarendeBank ?? "",
                 "belop" => k => k.OnsketLaanebelop ?? 0,
+                "belaning" => k => Ber(k).Belaningsgrad,
+                "likviditet" => k => Ber(k).Likviditet,
                 "status" => k => k.Status,
                 "delegert" => k => k.DelegertBank ?? "",
                 "eier" => k => k.EierNavn ?? k.Eier ?? "",

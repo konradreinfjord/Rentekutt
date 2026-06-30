@@ -79,6 +79,7 @@ public class Kundekort : BaseModel
     // Bank-refinansiering (fra leads)
     [Column("navarende_bank")] public string? NavarendeBank { get; set; }
     [Column("kommune")] public string? Kommune { get; set; }
+    [Column("boligverdi")] public decimal? Boligverdi { get; set; }
 
     [Column("notater")] public string? Notater { get; set; }
     [Column("kilde")] public string? Kilde { get; set; }

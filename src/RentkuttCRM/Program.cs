@@ -49,6 +49,9 @@ builder.Services.AddScoped<EventService>();
 // Bankpartnere.
 builder.Services.AddScoped<PartnerService>();
 
+// Beregningsmodell (finansieringsevne/likviditet).
+builder.Services.AddScoped<BeregningService>();
+
 // Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
 builder.Services.AddSingleton<CustomerFieldCatalog>();
 

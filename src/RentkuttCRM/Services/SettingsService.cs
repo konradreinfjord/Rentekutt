@@ -42,6 +42,12 @@ public class SettingsService
     public async Task<int> GetIntAsync(string key, int fallback)
         => int.TryParse(await GetAsync(key), out var v) ? v : fallback;
 
+    public async Task<decimal> GetDecimalAsync(string key, decimal fallback)
+    {
+        var s = (await GetAsync(key))?.Replace(",", ".");
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+    }
+
     public async Task SetAsync(string key, string? value)
     {
         if (!IsConfigured) { _staging[key] = value; return; }
