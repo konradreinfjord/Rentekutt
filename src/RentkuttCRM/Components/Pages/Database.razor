@@ -62,9 +62,7 @@ else
             <tr>
                 @Header("status", "Status")
                 @Header("delegert", "Delegert til bank")
-                @Header("type", "Type")
-                @Header("kilde", "Leadskilde")
-                @Header("laanetype", "Lånetype")
+                @Header("laanetype", "Nøkkelinfo")
                 @Header("bank", "Bank")
                 @Header("belop", "Ønsket beløp")
                 @Header("navn", "Navn")
@@ -84,7 +82,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="19" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="17" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in View)
             {
@@ -100,18 +98,16 @@ else
                             @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>
                     </td>
-                    <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                     <td>
-                        @if (string.IsNullOrWhiteSpace(k.Kilde))
-                        {
-                            <span>—</span>
-                        }
-                        else
-                        {
-                            <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span>
-                        }
+                        <div class="nokkelinfo">
+                            <span class="nk-laanetype">@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</span>
+                            @if (!string.IsNullOrWhiteSpace(k.Kilde))
+                            {
+                                <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span>
+                            }
+                            <span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span>
+                        </div>
                     </td>
-                    <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
                     <td>

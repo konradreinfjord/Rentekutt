@@ -160,6 +160,9 @@ a { color: var(--accent); text-decoration: none; }
 .kilde-prismatch { background: #ecf7ee; color: var(--green-dark); border-color: #c9e6cd; }
 .kilde-noytral { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
 
+.nokkelinfo { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.nk-laanetype { font-weight: 600; color: var(--ink); }
+
 /* ---------- Priority ---------- */
 .priority-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 9px;
