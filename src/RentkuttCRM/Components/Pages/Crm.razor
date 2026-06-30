@@ -1,5 +1,6 @@
 @page "/crm"
 @inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.KundekortService Svc
 @inject NavigationManager Nav
 
 <PageTitle>Dashbord — Rentekutt</PageTitle>
@@ -16,76 +17,86 @@
     </div>
 </div>
 
-<div class="kpi-grid">
-    <div class="kpi-card"><div class="kpi-value">0</div><div class="kpi-label">Nye saker (24t)</div></div>
-    <div class="kpi-card"><div class="kpi-value">0</div><div class="kpi-label">Mine aktive saker</div></div>
-    <div class="kpi-card"><div class="kpi-value">0 kr</div><div class="kpi-label">Pipeline-verdi</div></div>
-    <div class="kpi-card"><div class="kpi-value">0 kr</div><div class="kpi-label">Forventet provisjon</div></div>
-</div>
-
-<div class="section">
-    <h2>Krever oppmerksomhet</h2>
-    <div class="priority-grid">
-        @foreach (var p in _priorities)
-        {
-            <div class="priority-card">
-                <div class="priority-count">0</div>
-                <div class="priority-label">@p</div>
-            </div>
-        }
+@if (_loading)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-value">@_nye24</div><div class="kpi-label">Nye saker (24t)</div></div>
+        <div class="kpi-card"><div class="kpi-value">@_rows.Count</div><div class="kpi-label">Totalt saker</div></div>
+        <div class="kpi-card"><div class="kpi-value">@_mine</div><div class="kpi-label">Mine saker</div></div>
+        <div class="kpi-card"><div class="kpi-value">@($"{_pipeline / 1_000_000:N1}") mill</div><div class="kpi-label">Pipeline-verdi</div></div>
     </div>
-</div>
 
-<div class="section">
-    <h2>Saker uten kontakt</h2>
-    <table class="data-table">
-        <thead>
-            <tr><th>Saksnr</th><th>Kunde</th><th>Lånebeløp</th><th>Siste aktivitet</th><th></th></tr>
-        </thead>
-        <tbody>
-            <tr><td colspan="5" class="empty-row">Ingen saker uten kontakt. 🎉</td></tr>
-        </tbody>
-    </table>
-</div>
-
-<div class="section">
-    <h2>Dagens mål</h2>
-    <div class="goals-grid">
-        @foreach (var g in _goals)
-        {
-            <div class="goal">
-                <div class="goal-head"><span>@g.Label</span><span>0/@g.Target</span></div>
-                <div class="goal-bar"><div class="goal-fill" style="width:0%"></div></div>
-            </div>
-        }
+    <div class="section">
+        <h2>Saker per status</h2>
+        <div class="priority-grid">
+            @foreach (var s in _statuser)
+            {
+                <div class="priority-card" @onclick='() => Nav.NavigateTo("/crm/database")' style="cursor:pointer">
+                    <div class="priority-count">@_statusCount.GetValueOrDefault(s, 0)</div>
+                    <div class="priority-label">@s</div>
+                </div>
+            }
+        </div>
     </div>
-</div>
+
+    <div class="section">
+        <h2>Nyeste ubehandlede saker</h2>
+        <table class="data-table">
+            <thead>
+                <tr><th>Navn</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th><th>Opprettet</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_nyeste.Count == 0)
+                {
+                    <tr><td colspan="6" class="empty-row">Ingen ubehandlede saker. 🎉</td></tr>
+                }
+                @foreach (var k in _nyeste)
+                {
+                    <tr>
+                        <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
+                        <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
+                        <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
+                        <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                        <td>@k.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                        <td><button class="btn-sm" @onclick="() => Open(k.Id)">Åpne</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 @code {
-    protected override void OnInitialized()
-    {
-        if (!Session.IsLoggedIn) Nav.NavigateTo("/login");
-    }
+    private List<Kundekort> _rows = new();
+    private List<Kundekort> _nyeste = new();
+    private Dictionary<string, int> _statusCount = new();
+    private int _nye24;
+    private int _mine;
+    private decimal _pipeline;
+    private bool _loading = true;
+
+    private readonly string[] _statuser = { "Ny", "Bekreftet", "Sendt bank", "Tilbud", "Fullført", "Avslått" };
 
     private string Fornavn => (Session.UserName ?? "der").Split(' ')[0];
 
-    private readonly string[] _priorities =
+    protected override async Task OnInitializedAsync()
     {
-        "Saker uten kontakt",
-        "Mangler PSD2-samtykke",
-        "Manuell vurdering",
-        "Klar for bank",
-        "Bank svarer ikke",
-        "Uoppfulgte tilbud",
-    };
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        _rows = await Svc.ListAsync();
 
-    private record Goal(string Label, int Target);
-    private readonly Goal[] _goals =
-    {
-        new("Saker inn", 25),
-        new("Kontaktet", 40),
-        new("Kvalifisert", 15),
-        new("Sendt bank", 10),
-        new("Aksept", 6),
-    };
+        var na = DateTime.UtcNow;
+        _nye24 = _rows.Count(k => k.CreatedAt > na.AddHours(-24));
+        _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
+        _pipeline = _rows.Where(k => k.Status is not ("Fullført" or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
+        _statusCount = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+        _nyeste = _rows.Where(k => k.Status == "Ny").OrderByDescending(k => k.CreatedAt).Take(10).ToList();
+
+        _loading = false;
+    }
+
+    private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
 }
