@@ -214,6 +214,7 @@ else if (_active == "Brukere")
 else if (_active == "API og Data")
 {
     <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
+    <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
 
     <div class="webhook-widget">
         <div class="ww-header" @onclick="() => _lmOpen = !_lmOpen">
@@ -315,11 +316,6 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
             <li>Backup: daglig, 30 dagers oppbevaring</li>
         </ul>
     </div>
-}
-else if (_active == "Prismatch.no")
-{
-    <p class="page-sub" style="margin:-4px 0 16px">Inbound endepunkt for leads fra Prismatch — samme format og sikkerhet som www.rentekutt.no.</p>
-    <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
 }
 else if (_active == "Hendelseslogg")
 {
@@ -607,7 +603,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "Status", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "API og Data", "Prismatch.no", "GDPR", "Hendelseslogg" };
+    private readonly string[] _tabs = { "Status", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "API og Data", "GDPR", "Hendelseslogg" };
     private string _active = "Status";
 
     // ---- GDPR: anonymisering + sletting ----
