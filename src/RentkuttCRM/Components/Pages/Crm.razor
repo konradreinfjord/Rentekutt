@@ -42,38 +42,10 @@ else
             }
         </div>
     </div>
-
-    <div class="section">
-        <h2>Nyeste ubehandlede saker</h2>
-        <table class="data-table">
-            <thead>
-                <tr><th>Navn</th><th>Telefon</th><th>Leadskilde</th><th>Lånetype</th><th>Ønsket beløp</th><th>Opprettet</th><th></th></tr>
-            </thead>
-            <tbody>
-                @if (_nyeste.Count == 0)
-                {
-                    <tr><td colspan="7" class="empty-row">Ingen ubehandlede saker. 🎉</td></tr>
-                }
-                @foreach (var k in _nyeste)
-                {
-                    <tr>
-                        <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
-                        <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
-                        <td>@(string.IsNullOrWhiteSpace(k.Kilde) ? "—" : k.Kilde)</td>
-                        <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
-                        <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
-                        <td>@k.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                        <td><button class="btn-sm" @onclick="() => Open(k.Id)">Åpne</button></td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
 }
 
 @code {
     private List<Kundekort> _rows = new();
-    private List<Kundekort> _nyeste = new();
     private Dictionary<string, int> _statusCount = new();
     private int _nye24;
     private int _mine;
@@ -94,10 +66,7 @@ else
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
         _statusCount = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
-        _nyeste = _rows.Where(k => k.Status == "Ny").OrderByDescending(k => k.CreatedAt).Take(10).ToList();
 
         _loading = false;
     }
-
-    private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
 }
