@@ -97,6 +97,7 @@ else
         @* ---------- Kontaktstrøm per leadskilde ---------- *@
         <div class="section widget">
             <h2>Kontaktstrøm</h2>
+            <h3 class="stat-subhead">Per leadskilde</h3>
             <table class="data-table">
                 <thead><tr><th>Leadskilde</th><th class="num">Søknader</th><th class="num">Andel</th></tr></thead>
                 <tbody>
@@ -114,11 +115,31 @@ else
                     }
                 </tbody>
             </table>
+
+            <h3 class="stat-subhead" style="margin-top:18px">Per lånetype</h3>
+            <table class="data-table">
+                <thead><tr><th>Lånetype</th><th class="num">Søknader</th><th class="num">Andel</th></tr></thead>
+                <tbody>
+                    @foreach (var g in rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype).OrderByDescending(g => g.Count()))
+                    {
+                        <tr>
+                            <td><span class="vol-dot" style="background:@LaanetypeFarge(g.Key)"></span>@g.Key</td>
+                            <td class="num">@g.Count()</td>
+                            <td class="num">@($"{(total == 0 ? 0 : 100.0 * g.Count() / total):N0}") %</td>
+                        </tr>
+                    }
+                    @if (total == 0)
+                    {
+                        <tr><td colspan="3" class="empty-row">Ingen data i perioden.</td></tr>
+                    }
+                </tbody>
+            </table>
         </div>
 
         @* ---------- Lånevolum-fordeling ---------- *@
         <div class="section widget">
             <h2>Lånevolum</h2>
+            <h3 class="stat-subhead">Etter fase</h3>
             <table class="data-table">
                 <thead><tr><th>Kategori</th><th class="num">Antall</th><th class="num">Volum</th></tr></thead>
                 <tbody>
@@ -126,6 +147,25 @@ else
                     <tr><td><span class="vol-dot" style="background:#1f5fc4"></span>Aktiv pipeline</td><td class="num">@aktive.Count</td><td class="num">@($"{pipelineVolum:N0}") kr</td></tr>
                     <tr><td><span class="vol-dot" style="background:#0f8a8a"></span>Forventet (vektet)</td><td class="num">—</td><td class="num">@($"{forventetVolum:N0}") kr</td></tr>
                     <tr><td><span class="vol-dot" style="background:#b42318"></span>Avslått</td><td class="num">@avslatt.Count</td><td class="num">@($"{avslatt.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</td></tr>
+                </tbody>
+            </table>
+
+            <h3 class="stat-subhead" style="margin-top:18px">Per lånetype</h3>
+            <table class="data-table">
+                <thead><tr><th>Lånetype</th><th class="num">Antall</th><th class="num">Volum</th></tr></thead>
+                <tbody>
+                    @foreach (var g in rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype).OrderByDescending(g => g.Sum(k => k.OnsketLaanebelop ?? 0)))
+                    {
+                        <tr>
+                            <td><span class="vol-dot" style="background:@LaanetypeFarge(g.Key)"></span>@g.Key</td>
+                            <td class="num">@g.Count()</td>
+                            <td class="num">@($"{g.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</td>
+                        </tr>
+                    }
+                    @if (total == 0)
+                    {
+                        <tr><td colspan="3" class="empty-row">Ingen data i perioden.</td></tr>
+                    }
                 </tbody>
             </table>
         </div>
@@ -444,6 +484,14 @@ else
             .Select(g => new BankSyklus(g.Key, g.Count(), g.Average(SyklusDager)))
             .OrderByDescending(x => x.Snitt)
             .ToList();
+
+    private static string LaanetypeFarge(string type) => type switch
+    {
+        "Forbrukslån" => "#6b3fc4",
+        "Refinansiering" => "#1f5fc4",
+        "Boliglån" => "#266f32",
+        _ => "#9aa0a8",
+    };
 
     private static string Mnok(decimal v) => v >= 1_000_000 ? $"{v / 1_000_000:N0}" : $"{v / 1_000:N0}";
     private static string MnokEnhet(decimal v) => v >= 1_000_000 ? "MNOK" : "kNOK";
