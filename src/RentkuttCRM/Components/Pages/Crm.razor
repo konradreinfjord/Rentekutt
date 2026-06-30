@@ -34,7 +34,7 @@ else
         </div>
         <div class="kpi-card"><div class="kpi-value">@_rows.Count</div><div class="kpi-label">Totalt søknader</div></div>
         <div class="kpi-card"><div class="kpi-value">@_mine</div><div class="kpi-label">Mine søknader</div></div>
-        <div class="kpi-card"><div class="kpi-value">@($"{_pipeline / 1_000_000:N1}") mill</div><div class="kpi-label">Pipeline-verdi</div></div>
+        <div class="kpi-card"><div class="kpi-value">@($"{_pipeline / 1_000_000:N0}")<span class="db-box-unit">MNOK</span></div><div class="kpi-label">Pipeline-verdi</div></div>
     </div>
 
     <div class="section">
