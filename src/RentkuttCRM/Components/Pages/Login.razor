@@ -53,9 +53,9 @@
             </EditForm>
         }
 
-        @if (_step == 1)
+        @if (_step == 1 && !Users.IsConfigured)
         {
-            <p class="login-note">@(Users.IsConfigured ? "Sikret med Supabase." : "Staging — skriv hva som helst for å logge inn.")</p>
+            <p class="login-note">Staging — skriv hva som helst for å logge inn.</p>
         }
     </div>
 </div>

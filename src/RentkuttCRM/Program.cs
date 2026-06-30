@@ -63,6 +63,10 @@ using (var startupScope = app.Services.CreateScope())
     await startupScope.ServiceProvider.GetRequiredService<WebhookService>().EnsureSeededPublicAsync();
 }
 
+// HSTS i produksjon — be nettlesere alltid bruke HTTPS for domenet.
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
+
 // Swagger eksponeres også i produksjon → https://rentkutt-crm.azurewebsites.net/swagger
 app.UseSwagger();
 app.UseSwaggerUI();
