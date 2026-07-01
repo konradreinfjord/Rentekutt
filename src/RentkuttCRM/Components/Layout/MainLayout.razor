@@ -23,28 +23,16 @@ else
                         <span class="clock-time">@_now.ToString("HH:mm:ss")</span>
                         <span class="clock-date">@_now.ToString("dd.MM.yyyy")</span>
                     </div>
-                    <div class="health @(_issues.Count == 0 ? "health-ok" : "health-feil")"
-                         title="@(_issues.Count == 0 ? "Alle systemer OK" : $"{_issues.Count} tekniske feil")"
-                         @onclick="() => _healthOpen = !_healthOpen">
-                        @if (_issues.Count == 0)
-                        {
-                            <span class="health-icon">✓</span>
-                            <span class="health-label">Alle systemer OK</span>
-                        }
-                        else
-                        {
+                    @if (_issues.Count > 0)
+                    {
+                        <div class="health health-feil"
+                             title="@($"{_issues.Count} tekniske feil")"
+                             @onclick="() => _healthOpen = !_healthOpen">
                             <span class="health-icon">⚠</span>
                             <span class="health-count">@_issues.Count</span>
-                        }
-                        @if (_healthOpen)
-                        {
-                            <div class="health-panel" @onclick:stopPropagation="true">
-                                @if (_issues.Count == 0)
-                                {
-                                    <div class="health-panel-title ok">✓ Alle tekniske overføringer OK</div>
-                                }
-                                else
-                                {
+                            @if (_healthOpen)
+                            {
+                                <div class="health-panel" @onclick:stopPropagation="true">
                                     <div class="health-panel-title feil">@_issues.Count tekniske feil</div>
                                     @foreach (var i in _issues)
                                     {
@@ -53,10 +41,10 @@ else
                                             <div><strong>@i.Navn</strong><div class="health-item-msg">@i.Melding</div></div>
                                         </div>
                                     }
-                                }
-                            </div>
-                        }
-                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
                 <div class="topbar-user">
                     <span class="user-name">@Session.UserName</span>
