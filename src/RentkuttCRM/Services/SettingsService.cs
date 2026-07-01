@@ -19,6 +19,8 @@ public class SettingsService
 
     private static readonly Dictionary<string, string?> _staging = new();
     private bool _initialized;
+    // Alle innstillinger hentes i én spørring og caches for økten (unngår N round-trips).
+    private Dictionary<string, string?>? _cache;
 
     public SettingsService(Supabase.Client client, IConfiguration cfg, ILogger<SettingsService> log)
     {
@@ -27,17 +29,21 @@ public class SettingsService
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"]) && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
     }
 
-    public async Task<string?> GetAsync(string key)
+    private async Task<Dictionary<string, string?>> CacheAsync()
     {
-        if (!IsConfigured) return _staging.GetValueOrDefault(key);
+        if (_cache is not null) return _cache;
+        if (!IsConfigured) return _cache = new(_staging);
         try
         {
             await EnsureInitAsync();
-            var row = await _client.From<Innstilling>().Where(x => x.Nokkel == key).Single();
-            return row?.Verdi;
+            var rows = (await _client.From<Innstilling>().Get()).Models;
+            _cache = rows.ToDictionary(r => r.Nokkel, r => r.Verdi);
         }
-        catch (Exception ex) { _log.LogError(ex, "Henting av innstilling {Key} feilet", key); return null; }
+        catch (Exception ex) { _log.LogError(ex, "Henting av innstillinger feilet"); _cache = new(); }
+        return _cache;
     }
+
+    public async Task<string?> GetAsync(string key) => (await CacheAsync()).GetValueOrDefault(key);
 
     public async Task<int> GetIntAsync(string key, int fallback)
         => int.TryParse(await GetAsync(key), out var v) ? v : fallback;
@@ -50,6 +56,7 @@ public class SettingsService
 
     public async Task SetAsync(string key, string? value)
     {
+        if (_cache is not null) _cache[key] = value;   // hold cache i synk
         if (!IsConfigured) { _staging[key] = value; return; }
         try
         {

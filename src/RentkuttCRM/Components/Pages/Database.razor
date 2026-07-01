@@ -43,7 +43,12 @@
     </select>
     <select class="db-select" @bind="_kommuneFilter" @bind:after="ResetPage">
         <option value="">Alle områder</option>
-        @foreach (var o in KommuneListe) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
+        @foreach (var f in KommunerPerFylke)
+        {
+            <optgroup label="@f.Fylke">
+                @foreach (var o in f.Kommuner) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
+            </optgroup>
+        }
     </select>
     <div class="db-spacer"></div>
     <span class="db-count">@View.Count av @_rows.Count</span>
@@ -89,12 +94,12 @@ else
             {
                 <tr class="row-link" @onclick="() => Open(k.Id)">
                     <td @onclick:stopPropagation="true">
-                        <select class="inline-select" @onchange="e => ChangeStatus(k, e)">
+                        <select class="inline-select stsel @StatusKlasse(k.Status)" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
                         </select>
                     </td>
                     <td @onclick:stopPropagation="true">
-                        <select class="inline-select" @onchange="e => DelegateBank(k, e)">
+                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "" : "delsel-set")" @onchange="e => DelegateBank(k, e)">
                             <option value="">— ingen —</option>
                             @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>
@@ -182,6 +187,14 @@ else
         .GroupBy(k => k.Kommune!)
         .Select(g => (g.Key, g.Count()))
         .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
+
+    // Kommunene i utvalget gruppert under fylke (fylker i offisiell rekkefølge, ukjente sist).
+    private List<(string Fylke, List<(string Navn, int Antall)> Kommuner)>? _kommunerPerFylke;
+    private List<(string Fylke, List<(string Navn, int Antall)> Kommuner)> KommunerPerFylke => _kommunerPerFylke ??= KommuneListe
+        .GroupBy(o => NorskeKommuner.Fylke(o.Navn))
+        .Select(g => (Fylke: g.Key, Kommuner: g.OrderByDescending(o => o.Antall).ThenBy(o => o.Navn).ToList()))
+        .OrderBy(x => { var i = Array.IndexOf(NorskeKommuner.Fylker, x.Fylke); return i < 0 ? 999 : i; })
+        .ToList();
     private string _sortField = "opprettet";
     private bool _sortAsc = false;
 
@@ -193,9 +206,14 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        _rows = await Svc.ListAsync();
-        _partnere = await Partners.ListAsync();
-        _berParams = await Beregning.HentParametreAsync();
+        // Hent i parallell — sparer round-trips (var sekvensielt før).
+        var rowsTask = Svc.ListAsync();
+        var partnereTask = Partners.ListAsync();
+        var berTask = Beregning.HentParametreAsync();
+        await Task.WhenAll(rowsTask, partnereTask, berTask);
+        _rows = rowsTask.Result;
+        _partnere = partnereTask.Result;
+        _berParams = berTask.Result;
         _caseCount = _rows.GroupBy(k => k.KundeId).ToDictionary(g => g.Key, g => g.Count());
         _searchCache = _rows.ToDictionary(k => k.Id, Searchable);
         _loading = false;
@@ -235,6 +253,18 @@ else
     }
 
     private int CaseCount(string kundeId) => _caseCount.GetValueOrDefault(kundeId, 1);
+
+    private static string StatusKlasse(string s) => s switch
+    {
+        "Åpen" => "st-apen",
+        "Pågår" => "st-pagar",
+        "Manuell behandling" => "st-manuell",
+        "Sendt bank" => "st-sendt",
+        "Tilbud utsendt" => "st-tilbud",
+        "Fullført og utbetalt" => "st-fullfort",
+        "Avslått" => "st-avslatt",
+        _ => "",
+    };
 
     private static string Searchable(Kundekort k) => string.Join(" ", new[]
     {

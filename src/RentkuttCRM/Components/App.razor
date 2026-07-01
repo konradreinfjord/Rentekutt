@@ -12,7 +12,8 @@
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    @* prerender av: unngår at OnInitializedAsync (og datahenting) kjører to ganger *@
+    <Routes @rendermode="@(new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false))" />
     <script src="_framework/blazor.web.js"></script>
 </body>
 

@@ -243,6 +243,15 @@ else if (_active == "Brukere")
 }
 else if (_active == "API og Data")
 {
+    <div class="subtabs">
+        @foreach (var st in _apiTabs)
+        {
+            <button class="subtab @(st == _apiTab ? "active" : "")" @onclick="() => _apiTab = st">@st</button>
+        }
+    </div>
+
+    @if (_apiTab == "Oversikt")
+    {
     <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
     <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
 
@@ -346,6 +355,39 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
             <li>Backup: daglig, 30 dagers oppbevaring</li>
         </ul>
     </div>
+    }
+    else if (_apiTab == "Bank ID")
+    {
+        @IntegrasjonsKort(
+            "BankID",
+            "Elektronisk legitimering og signering av søkere via BankID (gjennom broker som Signicat eller Vipps MobilePay).",
+            new[] { "Verifiser søkers identitet ved oppstart av sak", "Digital signering av lånedokumenter", "Sikker innlogging for kunder" },
+            "BankID__ClientId      = <klient-ID>\nBankID__ClientSecret  = <hemmelighet>\nBankID__Environment   = prod | test")
+    }
+    else if (_apiTab == "Gjeldsregisteret")
+    {
+        @IntegrasjonsKort(
+            "Gjeldsregisteret",
+            "Sanntidsoppslag mot Gjeldsregisteret for søkers usikrede gjeld (forbrukslån, kredittkort) — brukes i finansieringsevne-beregningen.",
+            new[] { "Hent samlet usikret gjeld per person", "Automatisk utfylling av gjeld i kundekort", "Oppdatert gjeldsgrad i beregningsmodellen" },
+            "Gjeldsregisteret__ClientId      = <klient-ID>\nGjeldsregisteret__ClientSecret  = <hemmelighet>\nGjeldsregisteret__ApiUrl        = <endepunkt>")
+    }
+    else if (_apiTab == "Eiendomsverdi")
+    {
+        @IntegrasjonsKort(
+            "Eiendomsverdi",
+            "Automatisk verdivurdering av bolig (AVM) via Eiendomsverdi AS — gir boligverdi til belåningsgrad-beregningen.",
+            new[] { "Estimert markedsverdi per adresse/matrikkel", "Automatisk boligverdi i kundekort", "Oppdatert belåningsgrad (LTV)" },
+            "Eiendomsverdi__ClientId      = <klient-ID>\nEiendomsverdi__ClientSecret  = <hemmelighet>\nEiendomsverdi__ApiUrl        = <endepunkt>")
+    }
+    else if (_apiTab == "Kredittsjekk")
+    {
+        @IntegrasjonsKort(
+            "Kredittsjekk",
+            "Kredittvurdering av søker via kredittopplysningsbyrå (f.eks. Bisnode/Dun & Bradstreet eller Experian) — score, betalingsanmerkninger og inntektsdata.",
+            new[] { "Kredittscore og risikoklasse", "Betalingsanmerkninger og inkasso", "Bekreftet inntekt (skattedata)" },
+            "Kredittsjekk__ClientId      = <klient-ID>\nKredittsjekk__ClientSecret  = <hemmelighet>\nKredittsjekk__ApiUrl        = <endepunkt>")
+    }
 }
 else if (_active == "Hendelseslogg")
 {
@@ -628,12 +670,20 @@ else if (_active == "GDPR")
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        await LoadUsersAsync();
-        _banks = await Partners.ListAsync();
-        _webhook = await Webhooks.GetInboundAsync();
-        _webhookPrismatch = await Webhooks.GetByNameAsync(WebhookService.PrismatchName);
+        // Hent uavhengige kilder i parallell.
+        var usersTask = Users.ListUsersAsync();
+        var banksTask = Partners.ListAsync();
+        var webhookTask = Webhooks.GetInboundAsync();
+        var webhookPrismatchTask = Webhooks.GetByNameAsync(WebhookService.PrismatchName);
+        var eventsTask = Events.ListAsync(100);
+        await Task.WhenAll(usersTask, banksTask, webhookTask, webhookPrismatchTask, eventsTask);
+        _userRows = usersTask.Result;
+        _banks = banksTask.Result;
+        _webhook = webhookTask.Result;
+        _webhookPrismatch = webhookPrismatchTask.Result;
         _inboundWebhooks = new[] { _webhook, _webhookPrismatch }.Where(w => w is not null).Select(w => w!).ToList();
-        _events = await Events.ListAsync(100);
+        _events = eventsTask.Result;
+        // Innstillingene deler én cachet bulk-henting (første kall laster alt).
         _smsMaxHour = await Settings.GetIntAsync(TwoFactorService.KeyMaxPerHour, TwoFactorService.DefaultMaxPerHour);
         _smsMax24h = await Settings.GetIntAsync(TwoFactorService.KeyMaxPer24h, TwoFactorService.DefaultMaxPer24h);
         _gdprAnonMonths = await Settings.GetIntAsync("gdpr_anonymize_months", 12);
@@ -765,6 +815,25 @@ else if (_active == "GDPR")
 
     private readonly string[] _tabs = { "Status", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Beregningsmodell", "API og Data", "GDPR", "Hendelseslogg" };
     private string _active = "Status";
+
+    private readonly string[] _apiTabs = { "Oversikt", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
+    private string _apiTab = "Oversikt";
+
+    // Gjenbrukbart integrasjons-placeholder-kort for de eksterne datatjenestene.
+    private RenderFragment IntegrasjonsKort(string navn, string beskrivelse, string[] bruk, string configKeys) =>@<div class="section">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+            <h2 style="margin:0">@navn</h2>
+            <span class="status off">Ikke tilkoblet</span>
+        </div>
+        <p class="page-sub" style="margin:8px 0 16px">@beskrivelse</p>
+        <h3 class="ww-h">Bruksområde</h3>
+        <ul class="bullet-list">
+            @foreach (var b in bruk) { <li>@b</li> }
+        </ul>
+        <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+        <pre class="code-block">@configKeys</pre>
+        <p class="page-sub" style="margin:12px 0 0; font-size:12px">🔒 Nøkler leses kun fra server-config. Integrasjonen aktiveres automatisk når nøklene er satt.</p>
+    </div>;
 
     // ---- GDPR: anonymisering + sletting ----
     private int _gdprAnonMonths = 12;

@@ -501,11 +501,16 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        _all = await Kundekort.ListAsync();
-        _partnere = await Partners.ListAsync();
+        var allTask = Kundekort.ListAsync();
+        var partnereTask = Partners.ListAsync();
+        var malDagerTask = Settings.GetDecimalAsync(KeyMalDager, 14m);
+        var malUkeTask = Settings.GetIntAsync(KeyMalSakerUke, 10);
+        await Task.WhenAll(allTask, partnereTask, malDagerTask, malUkeTask);
+        _all = allTask.Result;
+        _partnere = partnereTask.Result;
         _partnerMap = _partnere.GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
-        _malDager = await Settings.GetDecimalAsync(KeyMalDager, 14m);
-        _malSakerUke = await Settings.GetIntAsync(KeyMalSakerUke, 10);
+        _malDager = malDagerTask.Result;
+        _malSakerUke = malUkeTask.Result;
         _loading = false;
     }
 
