@@ -227,8 +227,10 @@ else if (_active == "API og Data")
     {
         <div class="section">
             <h2>Alle tilkoblinger</h2>
-            <p class="page-sub" style="margin:-4px 0 14px">Lampe = grønn hvis data siste 3 døgn, rød hvis ikke.</p>
-            <table class="data-table">
+            <p class="page-sub" style="margin:-4px 0 16px">Lampe = grønn hvis data siste 3 døgn, rød hvis ikke.</p>
+
+            <h3 class="stat-subhead">Utility</h3>
+            <table class="data-table" style="margin-bottom:20px">
                 <thead><tr><th>Helse</th><th>Tilkobling</th><th>Type</th><th>Siste status</th></tr></thead>
                 <tbody>
                     <tr>
@@ -249,19 +251,30 @@ else if (_active == "API og Data")
                             <td>@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.ToLocalTime():dd.MM HH:mm}" : "Ingen data mottatt")</td>
                         </tr>
                     }
-                    @foreach (var b in _banks)
-                    {
-                        <tr>
-                            <td><span class="lampe off"></span></td>
-                            <td>@b.Navn</td><td>Bank API</td>
-                            <td>Ikke tilkoblet</td>
-                        </tr>
-                    }
                     @foreach (var d in _dataTjenester)
                     {
                         <tr>
                             <td><span class="lampe off"></span></td>
                             <td>@d</td><td>Datatjeneste</td>
+                            <td>Ikke tilkoblet</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <h3 class="stat-subhead">Banker</h3>
+            <table class="data-table">
+                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Siste status</th></tr></thead>
+                <tbody>
+                    @if (_banks.Count == 0)
+                    {
+                        <tr><td colspan="4" class="empty-row">Ingen bankpartnere ennå.</td></tr>
+                    }
+                    @foreach (var b in _banks)
+                    {
+                        <tr>
+                            <td><span class="lampe off"></span></td>
+                            <td>@b.Navn</td><td>Bank API</td>
                             <td>Ikke tilkoblet</td>
                         </tr>
                     }

@@ -1,6 +1,9 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.SupabaseUserService Users
+@inject RentkuttCRM.Services.LinkMobilityService LinkMobility
+@inject RentkuttCRM.Services.WebhookService Webhooks
 @inject NavigationManager Nav
 
 @if (!Session.IsLoggedIn)
@@ -14,10 +17,46 @@ else
         <NavSidebar />
         <div class="app-main">
             <header class="app-topbar">
-                <div class="topbar-clock">
-                    <span class="live-dot" title="Live"></span>
-                    <span class="clock-time">@_now.ToString("HH:mm:ss")</span>
-                    <span class="clock-date">@_now.ToString("dd.MM.yyyy")</span>
+                <div class="topbar-left">
+                    <div class="topbar-clock">
+                        <span class="live-dot" title="Live"></span>
+                        <span class="clock-time">@_now.ToString("HH:mm:ss")</span>
+                        <span class="clock-date">@_now.ToString("dd.MM.yyyy")</span>
+                    </div>
+                    <div class="health @(_issues.Count == 0 ? "health-ok" : "health-feil")"
+                         title="@(_issues.Count == 0 ? "Alle systemer OK" : $"{_issues.Count} tekniske feil")"
+                         @onclick="() => _healthOpen = !_healthOpen">
+                        @if (_issues.Count == 0)
+                        {
+                            <span class="health-icon">✓</span>
+                            <span class="health-label">Alle systemer OK</span>
+                        }
+                        else
+                        {
+                            <span class="health-icon">⚠</span>
+                            <span class="health-count">@_issues.Count</span>
+                        }
+                        @if (_healthOpen)
+                        {
+                            <div class="health-panel" @onclick:stopPropagation="true">
+                                @if (_issues.Count == 0)
+                                {
+                                    <div class="health-panel-title ok">✓ Alle tekniske overføringer OK</div>
+                                }
+                                else
+                                {
+                                    <div class="health-panel-title feil">@_issues.Count tekniske feil</div>
+                                    @foreach (var i in _issues)
+                                    {
+                                        <div class="health-item">
+                                            <span class="lampe off"></span>
+                                            <div><strong>@i.Navn</strong><div class="health-item-msg">@i.Melding</div></div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
                 </div>
                 <div class="topbar-user">
                     <span class="user-name">@Session.UserName</span>
@@ -46,6 +85,30 @@ else
     private System.Threading.Timer? _timer;
     private ErrorBoundary? _errorBoundary;
 
+    private List<(string Navn, string Melding)> _issues = new();
+    private bool _healthOpen;
+    private int _tick;
+
+    // Sjekk om noen tekniske overføringer feiler (vises som varsellampe i headeren).
+    private async Task SjekkHelseAsync()
+    {
+        var issues = new List<(string, string)>();
+        if (!Users.IsConfigured) issues.Add(("Database (Supabase)", "Ikke konfigurert / ikke tilkoblet"));
+        if (!LinkMobility.ErKonfigurert) issues.Add(("LinkMobility", "SMS/2FA ikke konfigurert"));
+        try
+        {
+            var hooks = new[] { await Webhooks.GetInboundAsync(), await Webhooks.GetByNameAsync(RentkuttCRM.Services.WebhookService.PrismatchName) };
+            foreach (var w in hooks)
+            {
+                // Feil = kanal som var aktiv og har mottatt data før, men ikke siste 3 døgn.
+                if (w is { Active: true, LastReceivedAt: { } t } && t <= DateTime.UtcNow.AddDays(-3))
+                    issues.Add(($"Kanal: {w.Name}", $"Ingen data siste 3 døgn (sist {t.ToLocalTime():dd.MM HH:mm})"));
+            }
+        }
+        catch { /* nettverksfeil ved helsesjekk skal ikke velte UI */ }
+        _issues = issues;
+    }
+
     private void NullstillFeil() => _errorBoundary?.Recover();
 
     // Nullstill feilgrensen ved navigasjon, så en feil på én side ikke henger igjen.
@@ -53,13 +116,14 @@ else
 
     protected override void OnInitialized()
     {
-        _timer = new System.Threading.Timer(_ =>
+        _timer = new System.Threading.Timer(async _ =>
         {
             // Oppdater kun klokka når man er innlogget (skjermen vises) — unngå
             // å re-rendre login-siden hvert sekund (kan forstyrre innloggingen).
             if (!Session.IsLoggedIn) return;
             _now = DateTime.Now;
-            InvokeAsync(StateHasChanged);
+            if (_tick++ % 30 == 0) await SjekkHelseAsync();   // helsesjekk hvert 30. sek (og ved oppstart)
+            await InvokeAsync(StateHasChanged);
         }, null, 0, 1000);
     }
 
