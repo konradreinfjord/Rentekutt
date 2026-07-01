@@ -252,109 +252,130 @@ else if (_active == "API og Data")
 
     @if (_apiTab == "Oversikt")
     {
-    <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
-    <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
+        <div class="section">
+            <h2>Alle tilkoblinger</h2>
+            <p class="page-sub" style="margin:-4px 0 14px">Helse og siste status per integrasjon — én linje hver.</p>
+            <table class="data-table">
+                <thead><tr><th>Helse</th><th>Tilkobling</th><th>Type</th><th>Siste status</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td><span class="sc-dot @(Users.IsConfigured ? "ok" : "bad")"></span></td>
+                        <td>Database (Supabase)</td><td>Kjerne</td>
+                        <td>@(Users.IsConfigured ? "Tilkoblet" : "Ikke tilkoblet")</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sc-dot @(LinkMobility.ErKonfigurert ? "ok" : "bad")"></span></td>
+                        <td>LinkMobility</td><td>SMS / 2FA</td>
+                        <td>@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</td>
+                    </tr>
+                    @foreach (var w in _inboundWebhooks)
+                    {
+                        <tr>
+                            <td><span class="sc-dot @(WebhookFresh(w) ? "ok" : "bad")"></span></td>
+                            <td>@w.Name</td><td>Kanal</td>
+                            <td>@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.ToLocalTime():dd.MM HH:mm}" : "Ingen data mottatt")</td>
+                        </tr>
+                    }
+                    @foreach (var b in _banks)
+                    {
+                        <tr>
+                            <td><span class="sc-dot bad"></span></td>
+                            <td>@b.Navn</td><td>Bank API</td>
+                            <td>Ikke tilkoblet</td>
+                        </tr>
+                    }
+                    @foreach (var d in _dataTjenester)
+                    {
+                        <tr>
+                            <td><span class="sc-dot bad"></span></td>
+                            <td>@d</td><td>Datatjeneste</td>
+                            <td>Ikke tilkoblet</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
 
-    <div class="webhook-widget">
-        <div class="ww-header" @onclick="() => _lmOpen = !_lmOpen">
-            <div class="ww-title">
-                <span class="ww-chevron @(_lmOpen ? "open" : "")">▸</span>
-                <strong>LinkMobility</strong>
-                <span class="ww-tag">SMS · 2FA</span>
-            </div>
-            <div class="ww-meta">
-                <span class="ww-last">@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</span>
+        <div class="section">
+            <h2>Datalagring</h2>
+            <ul class="bullet-list">
+                <li>Region: <strong>EU (Sweden Central)</strong></li>
+                <li>Database: Supabase (Postgres)</li>
+                <li>Backup: daglig, 30 dagers oppbevaring</li>
+            </ul>
+        </div>
+    }
+    else if (_apiTab == "Kanaler")
+    {
+        <div class="section" style="margin-bottom:14px">
+            <h2>Kanaler</h2>
+            <p class="page-sub" style="margin:-4px 0 0">Innkommende leadkanaler — endepunkter som mottar søknader (Rentekutt og Prismatch).</p>
+        </div>
+        <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
+        <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
+    }
+    else if (_apiTab == "Bank API")
+    {
+        <div class="section">
+            <h2>Bank API <span class="pill pill-warn">@_banks.Count</span></h2>
+            <p class="page-sub" style="margin:-4px 0 14px">Bankpartnere som mottar delegerte søknader (f.eks. Instabank, Søknedal). Velg metode for datautveksling.</p>
+            <table class="data-table">
+                <thead><tr><th>Bank</th><th>Metode</th><th>Status</th></tr></thead>
+                <tbody>
+                    @if (_banks.Count == 0)
+                    {
+                        <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — opprett under Partnere.</td></tr>
+                    }
+                    @foreach (var b in _banks)
+                    {
+                        <tr>
+                            <td>@b.Navn</td>
+                            <td><select class="inline-select" @bind="b.Method">@foreach (var m in _methods) { <option value="@m">@m</option> }</select></td>
+                            <td><span class="status off">Ikke tilkoblet</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (_apiTab == "LinkMobility")
+    {
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">LinkMobility <span class="ww-tag">SMS · 2FA</span></h2>
                 <span class="status @(LinkMobility.ErKonfigurert ? "on" : "off")">@(LinkMobility.ErKonfigurert ? "Aktiv" : "Av")</span>
             </div>
-        </div>
-        @if (_lmOpen)
-        {
-            <div class="ww-body">
-                <p class="page-sub" style="margin:0 0 16px">
-                    MyLink SMS API (OAuth2 client credentials) — sender engangskoder for 2FA ved innlogging.
-                </p>
-                <div class="kv-list" style="margin-bottom:16px">
-                    <span class="k">Status</span>
-                    <span class="v">@(LinkMobility.ErKonfigurert ? "Client ID + secret satt ✓" : "Mangler Client ID/secret")</span>
-                    <span class="k">Avsender</span><span class="v">@LinkMobility.Sender</span>
-                    <span class="k">Token-URL</span><span class="v">@LinkMobility.TokenUrl</span>
-                    <span class="k">Send-URL</span><span class="v">@LinkMobility.SendUrl</span>
-                </div>
-                <h3 class="ww-h">SMS-rategrense (per bruker)</h3>
-                <p class="page-sub" style="margin:0 0 8px; font-size:12px">Sikring mot misbruk og kostnad: maks antall innloggingskoder per bruker.</p>
-                <div class="rule-builder" style="margin-bottom:8px">
-                    <div class="rb-field rb-op" style="max-width:130px"><label>Maks per time</label><input class="rb-input" type="number" min="1" @bind="_smsMaxHour" /></div>
-                    <div class="rb-field rb-op" style="max-width:130px"><label>Maks per 24t</label><input class="rb-input" type="number" min="1" @bind="_smsMax24h" /></div>
-                    <button class="btn-primary rb-add" @onclick="SaveSmsLimits">Lagre</button>
-                </div>
-                @if (!string.IsNullOrEmpty(_smsMsg))
-                {
-                    <p class="page-sub" style="margin:0 0 16px; font-size:12px">@_smsMsg</p>
-                }
-
-                <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
-                <pre class="code-block">LinkMobility__ClientId      = &lt;klient-ID&gt;
+            <p class="page-sub" style="margin:8px 0 16px">
+                MyLink SMS API (OAuth2 client credentials) — sender engangskoder for 2FA ved innlogging.
+            </p>
+            <div class="kv-list" style="margin-bottom:16px">
+                <span class="k">Status</span>
+                <span class="v">@(LinkMobility.ErKonfigurert ? "Client ID + secret satt ✓" : "Mangler Client ID/secret")</span>
+                <span class="k">Avsender</span><span class="v">@LinkMobility.Sender</span>
+                <span class="k">Token-URL</span><span class="v">@LinkMobility.TokenUrl</span>
+                <span class="k">Send-URL</span><span class="v">@LinkMobility.SendUrl</span>
+            </div>
+            <h3 class="ww-h">SMS-rategrense (per bruker)</h3>
+            <p class="page-sub" style="margin:0 0 8px; font-size:12px">Sikring mot misbruk og kostnad: maks antall innloggingskoder per bruker.</p>
+            <div class="rule-builder" style="margin-bottom:8px">
+                <div class="rb-field rb-op" style="max-width:130px"><label>Maks per time</label><input class="rb-input" type="number" min="1" @bind="_smsMaxHour" /></div>
+                <div class="rb-field rb-op" style="max-width:130px"><label>Maks per 24t</label><input class="rb-input" type="number" min="1" @bind="_smsMax24h" /></div>
+                <button class="btn-primary rb-add" @onclick="SaveSmsLimits">Lagre</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_smsMsg))
+            {
+                <p class="page-sub" style="margin:0 0 16px; font-size:12px">@_smsMsg</p>
+            }
+            <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+            <pre class="code-block">LinkMobility__ClientId      = &lt;klient-ID&gt;
 LinkMobility__ClientSecret  = &lt;klient-hemmelighet&gt;
 LinkMobility__Sender        = Rentekutt        (valgfri)
 LinkMobility__TokenUrl      = &lt;overstyrbar&gt;     (valgfri)
 LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
-                <p class="page-sub" style="margin:12px 0 0; font-size:12px">
-                    🔒 Client ID/secret leses kun fra server-config (Azure), aldri fra databasen. 2FA aktiveres per bruker under Brukere.
-                </p>
-            </div>
-        }
-    </div>
-
-    <div class="section">
-        <h2>API <span class="pill pill-warn">@ApiRowCount</span></h2>
-        <p class="page-sub" style="margin:-4px 0 14px">
-            Hver bankpartner og leadkilde får automatisk en rad her. Velg metode for å motta/sende data.
-        </p>
-        <table class="data-table">
-            <thead><tr><th>Navn</th><th>Type</th><th>Metode</th><th>Status</th></tr></thead>
-            <tbody>
-                @if (ApiRowCount == 0)
-                {
-                    <tr><td colspan="4" class="empty-row">Ingen integrasjoner ennå — opprett en partner/leadkilde, eller legg til under.</td></tr>
-                }
-                @foreach (var b in _banks)
-                {
-                    <tr>
-                        <td>@b.Navn</td>
-                        <td><span class="type-tag bank">Bank</span></td>
-                        <td>
-                            <select class="inline-select" @bind="b.Method">
-                                @foreach (var m in _methods) { <option value="@m">@m</option> }
-                            </select>
-                        </td>
-                        <td><span class="status off">Ikke tilkoblet</span></td>
-                    </tr>
-                }
-                @foreach (var s in _sources)
-                {
-                    <tr>
-                        <td>@s.Name</td>
-                        <td><span class="type-tag lead">Leadkilde</span></td>
-                        <td>
-                            <select class="inline-select" @bind="s.Method">
-                                @foreach (var m in _methods) { <option value="@m">@m</option> }
-                            </select>
-                        </td>
-                        <td><span class="status off">Ikke tilkoblet</span></td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>Datalagring</h2>
-        <ul class="bullet-list">
-            <li>Region: <strong>EU (Sweden Central)</strong></li>
-            <li>Database: Supabase (Postgres)</li>
-            <li>Backup: daglig, 30 dagers oppbevaring</li>
-        </ul>
-    </div>
+            <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+                🔒 Client ID/secret leses kun fra server-config (Azure), aldri fra databasen. 2FA aktiveres per bruker under Brukere.
+            </p>
+        </div>
     }
     else if (_apiTab == "Bank ID")
     {
@@ -731,7 +752,6 @@ else if (_active == "GDPR")
     private Webhook? _webhookPrismatch;
     private List<Webhook> _inboundWebhooks = new();
     private List<Hendelse> _events = new();
-    private bool _lmOpen;
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
     private static bool WebhookFresh(Webhook w) => w.Active && w.LastReceivedAt is { } t && t > DateTime.UtcNow.AddDays(-7);
 
@@ -816,8 +836,9 @@ else if (_active == "GDPR")
     private readonly string[] _tabs = { "Status", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Beregningsmodell", "API og Data", "GDPR", "Hendelseslogg" };
     private string _active = "Status";
 
-    private readonly string[] _apiTabs = { "Oversikt", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
+    private readonly string[] _apiTabs = { "Oversikt", "Kanaler", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
     private string _apiTab = "Oversikt";
+    private readonly string[] _dataTjenester = { "BankID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
 
     // Gjenbrukbart integrasjons-placeholder-kort for de eksterne datatjenestene.
     private RenderFragment IntegrasjonsKort(string navn, string beskrivelse, string[] bruk, string configKeys) =>@<div class="section">
