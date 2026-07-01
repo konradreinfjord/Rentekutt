@@ -99,7 +99,7 @@ else
                         </select>
                     </td>
                     <td @onclick:stopPropagation="true">
-                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "" : "delsel-set")" @onchange="e => DelegateBank(k, e)">
+                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "delsel-unset" : "delsel-set")" @onchange="e => DelegateBank(k, e)">
                             <option value="">— ingen —</option>
                             @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>

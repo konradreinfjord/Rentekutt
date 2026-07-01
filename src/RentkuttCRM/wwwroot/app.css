@@ -602,3 +602,4 @@ a { color: var(--accent); text-decoration: none; }
 /* Delegert-til-bank chip */
 .delsel { border-radius: 999px; padding: 4px 11px; }
 .delsel-set { background: var(--green-soft); color: var(--green-dark); border-color: #bfe3c2; font-weight: 600; }
+.delsel-unset { background: #fdeceb; border-color: #f4cdc9; }
