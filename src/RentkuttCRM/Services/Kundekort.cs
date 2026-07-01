@@ -72,6 +72,29 @@ public class Kundekort : BaseModel
     [Column("onsket_laanebelop")] public decimal? OnsketLaanebelop { get; set; }
     [Column("onsket_lopetid_mnd")] public int? OnsketLopetidMnd { get; set; }
     [Column("laanetype")] public string? Laanetype { get; set; }
+    [Column("laaneformal")] public string? Laaneformal { get; set; }
+    [Column("laaneformal_kode")] public string? LaaneformalKode { get; set; }
+    [Column("naavaerende_rente")] public decimal? NaavaerendeRente { get; set; }
+
+    // Skjema / tjeneste / samtykke (rentekutt-payload)
+    [Column("tjeneste")] public string? Tjeneste { get; set; }
+    [Column("tjeneste_kode")] public string? TjenesteKode { get; set; }
+    [Column("skjema_versjon")] public int? SkjemaVersjon { get; set; }
+    [Column("samtykke_gjeldsregister_kredittsjekk")] public bool SamtykkeGjeldsregisterKredittsjekk { get; set; }
+    [Column("samlet_gjeld")] public decimal? SamletGjeld { get; set; }
+
+    // Kode-varianter (maskinlesbare koder ved siden av de tekstlige verdiene)
+    [Column("statsborgerskap_kode")] public string? StatsborgerskapKode { get; set; }
+    [Column("sivilstatus_kode")] public string? SivilstatusKode { get; set; }
+    [Column("boforhold_kode")] public string? BoforholdKode { get; set; }
+    [Column("arbeidssituasjon_kode")] public string? ArbeidssituasjonKode { get; set; }
+    [Column("utdanning_kode")] public string? UtdanningKode { get; set; }
+    [Column("medsoker_arbeidssituasjon_kode")] public string? MedsokerArbeidssituasjonKode { get; set; }
+
+    // Ja/nei-flagg fra payloaden
+    [Column("har_andre_inntekter")] public bool HarAndreInntekter { get; set; }
+    [Column("har_ektefelle_samboer_inntekt")] public bool HarEktefelleSamboerInntekt { get; set; }
+    [Column("betaler_barnebidrag")] public bool BetalerBarnebidrag { get; set; }
 
     // H. Utbetaling
     [Column("kontonummer")] public string? Kontonummer { get; set; }

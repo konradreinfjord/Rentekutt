@@ -106,26 +106,44 @@ public class WebhookController : ControllerBase
 
     // ---------- Fleksibel mapping ----------
 
-    /// <summary>Flater ut JSON (også nøstet) til normaliserte feltnavn → verdi.</summary>
+    /// <summary>
+    /// Flater ut JSON (også nøstet) til normaliserte feltnavn → verdi.
+    /// For nøstede objekter legges BÅDE en sti-prefikset nøkkel (f.eks. medsoeker_fodselsnummer)
+    /// OG den bare nøkkelen (fodselsnummer). Første bare-verdi vinner, så toppnivå/søker beholdes
+    /// mens medsøker-felt fortsatt er tilgjengelig via prefikset nøkkel (unngår kollisjon).
+    /// </summary>
     private static Dictionary<string, string> Flatten(JsonElement el)
     {
         var dict = new Dictionary<string, string>();
-        void Walk(JsonElement e)
+        void Walk(JsonElement e, string prefix)
         {
             if (e.ValueKind != JsonValueKind.Object) return;
             foreach (var p in e.EnumerateObject())
             {
+                var norm = Norm(p.Name);
+                var pathKey = prefix.Length == 0 ? norm : prefix + "_" + norm;
                 switch (p.Value.ValueKind)
                 {
-                    case JsonValueKind.Object: Walk(p.Value); break;
-                    case JsonValueKind.String: dict.TryAdd(Norm(p.Name), p.Value.GetString() ?? ""); break;
-                    case JsonValueKind.Number: dict.TryAdd(Norm(p.Name), p.Value.GetRawText()); break;
+                    case JsonValueKind.Object:
+                        Walk(p.Value, pathKey);
+                        break;
+                    case JsonValueKind.String:
+                        Add(pathKey, norm, p.Value.GetString() ?? "");
+                        break;
+                    case JsonValueKind.Number:
                     case JsonValueKind.True:
-                    case JsonValueKind.False: dict.TryAdd(Norm(p.Name), p.Value.GetRawText()); break;
+                    case JsonValueKind.False:
+                        Add(pathKey, norm, p.Value.GetRawText());
+                        break;
                 }
             }
         }
-        Walk(el);
+        void Add(string pathKey, string bare, string val)
+        {
+            dict[pathKey] = val;      // sti-prefikset nøkkel er alltid entydig
+            dict.TryAdd(bare, val);   // bar nøkkel: første vinner (toppnivå/søker)
+        }
+        Walk(el, "");
         return dict;
     }
 
@@ -189,6 +207,17 @@ public class WebhookController : ControllerBase
         else if (!string.IsNullOrWhiteSpace(fnr)) id = fnr;
         else id = Digits(mobil); // tom → SaveAsync genererer fallback
 
+        // Enhetskonvertering: payload sender år, kundekort lagrer måneder.
+        var ansiennitetMnd = GetInt(f, "ansiennitet_mnd") ?? (GetInt(f, "ansiennitet_aar", "ansiennitetaar") is { } ay ? ay * 12 : (int?)null);
+        var botidMnd = GetInt(f, "botid_mnd") ?? (GetDec(f, "botid_naavaerende_adresse_aar", "botid_aar") is { } ba ? (int)(ba * 12) : (int?)null);
+        var lopetidMnd = GetInt(f, "onsket_lopetid_mnd", "lopetid", "nedbetalingstid", "term")
+                         ?? (GetInt(f, "onsket_nedbetalingstid_aar") is { } na ? na * 12 : (int?)null);
+
+        var medsokerFnr = Get(f, "medsoeker_fodselsnummer", "medsoker_fodselsnummer");
+        var harMedsoker = GetBool(f, "medsoeker_har_medsoeker", "har_medsoeker", "har_medsoker")
+                          || !string.IsNullOrWhiteSpace(medsokerFnr)
+                          || !string.IsNullOrWhiteSpace(Get(f, "medsoeker_fullt_navn"));
+
         return new Kundekort
         {
             KundeType = type,
@@ -201,26 +230,75 @@ public class WebhookController : ControllerBase
             Postnummer = Get(f, "postnummer", "postnr", "zip", "zipcode", "postalcode"),
             Poststed = Get(f, "poststed", "city", "sted", "by"),
             Kommune = Get(f, "kommune", "municipality"),
+
+            // Husholdning
             Statsborgerskap = Get(f, "statsborgerskap", "citizenship"),
+            StatsborgerskapKode = Get(f, "statsborgerskap_kode"),
+            Opprinnelsesland = Get(f, "opprinnelsesland"),
+            AarBoddINorge = GetInt(f, "antall_aar_bodd_i_norge", "aar_bodd_i_norge"),
             Sivilstatus = Get(f, "sivilstatus", "maritalstatus"),
+            SivilstatusKode = Get(f, "sivilstatus_kode"),
             AntallBarnUnder18 = GetInt(f, "antall_barn_under_18", "antallbarn", "barn", "children"),
             Boforhold = Get(f, "boforhold", "housing"),
+            BoforholdKode = Get(f, "boforhold_kode"),
+            BotidMnd = botidMnd,
+            AntallBiler = GetInt(f, "antall_biler", "antallbiler", "cars"),
+
+            // Arbeid og inntekt
             Arbeidssituasjon = Get(f, "arbeidssituasjon", "employment", "ansettelse"),
+            ArbeidssituasjonKode = Get(f, "arbeidssituasjon_kode"),
             Arbeidsgiver = Get(f, "arbeidsgiver", "employer"),
+            AnsiennitetMnd = ansiennitetMnd,
+            Utdanning = Get(f, "utdanning", "education"),
+            UtdanningKode = Get(f, "utdanning_kode"),
             AarsinntektBrutto = GetDec(f, "aarsinntekt_brutto", "aarsinntekt", "arsinntekt", "inntekt", "income", "annualincome"),
+            HarAndreInntekter = GetBool(f, "har_andre_inntekter"),
+            AndreInntekter = GetDec(f, "andre_inntekter"),
+            HarEktefelleSamboerInntekt = GetBool(f, "har_ektefelle_samboer_inntekt"),
+            EktefelleInntekt = GetDec(f, "ektefelle_samboer_aarsinntekt", "ektefelle_inntekt"),
             BoligkostnadMnd = GetDec(f, "boligkostnad_mnd", "boligkostnad", "husleie", "rent"),
+            BetalerBarnebidrag = GetBool(f, "betaler_barnebidrag"),
+            BarnebidragBetaltMnd = GetDec(f, "barnebidrag_betalt_mnd"),
+
+            // Gjeld
             Boliggjeld = GetDec(f, "boliggjeld", "mortgage"),
             Studielaan = GetDec(f, "studielaan", "studielan", "studentloan"),
             Billaan = GetDec(f, "billaan", "bilan", "carloan"),
             Forbruksgjeld = GetDec(f, "forbruksgjeld", "forbrukslaan", "consumerdebt", "kredittkort"),
+            SamletGjeld = GetDec(f, "samlet_gjeld"),
             RefinansieresBelop = GetDec(f, "refinansieres_belop", "refinansiering", "refinance"),
             AktivInkasso = GetBool(f, "aktiv_inkasso", "inkasso", "debtcollection"),
+
+            // Lånedetaljer
             OnsketLaanebelop = GetDec(f, "onsket_laanebelop", "sum_laan", "sum_lan", "laanebelop", "lanebelop", "belop", "amount", "loanamount", "sum", "lanesum"),
-            OnsketLopetidMnd = GetInt(f, "onsket_lopetid_mnd", "lopetid", "nedbetalingstid", "term"),
-            Laanetype = Get(f, "laanetype", "lanetype", "loantype", "formaal"),
+            OnsketLopetidMnd = lopetidMnd,
+            Laanetype = Get(f, "laanetype", "lanetype", "loantype"),
+            Laaneformal = Get(f, "laaneformal", "formaal"),
+            LaaneformalKode = Get(f, "laaneformal_kode"),
+            NaavaerendeRente = GetDec(f, "naavaerende_rente"),
             NavarendeBank = Get(f, "navarende_bank", "naavaerende_bank", "nåværende_bank", "currentbank", "bank"),
             Kontonummer = Get(f, "kontonummer", "konto", "accountnumber"),
-            Status = "Ny",
+
+            // Medsøker (sti-prefikset for å unngå kollisjon med søker)
+            HarMedsoker = harMedsoker,
+            MedsokerNavn = Get(f, "medsoeker_fullt_navn", "medsoker_navn"),
+            MedsokerFoedselsnummer = medsokerFnr,
+            MedsokerMobil = Get(f, "medsoeker_mobilnummer", "medsoker_mobil"),
+            MedsokerEpost = Get(f, "medsoeker_epost"),
+            MedsokerAdresse = Get(f, "medsoeker_adresse"),
+            MedsokerPostnummer = Get(f, "medsoeker_postnummer"),
+            MedsokerPoststed = Get(f, "medsoeker_poststed"),
+            MedsokerInntekt = GetDec(f, "medsoeker_aarsinntekt", "medsoker_inntekt"),
+            MedsokerArbeidsforhold = Get(f, "medsoeker_arbeidssituasjon"),
+            MedsokerArbeidssituasjonKode = Get(f, "medsoeker_arbeidssituasjon_kode"),
+
+            // Skjema / tjeneste / samtykke
+            Tjeneste = Get(f, "tjeneste"),
+            TjenesteKode = Get(f, "tjeneste_kode"),
+            SkjemaVersjon = GetInt(f, "skjema_versjon"),
+            SamtykkeGjeldsregisterKredittsjekk = GetBool(f, "samtykke_gjeldsregister_og_kredittsjekk", "samtykke_gjeldsregister_og_kredittsjekk"),
+
+            Status = "Åpen",
         };
     }
 }
