@@ -279,6 +279,7 @@ a { color: var(--accent); text-decoration: none; }
 .breakdown-tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .breakdown-tbl .brk-kilde { color: var(--text-2); font-family: var(--mono); font-size: .76rem; }
 .breakdown-tbl .brk-formel { color: var(--text-muted); }
+.data-table td.kilde-pm { color: var(--green-dark); font-weight: 600; }
 .breakdown-tbl .brk-seksjon td { background: var(--surface-2); font-weight: 700; text-transform: uppercase; font-size: .72rem; letter-spacing: .03em; color: var(--text-2); }
 .breakdown-tbl .brk-sum td { font-weight: 700; border-top: 1px solid var(--border); }
 .multi-badge { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--orange); background: #f8a74222; border: 1px solid #f8a74255; padding: 1px 7px; border-radius: 999px; font-family: var(--mono); }

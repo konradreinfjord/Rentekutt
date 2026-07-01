@@ -308,22 +308,24 @@ ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
         <div class="section">
             <h2>Feltoversikt & mapping — tabellen <code>kundekort</code></h2>
             <p class="page-sub" style="margin:-4px 0 6px">
-                Alle felt i databasen, hva de betyr, og hva webhook-kanalene mapper fra. <strong>Begge kanaler
-                (Rentekutt.no og Prismatch)</strong> treffer samme fleksible mapper — kolonnen viser payload-stien
-                (Rentekutt-skjemaet); Prismatch fanges av samme mapper via aliaser. «Manuell» = kan legges inn i Ny kunde-skjemaet.
+                Alle felt i databasen, hva de betyr, og hva hver kanal mapper fra.
+                <strong>Rentekutt.no</strong> = full lånesøknad · <strong>Prismatch</strong> = forenklede leads
+                (kun kontakt + grunnleggende lånedata). «Manuell» = kan legges inn i Ny kunde-skjemaet.
+                Begge kanaler treffer samme fleksible mapper; Prismatch sender bare et delsett.
             </p>
             @foreach (var g in _feltmapping)
             {
                 <h3 class="stat-subhead" style="margin-top:16px">@g.Kategori</h3>
                 <table class="data-table" style="margin-bottom:14px">
-                    <thead><tr><th>DB-felt</th><th>Betydning</th><th>Fra kanal (payload)</th><th class="num">Manuell</th></tr></thead>
+                    <thead><tr><th>DB-felt</th><th>Betydning</th><th>Rentekutt.no</th><th>Prismatch</th><th class="num">Manuell</th></tr></thead>
                     <tbody>
                         @foreach (var r in g.Rader)
                         {
                             <tr>
                                 <td class="mono-cell">@r.DbFelt</td>
                                 <td>@r.Betydning</td>
-                                <td class="brk-kilde">@(string.IsNullOrEmpty(r.Kanal) ? "— (ikke fra kanal)" : r.Kanal)</td>
+                                <td class="brk-kilde">@r.Rentekutt</td>
+                                <td class="brk-kilde @(r.Prismatch == "—" ? "" : "kilde-pm")">@r.Prismatch</td>
                                 <td class="num">@(r.Manuell ? "✓" : "—")</td>
                             </tr>
                         }
@@ -869,123 +871,125 @@ else if (_active == "GDPR")
     private string _apiTab = "Oversikt";
     private readonly string[] _dataTjenester = { "BankID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
 
-    // Feltoversikt for kundekort-tabellen: betydning + hva webhook-kanalene mapper fra + manuell.
-    // Begge kanaler (Rentekutt.no + Prismatch) treffer samme fleksible mapper (WebhookController).
-    private record FeltRad(string DbFelt, string Betydning, string Kanal, bool Manuell);
+    // Feltoversikt for kundekort-tabellen: betydning + hva hver kanal mapper fra + manuell.
+    // Rentekutt.no = full lånesøknad. Prismatch = forenklede leads (kontakt + grunnleggende lånedata).
+    // Begge treffer samme fleksible mapper (WebhookController) — Prismatch sender bare et delsett.
+    private record FeltRad(string DbFelt, string Betydning, string Rentekutt, string Prismatch, bool Manuell);
     private record FeltGruppe(string Kategori, FeltRad[] Rader);
+    private const string Nei = "—";
     private readonly FeltGruppe[] _feltmapping =
     {
         new("Identifikator & type", new FeltRad[]
         {
-            new("kunde_id", "Unik ID: fødselsnr (B2C) / orgnr (B2B) / mobil-fallback", "utledet: fodselsnummer / orgnr / mobilnummer", true),
-            new("kunde_type", "B2C (privat) eller B2B (bedrift)", "kunde_type", true),
-            new("foedselsnummer", "Søkers fødselsnummer (11 siffer)", "fodselsnummer", true),
+            new("kunde_id", "Unik ID: fødselsnr (B2C) / orgnr (B2B) / mobil-fallback", "utledet: fodselsnummer / orgnr / mobilnummer", "utledet: personnummer / telefon", true),
+            new("kunde_type", "B2C (privat) eller B2B (bedrift)", "kunde_type", "default B2C", true),
+            new("foedselsnummer", "Søkers fødselsnummer (11 siffer)", "fodselsnummer", "personnummer", true),
         }),
         new("A · Søker", new FeltRad[]
         {
-            new("fullt_navn", "Søkers fulle navn", "fullt_navn", true),
-            new("mobilnummer", "Mobilnummer", "mobilnummer", true),
-            new("epost", "E-postadresse", "epost", true),
-            new("adresse", "Gateadresse", "adresse", true),
-            new("postnummer", "Postnummer", "postnummer", true),
-            new("poststed", "Poststed", "poststed", true),
-            new("kommune", "Kommune (for områdefilter)", "", true),
+            new("fullt_navn", "Søkers fulle navn", "fullt_navn", "navn", true),
+            new("mobilnummer", "Mobilnummer", "mobilnummer", "telefon", true),
+            new("epost", "E-postadresse", "epost", "epost", true),
+            new("adresse", "Gateadresse", "adresse", "adresse", true),
+            new("postnummer", "Postnummer", "postnummer", "postnr", true),
+            new("poststed", "Poststed", "poststed", "poststed", true),
+            new("kommune", "Kommune (for områdefilter)", "—", "kommune", true),
         }),
         new("B · Medsøker", new FeltRad[]
         {
-            new("har_medsoker", "Om søknaden har medsøker", "medsoeker.har_medsoeker", true),
-            new("medsoker_navn", "Medsøkers navn", "medsoeker.fullt_navn", true),
-            new("medsoker_foedselsnummer", "Medsøkers fødselsnummer", "medsoeker.fodselsnummer", true),
-            new("medsoker_mobil", "Medsøkers mobil", "medsoeker.mobilnummer", true),
-            new("medsoker_epost", "Medsøkers e-post", "medsoeker.epost", true),
-            new("medsoker_adresse", "Medsøkers adresse", "medsoeker.adresse", true),
-            new("medsoker_postnummer", "Medsøkers postnummer", "medsoeker.postnummer", true),
-            new("medsoker_poststed", "Medsøkers poststed", "medsoeker.poststed", true),
-            new("medsoker_inntekt", "Medsøkers årsinntekt", "medsoeker.aarsinntekt", true),
-            new("medsoker_arbeidsforhold", "Medsøkers arbeidssituasjon", "medsoeker.arbeidssituasjon", true),
+            new("har_medsoker", "Om søknaden har medsøker", "medsoeker.har_medsoeker", Nei, true),
+            new("medsoker_navn", "Medsøkers navn", "medsoeker.fullt_navn", Nei, true),
+            new("medsoker_foedselsnummer", "Medsøkers fødselsnummer", "medsoeker.fodselsnummer", Nei, true),
+            new("medsoker_mobil", "Medsøkers mobil", "medsoeker.mobilnummer", Nei, true),
+            new("medsoker_epost", "Medsøkers e-post", "medsoeker.epost", Nei, true),
+            new("medsoker_adresse", "Medsøkers adresse", "medsoeker.adresse", Nei, true),
+            new("medsoker_postnummer", "Medsøkers postnummer", "medsoeker.postnummer", Nei, true),
+            new("medsoker_poststed", "Medsøkers poststed", "medsoeker.poststed", Nei, true),
+            new("medsoker_inntekt", "Medsøkers årsinntekt", "medsoeker.aarsinntekt", Nei, true),
+            new("medsoker_arbeidsforhold", "Medsøkers arbeidssituasjon", "medsoeker.arbeidssituasjon", Nei, true),
         }),
         new("C · Husholdning", new FeltRad[]
         {
-            new("statsborgerskap", "Statsborgerskap", "husholdning.statsborgerskap", true),
-            new("opprinnelsesland", "Opprinnelsesland", "husholdning.opprinnelsesland", true),
-            new("aar_bodd_i_norge", "Antall år bodd i Norge", "husholdning.antall_aar_bodd_i_norge", true),
-            new("sivilstatus", "Sivilstatus", "sivilstatus", true),
-            new("antall_barn_under_18", "Antall barn under 18 (SIFO)", "antall_barn_under_18", true),
-            new("boforhold", "Eier/leier/hos foreldre", "boforhold", true),
-            new("botid_mnd", "Botid nåværende adresse (mnd)", "husholdning.botid_..._aar × 12", true),
-            new("antall_biler", "Antall biler (SIFO bilkostnad)", "husholdning.antall_biler", true),
+            new("statsborgerskap", "Statsborgerskap", "husholdning.statsborgerskap", Nei, true),
+            new("opprinnelsesland", "Opprinnelsesland", "husholdning.opprinnelsesland", Nei, true),
+            new("aar_bodd_i_norge", "Antall år bodd i Norge", "husholdning.antall_aar_bodd_i_norge", Nei, true),
+            new("sivilstatus", "Sivilstatus", "sivilstatus", Nei, true),
+            new("antall_barn_under_18", "Antall barn under 18 (SIFO)", "antall_barn_under_18", Nei, true),
+            new("boforhold", "Eier/leier/hos foreldre", "boforhold", Nei, true),
+            new("botid_mnd", "Botid nåværende adresse (mnd)", "husholdning.botid_..._aar × 12", Nei, true),
+            new("antall_biler", "Antall biler (SIFO bilkostnad)", "husholdning.antall_biler", Nei, true),
         }),
         new("D · Arbeid & inntekt", new FeltRad[]
         {
-            new("arbeidssituasjon", "Ansettelsesform", "arbeidssituasjon", true),
-            new("arbeidsgiver", "Arbeidsgiver", "arbeidsgiver", true),
-            new("ansiennitet_mnd", "Ansiennitet (mnd)", "ansiennitet_aar × 12", true),
-            new("utdanning", "Utdanningsnivå", "utdanning", true),
-            new("aarsinntekt_brutto", "Brutto årsinntekt (driver beregning)", "aarsinntekt_brutto", true),
-            new("andre_inntekter", "Andre inntekter", "arbeid_og_inntekt.andre_inntekter", true),
-            new("ektefelle_inntekt", "Ektefelle/samboers inntekt", "arbeid_og_inntekt.ektefelle_samboer_aarsinntekt", true),
+            new("arbeidssituasjon", "Ansettelsesform", "arbeidssituasjon", Nei, true),
+            new("arbeidsgiver", "Arbeidsgiver", "arbeidsgiver", Nei, true),
+            new("ansiennitet_mnd", "Ansiennitet (mnd)", "ansiennitet_aar × 12", Nei, true),
+            new("utdanning", "Utdanningsnivå", "utdanning", Nei, true),
+            new("aarsinntekt_brutto", "Brutto årsinntekt (driver beregning)", "aarsinntekt_brutto", Nei, true),
+            new("andre_inntekter", "Andre inntekter", "arbeid_og_inntekt.andre_inntekter", Nei, true),
+            new("ektefelle_inntekt", "Ektefelle/samboers inntekt", "arbeid_og_inntekt.ektefelle_samboer_aarsinntekt", Nei, true),
         }),
         new("E · Utgifter", new FeltRad[]
         {
-            new("boligkostnad_mnd", "Boligkostnad/husleie per mnd", "boligkostnad_mnd", true),
-            new("barnebidrag_betalt_mnd", "Barnebidrag betalt per mnd", "arbeid_og_inntekt.barnebidrag_betalt_mnd", true),
+            new("boligkostnad_mnd", "Boligkostnad/husleie per mnd", "boligkostnad_mnd", Nei, true),
+            new("barnebidrag_betalt_mnd", "Barnebidrag betalt per mnd", "arbeid_og_inntekt.barnebidrag_betalt_mnd", Nei, true),
         }),
         new("F · Gjeld", new FeltRad[]
         {
-            new("boliggjeld", "Restgjeld boliglån", "boliggjeld", true),
-            new("studielaan", "Studielån", "studielaan", true),
-            new("billaan", "Billån", "billaan", true),
-            new("forbruksgjeld", "Forbrukslån/kredittkort", "forbruksgjeld", true),
-            new("samlet_gjeld", "Samlet gjeld (fra søknad)", "samlet_gjeld", true),
-            new("refinansieres_belop", "Beløp som refinansieres", "refinansieres_belop", true),
-            new("aktiv_inkasso", "Aktiv inkassosak", "aktiv_inkasso", true),
+            new("boliggjeld", "Restgjeld boliglån", "boliggjeld", Nei, true),
+            new("studielaan", "Studielån", "studielaan", Nei, true),
+            new("billaan", "Billån", "billaan", Nei, true),
+            new("forbruksgjeld", "Forbrukslån/kredittkort", "forbruksgjeld", Nei, true),
+            new("samlet_gjeld", "Samlet gjeld (fra søknad)", "samlet_gjeld", Nei, true),
+            new("refinansieres_belop", "Beløp som refinansieres", "refinansieres_belop", Nei, true),
+            new("aktiv_inkasso", "Aktiv inkassosak", "aktiv_inkasso", Nei, true),
         }),
         new("G · Lånedetaljer", new FeltRad[]
         {
-            new("onsket_laanebelop", "Ønsket lånebeløp", "onsket_laanebelop", true),
-            new("onsket_lopetid_mnd", "Ønsket løpetid (mnd)", "onsket_lopetid_mnd / nedbetalingstid_aar × 12", true),
-            new("laanetype", "Lånetype", "laanetype", true),
-            new("laaneformal", "Låneformål", "lanedetaljer.laaneformal", true),
-            new("naavaerende_rente", "Nåværende rente %", "lanedetaljer.naavaerende_rente", true),
-            new("navarende_bank", "Nåværende bank", "lanedetaljer.naavaerende_bank", true),
-            new("boligverdi", "Boligverdi (belåningsgrad)", "", true),
+            new("onsket_laanebelop", "Ønsket lånebeløp", "onsket_laanebelop", "belop", true),
+            new("onsket_lopetid_mnd", "Ønsket løpetid (mnd)", "onsket_lopetid_mnd / nedbetalingstid_aar × 12", "lopetid", true),
+            new("laanetype", "Lånetype", "laanetype", "lanetype", true),
+            new("laaneformal", "Låneformål", "lanedetaljer.laaneformal", Nei, true),
+            new("naavaerende_rente", "Nåværende rente %", "lanedetaljer.naavaerende_rente", Nei, true),
+            new("navarende_bank", "Nåværende bank", "lanedetaljer.naavaerende_bank", "bank", true),
+            new("boligverdi", "Boligverdi (belåningsgrad)", "—", Nei, true),
         }),
         new("Tjeneste & samtykke", new FeltRad[]
         {
-            new("tjeneste", "Tjeneste/produkt", "tjeneste", true),
-            new("skjema_versjon", "Skjemaversjon (audit)", "skjema_versjon", true),
-            new("samtykke_gjeldsregister_kredittsjekk", "Samtykke Gjeldsregister/kredittsjekk", "samtykke_gjeldsregister_og_kredittsjekk", true),
+            new("tjeneste", "Tjeneste/produkt", "tjeneste", Nei, true),
+            new("skjema_versjon", "Skjemaversjon (audit)", "skjema_versjon", Nei, true),
+            new("samtykke_gjeldsregister_kredittsjekk", "Samtykke Gjeldsregister/kredittsjekk", "samtykke_gjeldsregister_og_kredittsjekk", Nei, true),
         }),
         new("Koder (maskinlesbare)", new FeltRad[]
         {
-            new("tjeneste_kode", "Kode for tjeneste", "tjeneste_kode", true),
-            new("laaneformal_kode", "Kode for låneformål", "lanedetaljer.laaneformal_kode", true),
-            new("statsborgerskap_kode", "Kode statsborgerskap", "husholdning.statsborgerskap_kode", true),
-            new("sivilstatus_kode", "Kode sivilstatus", "husholdning.sivilstatus_kode", true),
-            new("boforhold_kode", "Kode boforhold", "husholdning.boforhold_kode", true),
-            new("arbeidssituasjon_kode", "Kode arbeidssituasjon", "arbeid_og_inntekt.arbeidssituasjon_kode", true),
-            new("utdanning_kode", "Kode utdanning", "arbeid_og_inntekt.utdanning_kode", true),
-            new("medsoker_arbeidssituasjon_kode", "Kode medsøker arbeidssituasjon", "medsoeker.arbeidssituasjon_kode", true),
+            new("tjeneste_kode", "Kode for tjeneste", "tjeneste_kode", Nei, true),
+            new("laaneformal_kode", "Kode for låneformål", "lanedetaljer.laaneformal_kode", Nei, true),
+            new("statsborgerskap_kode", "Kode statsborgerskap", "husholdning.statsborgerskap_kode", Nei, true),
+            new("sivilstatus_kode", "Kode sivilstatus", "husholdning.sivilstatus_kode", Nei, true),
+            new("boforhold_kode", "Kode boforhold", "husholdning.boforhold_kode", Nei, true),
+            new("arbeidssituasjon_kode", "Kode arbeidssituasjon", "arbeid_og_inntekt.arbeidssituasjon_kode", Nei, true),
+            new("utdanning_kode", "Kode utdanning", "arbeid_og_inntekt.utdanning_kode", Nei, true),
+            new("medsoker_arbeidssituasjon_kode", "Kode medsøker arbeidssituasjon", "medsoeker.arbeidssituasjon_kode", Nei, true),
         }),
         new("Flagg (ja/nei)", new FeltRad[]
         {
-            new("har_andre_inntekter", "Har andre inntekter", "arbeid_og_inntekt.har_andre_inntekter", true),
-            new("har_ektefelle_samboer_inntekt", "Har ektefelle/samboer-inntekt", "arbeid_og_inntekt.har_ektefelle_samboer_inntekt", true),
-            new("betaler_barnebidrag", "Betaler barnebidrag", "arbeid_og_inntekt.betaler_barnebidrag", true),
+            new("har_andre_inntekter", "Har andre inntekter", "arbeid_og_inntekt.har_andre_inntekter", Nei, true),
+            new("har_ektefelle_samboer_inntekt", "Har ektefelle/samboer-inntekt", "arbeid_og_inntekt.har_ektefelle_samboer_inntekt", Nei, true),
+            new("betaler_barnebidrag", "Betaler barnebidrag", "arbeid_og_inntekt.betaler_barnebidrag", Nei, true),
         }),
         new("H · Utbetaling", new FeltRad[]
         {
-            new("kontonummer", "Kontonummer for utbetaling", "kontonummer", true),
+            new("kontonummer", "Kontonummer for utbetaling", "kontonummer", Nei, true),
         }),
         new("System & intern (ikke fra kanal)", new FeltRad[]
         {
-            new("id", "Primærnøkkel (uuid)", "", false),
-            new("kilde", "Leadkilde — settes av kanalen (Rentekutt.no/Prismatch)", "auto (kanalnavn)", false),
-            new("status", "Saksstatus (Åpen → Fullført)", "", false),
-            new("delegert_bank", "Bank saken er delegert til", "", false),
-            new("eier / eier_navn", "Saksbehandler som eier saken", "", false),
-            new("notater", "Interne notater", "", true),
-            new("created_at / updated_at", "Tidsstempler (DB-styrt)", "", false),
+            new("id", "Primærnøkkel (uuid)", "—", "—", false),
+            new("kilde", "Leadkilde — settes av kanalen", "auto: Rentekutt.no", "auto: Prismatch", false),
+            new("status", "Saksstatus (Åpen → Fullført)", "—", "—", false),
+            new("delegert_bank", "Bank saken er delegert til", "—", "—", false),
+            new("eier / eier_navn", "Saksbehandler som eier saken", "—", "—", false),
+            new("notater", "Interne notater", "—", "—", true),
+            new("created_at / updated_at", "Tidsstempler (DB-styrt)", "—", "—", false),
         }),
     };
 

@@ -41,6 +41,11 @@
         <option value="">Alle banker</option>
         @foreach (var b in BankListe) { <option value="@b.Navn">@b.Navn (@b.Antall)</option> }
     </select>
+    <select class="db-select" @bind="_delegertFilter" @bind:after="ResetPage">
+        <option value="">Alle delegeringer</option>
+        <option value="__ingen__">Ikke delegert</option>
+        @foreach (var d in DelegertListe) { <option value="@d.Navn">→ @d.Navn (@d.Antall)</option> }
+    </select>
     <select class="db-select" @bind="_kommuneFilter" @bind:after="ResetPage">
         <option value="">Alle områder</option>
         @foreach (var f in KommunerPerFylke)
@@ -171,6 +176,7 @@ else
     private string _statusFilter = "";
     private string _typeFilter = "";
     private string _bankFilter = "";
+    private string _delegertFilter = "";
     private string _kommuneFilter = "";
 
     // Facet-listene avhenger kun av _rows (settes ved init) — beregn én gang, ikke per render.
@@ -178,6 +184,13 @@ else
     private IEnumerable<(string Navn, int Antall)> BankListe => _bankListe ??= _rows
         .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank))
         .GroupBy(k => k.NavarendeBank!)
+        .Select(g => (g.Key, g.Count()))
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
+
+    private IEnumerable<(string Navn, int Antall)>? _delegertListe;
+    private IEnumerable<(string Navn, int Antall)> DelegertListe => _delegertListe ??= _rows
+        .Where(k => !string.IsNullOrWhiteSpace(k.DelegertBank))
+        .GroupBy(k => k.DelegertBank!)
         .Select(g => (g.Key, g.Count()))
         .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
 
@@ -299,7 +312,7 @@ else
     {
         get
         {
-            var cacheKey = $"{_rows.Count}|{_search}|{_statusFilter}|{_typeFilter}|{_bankFilter}|{_kommuneFilter}|{_sortField}|{_sortAsc}";
+            var cacheKey = $"{_rows.Count}|{_search}|{_statusFilter}|{_typeFilter}|{_bankFilter}|{_delegertFilter}|{_kommuneFilter}|{_sortField}|{_sortAsc}";
             if (_viewCache is not null && cacheKey == _viewKey) return _viewCache;
 
             IEnumerable<Kundekort> q = _rows;
@@ -317,6 +330,8 @@ else
             if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
             if (!string.IsNullOrEmpty(_typeFilter)) q = q.Where(k => k.KundeType == _typeFilter);
             if (!string.IsNullOrEmpty(_bankFilter)) q = q.Where(k => k.NavarendeBank == _bankFilter);
+            if (_delegertFilter == "__ingen__") q = q.Where(k => string.IsNullOrWhiteSpace(k.DelegertBank));
+            else if (!string.IsNullOrEmpty(_delegertFilter)) q = q.Where(k => k.DelegertBank == _delegertFilter);
             if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
 
             Func<Kundekort, object?> key = _sortField switch
