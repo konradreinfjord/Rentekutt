@@ -52,6 +52,9 @@ builder.Services.AddScoped<EventService>();
 // Bankpartnere.
 builder.Services.AddScoped<PartnerService>();
 
+// SMS-maler + kundeutsending.
+builder.Services.AddScoped<SmsMalService>();
+
 // Beregningsmodell (finansieringsevne/likviditet).
 builder.Services.AddScoped<BeregningService>();
 

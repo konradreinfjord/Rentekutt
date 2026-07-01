@@ -2,6 +2,7 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.BeregningService Beregning
+@inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject NavigationManager Nav
 
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
@@ -75,6 +76,26 @@
             <span class="k">= Fri likviditet</span><span class="v"><strong>@($"{ber.Likviditet:N0}") kr</strong></span>
         </div>
     }
+</div>
+
+@* Send SMS til kunde *@
+<div class="form-card">
+    <h2>Send SMS til kunde</h2>
+    <p class="page-sub" style="margin:-4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
+    <div class="form-grid">
+        <div class="ff">
+            <label>Velg mal (valgfritt)</label>
+            <select @onchange="VelgMal">
+                <option value="">— fri tekst —</option>
+                @foreach (var m in _smsMaler) { <option value="@m.Navn">@m.Navn</option> }
+            </select>
+        </div>
+    </div>
+    <textarea class="note-area" style="margin-top:12px; min-height:80px" @bind="_smsTekst" placeholder="Skriv meldingen her, eller velg en mal over…"></textarea>
+    <div style="display:flex; align-items:center; gap:12px; margin-top:12px">
+        <button class="btn-primary" @onclick="SendSms" disabled="@(_smsSending || string.IsNullOrWhiteSpace(_k.Mobilnummer))">@(_smsSending ? "Sender…" : "Send SMS")</button>
+        @if (!string.IsNullOrEmpty(_smsMsg)) { <span class="form-msg @(_smsOk ? "ok" : "err")">@_smsMsg</span> }
+    </div>
 </div>
 
 @* Kundetype *@
@@ -285,6 +306,28 @@
     private BeregningParametre _berParams = BeregningService.Standard;
     private bool _visBreakdown;
 
+    private List<SmsMal> _smsMaler = new();
+    private string _smsTekst = "";
+    private string? _smsMsg;
+    private bool _smsOk, _smsSending;
+
+    private void VelgMal(ChangeEventArgs e)
+    {
+        var navn = e.Value?.ToString();
+        var mal = _smsMaler.FirstOrDefault(m => m.Navn == navn);
+        if (mal is not null) _smsTekst = mal.Tekst;
+    }
+
+    private async Task SendSms()
+    {
+        _smsSending = true;
+        _smsMsg = null;
+        var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_k.Mobilnummer, _smsTekst, _k.FulltNavn);
+        _smsOk = ok;
+        _smsMsg = ok ? "SMS sendt ✓" : $"Kunne ikke sende: {detalj}";
+        _smsSending = false;
+    }
+
     private async Task Delete()
     {
         await Svc.DeleteAsync(_k.Id);
@@ -295,6 +338,7 @@
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         _berParams = await Beregning.HentParametreAsync();
+        _smsMaler = await SmsMaler.ListAsync();
         if (Guid.TryParse(Id, out var caseId))
         {
             var existing = await Svc.GetAsync(caseId);

@@ -7,6 +7,7 @@
 @inject RentkuttCRM.Services.SettingsService Settings
 @inject RentkuttCRM.Services.EventService Events
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 
@@ -405,6 +406,51 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
                 🔒 Client ID/secret leses kun fra server-config (Azure), aldri fra databasen. 2FA aktiveres per bruker under Brukere.
             </p>
         </div>
+
+        <div class="section">
+            <h2>SMS-maler til kunder</h2>
+            <p class="page-sub" style="margin:-4px 0 14px">Maler som kan sendes til kunder fra kundekortet. Bruk <code>{navn}</code> for kundens fornavn.</p>
+            <table class="data-table" style="margin-bottom:14px">
+                <thead><tr><th>Navn</th><th>Tekst</th><th></th></tr></thead>
+                <tbody>
+                    @if (_smsMaler.Count == 0)
+                    {
+                        <tr><td colspan="3" class="empty-row">Ingen maler ennå — opprett en under.</td></tr>
+                    }
+                    @foreach (var m in _smsMaler)
+                    {
+                        <tr>
+                            <td><strong>@m.Navn</strong></td>
+                            <td class="brk-kilde">@m.Tekst</td>
+                            <td><button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="rule-builder" style="align-items:flex-start">
+                <div class="rb-field" style="max-width:200px"><label>Malnavn</label><input class="rb-input" @bind="_nyMalNavn" placeholder="F.eks. Velkomst" /></div>
+                <div class="rb-field" style="flex:1"><label>Meldingstekst</label><input class="rb-input" @bind="_nyMalTekst" placeholder="Hei {navn}, vi har mottatt søknaden din …" /></div>
+                <button class="btn-primary rb-add" @onclick="LeggTilMal">Legg til mal</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_malMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_malMsg</p> }
+        </div>
+
+        <div class="section">
+            <h2>Automatikk</h2>
+            <p class="page-sub" style="margin:-4px 0 14px">Send automatisk SMS til kunden når en ny søknad registreres (fra kanal eller manuelt).</p>
+            <label class="ff-check" style="margin-bottom:12px"><input type="checkbox" @bind="_autoEnabled" /> Send SMS ved ny søknad</label>
+            <div class="rule-builder">
+                <div class="rb-field" style="max-width:280px">
+                    <label>Mal som sendes</label>
+                    <select class="rb-input" @bind="_autoMal">
+                        <option value="">— velg mal —</option>
+                        @foreach (var m in _smsMaler) { <option value="@m.Navn">@m.Navn</option> }
+                    </select>
+                </div>
+                <button class="btn-primary rb-add" @onclick="LagreAutomatikk">Lagre</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_autoMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_autoMsg</p> }
+        </div>
     }
     else if (_apiTab == "Bank ID")
     {
@@ -741,6 +787,9 @@ else if (_active == "GDPR")
         _loginIpList = await Settings.GetAsync("login_ip_allowlist") ?? "";
         _loginMaxFailHour = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFailHour, SupabaseUserService.DefaultMaxFailHour);
         _loginMaxFail24h = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFail24h, SupabaseUserService.DefaultMaxFail24h);
+        _smsMaler = await SmsMaler.ListAsync();
+        _autoEnabled = (await Settings.GetAsync(SmsMalService.KeyAutoEnabled)) == "true";
+        _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
         var bp = await Beregning.HentParametreAsync();
         _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
@@ -774,6 +823,34 @@ else if (_active == "GDPR")
         await Settings.SetAsync(TwoFactorService.KeyMaxPerHour, _smsMaxHour.ToString());
         await Settings.SetAsync(TwoFactorService.KeyMaxPer24h, _smsMax24h.ToString());
         _smsMsg = "Rategrense lagret.";
+    }
+
+    // ---- SMS-maler + automatikk ----
+    private List<SmsMal> _smsMaler = new();
+    private string _nyMalNavn = "", _nyMalTekst = "";
+    private string? _malMsg;
+    private bool _autoEnabled;
+    private string _autoMal = "";
+    private string? _autoMsg;
+
+    private async Task LeggTilMal()
+    {
+        var (ok, error) = await SmsMaler.AddAsync(_nyMalNavn, _nyMalTekst);
+        _malMsg = ok ? "Mal lagt til." : error;
+        if (ok) { _nyMalNavn = ""; _nyMalTekst = ""; _smsMaler = await SmsMaler.ListAsync(); }
+    }
+
+    private async Task SlettMal(Guid id)
+    {
+        await SmsMaler.DeleteAsync(id);
+        _smsMaler = await SmsMaler.ListAsync();
+    }
+
+    private async Task LagreAutomatikk()
+    {
+        await Settings.SetAsync(SmsMalService.KeyAutoEnabled, _autoEnabled ? "true" : "false");
+        await Settings.SetAsync(SmsMalService.KeyAutoMal, _autoMal);
+        _autoMsg = "Automatikk lagret.";
     }
 
     // ---- Inbound webhooks + status + hendelser ----

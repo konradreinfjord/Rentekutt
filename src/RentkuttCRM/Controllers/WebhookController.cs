@@ -13,15 +13,17 @@ public class WebhookController : ControllerBase
     private readonly WebhookService _hooks;
     private readonly KundekortService _kundekort;
     private readonly EventService _events;
+    private readonly SmsMalService _sms;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
-        IWebHostEnvironment env, ILogger<WebhookController> log)
+        SmsMalService sms, IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
         _events = events;
+        _sms = sms;
         _env = env;
         _log = log;
     }
@@ -75,6 +77,7 @@ public class WebhookController : ControllerBase
             var (ok, error) = await _kundekort.SaveAsync(k);
             if (!ok) { _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
 
+            await _sms.MaybeSendAutomatikkAsync(k);   // auto-SMS til kunde hvis slått på
             opprettet++;
             var belop = k.OnsketLaanebelop.HasValue ? $" · {k.OnsketLaanebelop:N0} kr" : "";
             sisteInfo = $"{k.KundeType} · {k.Laanetype ?? "—"}{belop}";
