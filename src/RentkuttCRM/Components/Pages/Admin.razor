@@ -22,34 +22,7 @@
     }
 </div>
 
-@if (_active == "Status")
-{
-    <div class="section">
-        <h2>Tilkoblinger</h2>
-        <p class="page-sub" style="margin:-4px 0 16px">Live oversikt over systemer og sist mottatte data. Grønn = OK / nylig data, rød = ikke tilkoblet / ingen data.</p>
-        <div class="summary-grid">
-            <div class="summary-card">
-                <div class="sc-head"><span class="sc-dot @(Users.IsConfigured ? "ok" : "bad")"></span> Database (Supabase)</div>
-                <div class="sc-status">@(Users.IsConfigured ? "Tilkoblet" : "Ikke tilkoblet")</div>
-                <div class="summary-sub">Postgres · EU (Sweden)</div>
-            </div>
-            <div class="summary-card">
-                <div class="sc-head"><span class="sc-dot @(LinkMobility.ErKonfigurert ? "ok" : "bad")"></span> SMS (LinkMobility)</div>
-                <div class="sc-status">@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</div>
-                <div class="summary-sub">2FA-koder</div>
-            </div>
-            @foreach (var w in _inboundWebhooks)
-            {
-                <div class="summary-card">
-                    <div class="sc-head"><span class="sc-dot @(WebhookFresh(w) ? "ok" : "bad")"></span> @w.Name</div>
-                    <div class="sc-status">@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.ToLocalTime():dd.MM HH:mm}" : "Ingen data mottatt")</div>
-                    <div class="summary-sub">@(w.LastReceivedInfo ?? "Inbound endepunkt")</div>
-                </div>
-            }
-        </div>
-    </div>
-}
-else if (_active == "Generelt")
+@if (_active == "Generelt")
 {
     <div class="section">
         <h2>SLA-frister</h2>
@@ -254,24 +227,24 @@ else if (_active == "API og Data")
     {
         <div class="section">
             <h2>Alle tilkoblinger</h2>
-            <p class="page-sub" style="margin:-4px 0 14px">Helse og siste status per integrasjon — én linje hver.</p>
+            <p class="page-sub" style="margin:-4px 0 14px">Lampe = grønn hvis data siste 3 døgn, rød hvis ikke.</p>
             <table class="data-table">
                 <thead><tr><th>Helse</th><th>Tilkobling</th><th>Type</th><th>Siste status</th></tr></thead>
                 <tbody>
                     <tr>
-                        <td><span class="sc-dot @(Users.IsConfigured ? "ok" : "bad")"></span></td>
+                        <td><span class="lampe @(Users.IsConfigured ? "on" : "off")"></span></td>
                         <td>Database (Supabase)</td><td>Kjerne</td>
                         <td>@(Users.IsConfigured ? "Tilkoblet" : "Ikke tilkoblet")</td>
                     </tr>
                     <tr>
-                        <td><span class="sc-dot @(LinkMobility.ErKonfigurert ? "ok" : "bad")"></span></td>
+                        <td><span class="lampe @(LinkMobility.ErKonfigurert ? "on" : "off")"></span></td>
                         <td>LinkMobility</td><td>SMS / 2FA</td>
                         <td>@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</td>
                     </tr>
                     @foreach (var w in _inboundWebhooks)
                     {
                         <tr>
-                            <td><span class="sc-dot @(WebhookFresh(w) ? "ok" : "bad")"></span></td>
+                            <td><span class="lampe @(DataSiste3Dogn(w.LastReceivedAt) ? "on" : "off")"></span></td>
                             <td>@w.Name</td><td>Kanal</td>
                             <td>@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.ToLocalTime():dd.MM HH:mm}" : "Ingen data mottatt")</td>
                         </tr>
@@ -279,7 +252,7 @@ else if (_active == "API og Data")
                     @foreach (var b in _banks)
                     {
                         <tr>
-                            <td><span class="sc-dot bad"></span></td>
+                            <td><span class="lampe off"></span></td>
                             <td>@b.Navn</td><td>Bank API</td>
                             <td>Ikke tilkoblet</td>
                         </tr>
@@ -287,7 +260,7 @@ else if (_active == "API og Data")
                     @foreach (var d in _dataTjenester)
                     {
                         <tr>
-                            <td><span class="sc-dot bad"></span></td>
+                            <td><span class="lampe off"></span></td>
                             <td>@d</td><td>Datatjeneste</td>
                             <td>Ikke tilkoblet</td>
                         </tr>
@@ -295,14 +268,28 @@ else if (_active == "API og Data")
                 </tbody>
             </table>
         </div>
-
+    }
+    else if (_apiTab == "Supabase")
+    {
         <div class="section">
-            <h2>Datalagring</h2>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Supabase</h2>
+                <span class="status @(Users.IsConfigured ? "on" : "off")">@(Users.IsConfigured ? "Tilkoblet" : "Ikke tilkoblet")</span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 16px">Postgres-database, autentisering og lagring for hele plattformen.</p>
+            <h3 class="ww-h">Datalagring</h3>
             <ul class="bullet-list">
                 <li>Region: <strong>EU (Sweden Central)</strong></li>
-                <li>Database: Supabase (Postgres)</li>
+                <li>Database: Supabase (Postgres) med Row Level Security</li>
                 <li>Backup: daglig, 30 dagers oppbevaring</li>
             </ul>
+            <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+            <pre class="code-block">Supabase__Url             = &lt;prosjekt-URL&gt;
+Supabase__Key             = &lt;service_role-nøkkel&gt;
+ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
+            <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+                🔒 Nøkler leses kun fra server-config (Azure), aldri fra klienten. Migrasjoner kjøres automatisk ved oppstart.
+            </p>
         </div>
     }
     else if (_apiTab == "Kanaler")
@@ -754,6 +741,8 @@ else if (_active == "GDPR")
     private List<Hendelse> _events = new();
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
     private static bool WebhookFresh(Webhook w) => w.Active && w.LastReceivedAt is { } t && t > DateTime.UtcNow.AddDays(-7);
+    // Lampe: grønn hvis det er mottatt data siste 3 døgn.
+    private static bool DataSiste3Dogn(DateTime? last) => last is { } t && t > DateTime.UtcNow.AddDays(-3);
 
     // ---- Brukeradministrasjon ----
     private List<UserRow> _userRows = new();
@@ -833,10 +822,10 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "Status", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Beregningsmodell", "API og Data", "GDPR", "Hendelseslogg" };
-    private string _active = "Status";
+    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Beregningsmodell", "GDPR", "Hendelseslogg" };
+    private string _active = "API og Data";
 
-    private readonly string[] _apiTabs = { "Oversikt", "Kanaler", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
+    private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
     private string _apiTab = "Oversikt";
     private readonly string[] _dataTjenester = { "BankID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
 

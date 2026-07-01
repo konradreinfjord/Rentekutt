@@ -347,6 +347,9 @@ a { color: var(--accent); text-decoration: none; }
 .sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .sc-dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 .sc-dot.bad { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.lampe { width: 12px; height: 12px; border-radius: 50%; display: inline-block; vertical-align: middle; }
+.lampe.on { background: #2f8a3e; box-shadow: 0 0 7px 1px rgba(47,138,62,.55), inset 0 0 2px rgba(255,255,255,.5); }
+.lampe.off { background: #d64339; box-shadow: 0 0 7px 1px rgba(180,35,24,.45), inset 0 0 2px rgba(255,255,255,.4); }
 .sc-status { font-size: 13px; color: var(--text-2); margin-top: 8px; font-weight: 500; }
 
 /* ---------- Webhook / API-info ---------- */
