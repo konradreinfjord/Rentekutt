@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using RentkuttCRM.Components;
 using RentkuttCRM.Services;
 using Supabase;
@@ -20,6 +21,38 @@ builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Rate limiting for offentlige API-endepunkter (mot enumerering/misbruk).
+// «tredjepart» partisjoneres på token (ev. IP) — hindrer masseoppslag av lånestatus på mobilnr.
+// «webhook» partisjoneres på IP.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("tredjepart", ctx =>
+    {
+        var auth = ctx.Request.Headers.Authorization.ToString();
+        var token = auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? auth["Bearer ".Length..].Trim()
+            : ctx.Request.Query["token"].ToString();
+        var key = !string.IsNullOrWhiteSpace(token)
+            ? "t:" + token
+            : "ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0,
+        });
+    });
+
+    options.AddPolicy("webhook", ctx =>
+    {
+        var key = "ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0,
+        });
+    });
+});
 
 // Blazor (Interactive Server) – frontend i samme prosjekt.
 // DetailedErrors KUN i Development (aldri lekke stack traces til klient i prod).
@@ -94,8 +127,35 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Security-headere på ALLE svar (før static files/endepunkter).
+app.Use(async (ctx, next) =>
+{
+    var h = ctx.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"]        = "DENY";
+    h["Referrer-Policy"]        = "no-referrer";
+    h["Permissions-Policy"]     = "camera=(), microphone=(), geolocation=(), payment=()";
+    // Streng CSP: appen har ingen inline-skript (blazor.web.js + app.css er eksterne).
+    // Inline style-attributter brukes mange steder → 'unsafe-inline' kun for style.
+    // SignalR-circuit trenger ws:/wss:.
+    h["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "base-uri 'self'; " +
+        "frame-ancestors 'none'; " +
+        "object-src 'none'; " +
+        "form-action 'self'; " +
+        "img-src 'self' data:; " +
+        "font-src 'self'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "script-src 'self'; " +
+        "connect-src 'self' ws: wss:;";
+    await next();
+});
+
 app.UseResponseCompression();
 app.UseStaticFiles();
+
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.UseAuthorization();

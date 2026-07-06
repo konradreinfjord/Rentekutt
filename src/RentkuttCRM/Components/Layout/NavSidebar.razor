@@ -35,6 +35,8 @@
             </NavLink>
         </div>
 
+        @if (Session.IsAdmin)
+        {
         <div class="nav-group">
             <div class="nav-group-title">Administrasjon</div>
             <NavLink class="nav-item" href="/crm/admin">
@@ -43,6 +45,7 @@
                 </span> Admin
             </NavLink>
         </div>
+        }
     </nav>
 
     <div class="sidebar-footer">

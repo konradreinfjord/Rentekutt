@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RentkuttCRM.Services;
 
 namespace RentkuttCRM.Controllers;
@@ -33,6 +34,7 @@ public class TredjepartController : ControllerBase
 
     /// <summary>GET /api/tredjepart/status?mobil=+4791234567 — returnerer status på nyeste sak for nummeret.</summary>
     [HttpGet("status")]
+    [EnableRateLimiting("tredjepart")]
     public async Task<IActionResult> Status([FromQuery] string? mobil)
     {
         if (!Request.IsHttps && !_env.IsDevelopment())

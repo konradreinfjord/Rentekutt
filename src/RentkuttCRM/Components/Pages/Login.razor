@@ -4,6 +4,7 @@
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.TwoFactorService TwoFactor
 @inject NavigationManager Nav
+@inject ILogger<Login> Logger
 
 <PageTitle>Logg inn — Rentekutt</PageTitle>
 
@@ -87,9 +88,16 @@
             }
 
             var user = result.User;
-            // 2FA håndheves kun når den er på OG vi faktisk kan sende SMS (konfigurert + mobil).
-            if (user.TwoFactorEnabled && TwoFactor.KanSende(user))
+            // 2FA er fail-closed: er den PÅ men vi ikke kan levere kode (mangler mobil / SMS
+            // ikke konfigurert), nekter vi innlogging i stedet for å slippe forbi uten andrefaktor.
+            if (user.TwoFactorEnabled)
             {
+                if (!TwoFactor.KanSende(user))
+                {
+                    _error = "Tofaktor er påkrevd for kontoen din, men ingen leveringskanal (mobilnummer/SMS) er satt opp. Kontakt administrator.";
+                    _busy = false;
+                    return;
+                }
                 var (sent, error) = await TwoFactor.SendKodeAsync(user);
                 if (!sent) { _error = error; _busy = false; return; }
                 _pending = user;
@@ -103,7 +111,8 @@
         }
         catch (Exception ex)
         {
-            _error = "Teknisk feil ved innlogging: " + ex.Message;
+            Logger.LogError(ex, "Innlogging feilet uventet");
+            _error = "Teknisk feil ved innlogging. Prøv igjen senere.";
             _busy = false;
         }
     }
@@ -125,7 +134,8 @@
         }
         catch (Exception ex)
         {
-            _error = "Teknisk feil: " + ex.Message;
+            Logger.LogError(ex, "2FA-verifisering feilet uventet");
+            _error = "Teknisk feil. Prøv igjen senere.";
             _busy = false;
         }
     }

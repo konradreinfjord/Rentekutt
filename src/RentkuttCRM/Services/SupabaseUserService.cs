@@ -274,8 +274,14 @@ public class SupabaseUserService
             var any = (await _client.From<AppUser>().Limit(1).Get()).Models.Count > 0;
             if (!any)
             {
-                var fraKonfig = !string.IsNullOrWhiteSpace(_seedPassword);
-                var passord = fraKonfig ? _seedPassword! : GenererPassord();
+                // Aldri generere+logge et passord i klartekst (havner i Azure-logg/App Insights).
+                // Krev at Admin:SeedPassword settes eksplisitt; ellers hopp over seeding og prøv igjen senere.
+                if (string.IsNullOrWhiteSpace(_seedPassword))
+                {
+                    _log.LogWarning("Hopper over admin-seeding: sett App Setting «Admin:SeedPassword» og start på nytt for å opprette {Email}. Bytt passordet etter første innlogging.", _seedEmail);
+                    _seeded = false; // tillat seeding når passordet er konfigurert
+                    return;
+                }
                 var admin = new AppUser
                 {
                     Email = _seedEmail,
@@ -283,12 +289,9 @@ public class SupabaseUserService
                     Role = "Administrator",
                     Active = true,
                 };
-                admin.PasswordHash = _hasher.HashPassword(admin, passord);
+                admin.PasswordHash = _hasher.HashPassword(admin, _seedPassword);
                 await _client.From<AppUser>().Insert(admin);
-                if (fraKonfig)
-                    _log.LogInformation("Opprettet admin {Email} med passord fra konfigurasjon (Admin:SeedPassword).", _seedEmail);
-                else
-                    _log.LogWarning("Opprettet admin {Email} med GENERERT engangspassord: {Passord} — logg inn og bytt det straks.", _seedEmail, passord);
+                _log.LogInformation("Opprettet admin {Email} med passord fra konfigurasjon (Admin:SeedPassword). Bytt det etter første innlogging.", _seedEmail);
             }
         }
         catch (Exception ex)

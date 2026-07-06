@@ -818,6 +818,8 @@ else if (_active == "GDPR")
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        // Kun administratorer har tilgang til admin-panelet (brukeradmin, tokens, integrasjoner).
+        if (!Session.IsAdmin) { Nav.NavigateTo("/crm"); return; }
         // Hent uavhengige kilder i parallell.
         var usersTask = Users.ListUsersAsync();
         var banksTask = Partners.ListAsync();
@@ -921,6 +923,7 @@ else if (_active == "GDPR")
     private string? _tpMsg;
     private async Task LagreTredjepart()
     {
+        if (!Session.IsAdmin) return;   // server-side vern (defence-in-depth)
         await Settings.SetAsync(TredjepartController.KeyToken, _tpToken?.Trim());
         await Settings.SetAsync(TredjepartController.KeyEnabled, _tpEnabled ? "true" : "false");
         await Events.LogAsync("Tredjepart-API", _tpEnabled ? "Aktivert / token oppdatert" : "Deaktivert", "Admin");
@@ -945,6 +948,7 @@ else if (_active == "GDPR")
 
     private async Task SetPassword(UserRow u)
     {
+        if (!Session.IsAdmin) return;   // server-side vern (defence-in-depth)
         var (ok, error) = await Users.SetPasswordAsync(u.Id, _pwInputs.GetValueOrDefault(u.Id, ""));
         _pwMsg = ok ? $"Passord oppdatert for {u.Email}." : (error ?? "Kunne ikke endre passord.");
         if (ok) _pwInputs[u.Id] = "";
@@ -959,6 +963,7 @@ else if (_active == "GDPR")
 
     private async Task ChangeRole(UserRow u, ChangeEventArgs e)
     {
+        if (!Session.IsAdmin) return;   // server-side vern (defence-in-depth)
         var role = e.Value?.ToString() ?? u.Role;
         await Users.SetRoleAsync(u.Id, role);
         await LoadUsersAsync();
@@ -989,6 +994,7 @@ else if (_active == "GDPR")
 
     private async Task CreateUser()
     {
+        if (!Session.IsAdmin) return;   // server-side vern (defence-in-depth)
         _creating = true;
         _userMsg = null;
         var (ok, error) = await Users.CreateUserAsync(_nuEmail, _nuName, _nuRole, _nuPassword, _nuMobil);

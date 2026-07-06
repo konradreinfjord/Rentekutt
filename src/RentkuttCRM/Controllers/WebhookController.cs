@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RentkuttCRM.Services;
 
 namespace RentkuttCRM.Controllers;
@@ -34,6 +35,7 @@ public class WebhookController : ControllerBase
     /// Sikkerhet: HTTPS påkrevd + Bearer-token (konstant-tids sammenligning).
     /// </summary>
     [HttpPost("soknad")]
+    [EnableRateLimiting("webhook")]
     public async Task<IActionResult> Soknad([FromBody] JsonElement body)
     {
         if (!Request.IsHttps && !_env.IsDevelopment())
