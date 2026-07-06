@@ -170,6 +170,34 @@ a { color: var(--accent); text-decoration: none; }
 }
 .kpi-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .kpi-card.kpi-click { cursor: pointer; }
+
+/* ---------- Stat-kort (dashbord — UX-vennlig tallpresentasjon) ---------- */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 30px; align-items: stretch; }
+.stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 15px 16px; box-shadow: var(--shadow-sm);
+    display: flex; flex-direction: column; gap: 8px;
+    transition: border-color .12s, box-shadow .12s, transform .12s;
+}
+.stat-card.stat-click { cursor: pointer; }
+.stat-card.stat-click:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.stat-top { display: flex; align-items: center; gap: 9px; }
+.stat-ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; background: var(--surface-2); color: var(--text-muted); }
+.stat-ico svg { width: 16px; height: 16px; }
+.stat-lbl { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); line-height: 1.2; }
+.stat-num { font-family: var(--mono); font-size: 28px; font-weight: 650; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat-num.num-warn { color: #c2740a; }
+.stat-num .stat-unit { font-family: "Inter", sans-serif; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-left: 5px; letter-spacing: 0; }
+.stat-sub { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11.5px; color: var(--text-muted); margin-top: auto; }
+.stat-sub .kilde-badge { font-size: 10.5px; padding: 1px 8px; }
+
+/* Ikon-aksenter per kort */
+.stat-card.accent-blue   .stat-ico { background: #eaf1fc; color: #1f5fc4; }
+.stat-card.accent-amber  .stat-ico { background: #fdf2e3; color: #9a5b06; }
+.stat-card.accent-green  .stat-ico { background: var(--green-soft); color: var(--green-dark); }
+.stat-card.accent-purple .stat-ico { background: #f1ecfb; color: #5a2fb0; }
+.stat-card.accent-teal   .stat-ico { background: #e6f5f5; color: #0c7373; }
+.stat-card.warn { border-top: 2px solid #c2740a; }
 .kpi-value { font-family: var(--mono); font-size: 23px; font-weight: 600; color: var(--ink); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .kpi-label { color: var(--text-muted); margin-top: 6px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .kpi-breakdown { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }

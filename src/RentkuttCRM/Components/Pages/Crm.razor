@@ -18,56 +18,85 @@
 }
 else
 {
-    <div class="kpi-grid">
-        <div class="kpi-card kpi-click" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
-            <div class="kpi-value">@_utatte</div>
-            <div class="kpi-label">Utatte saker</div>
-        </div>
-        <div class="kpi-card kpi-click" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
-            <div class="kpi-value">@_b2c</div>
-            <div class="kpi-label">B2C — personmarked</div>
-        </div>
-        <div class="kpi-card kpi-click" @onclick='() => Nav.NavigateTo("/crm/marked/bedrift")'>
-            <div class="kpi-value">@_b2b</div>
-            <div class="kpi-label">B2B — bedriftsmarked</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-value">@_nye24</div>
-            <div class="kpi-label">Nye søknader (24t)</div>
-            @if (_kilde24.Count > 0)
-            {
-                <div class="kpi-breakdown">
+    <div class="stat-grid">
+        @* Nye søknader (24t) — først *@
+        <div class="stat-card accent-blue">
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
+                <span class="stat-lbl">Nye søknader · 24t</span>
+            </div>
+            <div class="stat-num">@_nye24</div>
+            <div class="stat-sub">
+                @if (_kilde24.Count > 0)
+                {
                     @foreach (var (kilde, antall) in _kilde24)
                     {
-                        <div class="kpi-brk-row"><span class="kilde-badge @KundekortService.KildeBadgeKlasse(kilde)">@kilde</span><span class="kpi-brk-num">@antall</span></div>
+                        <span class="kilde-badge @KundekortService.KildeBadgeKlasse(kilde)">@kilde @antall</span>
                     }
-                </div>
-            }
-            @if (_laanetype24.Count > 0)
-            {
-                <div class="kpi-breakdown">
-                    @foreach (var (type, antall) in _laanetype24)
-                    {
-                        <div class="kpi-brk-row"><span class="kpi-brk-lbl"><span class="status-dot" style="background:@LaanetypeFarge(type)"></span>@type</span><span class="kpi-brk-num">@antall</span></div>
-                    }
-                </div>
-            }
+                }
+                else { <span>Ingen nye siste døgn</span> }
+            </div>
         </div>
-        <div class="kpi-card">
-            <div class="kpi-value">@_rows.Count</div>
-            <div class="kpi-label">Totalt søknader</div>
-            @if (_laanetyper.Count > 0)
-            {
-                <div class="kpi-breakdown">
-                    @foreach (var (type, antall) in _laanetyper)
-                    {
-                        <div class="kpi-brk-row"><span class="kpi-brk-lbl">@type</span><span class="kpi-brk-num">@antall</span></div>
-                    }
-                </div>
-            }
+
+        @* Utatte saker *@
+        <div class="stat-card stat-click accent-amber @(_utatte > 0 ? "warn" : "")" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                <span class="stat-lbl">Utatte saker</span>
+            </div>
+            <div class="stat-num @(_utatte > 0 ? "num-warn" : "")">@_utatte</div>
+            <div class="stat-sub">@(_utatte == 0 ? "Alt er plukket 🎉" : "venter på å plukkes")</div>
         </div>
-        <div class="kpi-card"><div class="kpi-value">@_mine</div><div class="kpi-label">Mine søknader</div></div>
-        <div class="kpi-card"><div class="kpi-value">@($"{_pipeline / 1_000_000:N0}")<span class="db-box-unit">MNOK</span></div><div class="kpi-label">Pipeline-verdi</div></div>
+
+        @* Personmarked (B2C) *@
+        <div class="stat-card stat-click accent-green" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                <span class="stat-lbl">Personmarked</span>
+            </div>
+            <div class="stat-num">@_b2c</div>
+            <div class="stat-sub">B2C — privatkunder</div>
+        </div>
+
+        @* Bedriftsmarked (B2B) *@
+        <div class="stat-card stat-click accent-purple" @onclick='() => Nav.NavigateTo("/crm/marked/bedrift")'>
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></span>
+                <span class="stat-lbl">Bedriftsmarked</span>
+            </div>
+            <div class="stat-num">@_b2b</div>
+            <div class="stat-sub">B2B — bedriftskunder</div>
+        </div>
+
+        @* Mine søknader *@
+        <div class="stat-card stat-click accent-teal" @onclick='() => Nav.NavigateTo("/crm/oppfolging")'>
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
+                <span class="stat-lbl">Mine søknader</span>
+            </div>
+            <div class="stat-num">@_mine</div>
+            <div class="stat-sub">dine aktive saker</div>
+        </div>
+
+        @* Totalt søknader *@
+        <div class="stat-card">
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+                <span class="stat-lbl">Totalt søknader</span>
+            </div>
+            <div class="stat-num">@_rows.Count</div>
+            <div class="stat-sub">@_b2c privat · @_b2b bedrift</div>
+        </div>
+
+        @* Pipeline-verdi *@
+        <div class="stat-card">
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
+                <span class="stat-lbl">Pipeline-verdi</span>
+            </div>
+            <div class="stat-num">@($"{_pipeline / 1_000_000:N1}")<span class="stat-unit">MNOK</span></div>
+            <div class="stat-sub">aktiv pipeline</div>
+        </div>
     </div>
 
     <div class="section">
@@ -141,8 +170,6 @@ else
     private List<Kundekort> _rows = new();
     private Dictionary<string, int> _statusCount30 = new();
     private List<(string Kilde, int Antall)> _kilde24 = new();
-    private List<(string Type, int Antall)> _laanetype24 = new();
-    private List<(string Type, int Antall)> _laanetyper = new();
     private List<(string Type, int Antall)> _laanetype30 = new();
     private List<(string Kilde, int Antall)> _kilde30 = new();
 
@@ -194,11 +221,6 @@ else
             .Select(g => (g.Key, g.Count()))
             .OrderByDescending(x => x.Item2)
             .ToList();
-        _laanetype24 = siste24
-            .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
-            .Select(g => (g.Key, g.Count()))
-            .OrderByDescending(x => x.Item2)
-            .ToList();
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
 
@@ -228,12 +250,6 @@ else
         _kilde30 = siste30
             .GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
             .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
-
-        _laanetyper = _rows
-            .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
-            .Select(g => (g.Key, g.Count()))
-            .OrderByDescending(x => x.Item2)
-            .ToList();
 
         _loading = false;
     }

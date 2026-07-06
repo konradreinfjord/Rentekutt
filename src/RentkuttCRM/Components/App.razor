@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <title>Rentekutt — plattform</title>
-    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="app.css?v=@CssVersjon" />
     <link rel="icon" href="data:," />
     <HeadOutlet />
 </head>
@@ -18,3 +18,20 @@
 </body>
 
 </html>
+
+@code {
+    // Cache-buster for app.css: bruker byggetidspunktet (assembly-skrivetid), så nettleseren
+    // henter frisk CSS ved hver deploy og ikke serverer utdatert stil.
+    private static readonly string CssVersjon = BeregnCssVersjon();
+    private static string BeregnCssVersjon()
+    {
+        try
+        {
+            var dll = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+            if (!string.IsNullOrEmpty(dll) && File.Exists(dll))
+                return File.GetLastWriteTimeUtc(dll).Ticks.ToString();
+        }
+        catch { /* faller tilbake til statisk versjon */ }
+        return "2";
+    }
+}
