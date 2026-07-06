@@ -169,6 +169,7 @@ a { color: var(--accent); text-decoration: none; }
     transition: border-color .12s, box-shadow .12s, transform .12s;
 }
 .kpi-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.kpi-card.kpi-click { cursor: pointer; }
 .kpi-value { font-family: var(--mono); font-size: 23px; font-weight: 600; color: var(--ink); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .kpi-label { color: var(--text-muted); margin-top: 6px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .kpi-breakdown { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
@@ -604,3 +605,66 @@ a { color: var(--accent); text-decoration: none; }
 .delsel { border-radius: 999px; padding: 4px 11px; }
 .delsel-set { background: var(--green-soft); color: var(--green-dark); border-color: #bfe3c2; font-weight: 600; }
 .delsel-unset { background: #fdeceb; border-color: #f4cdc9; }
+
+/* ---------- Fullbredde markedsvisning ---------- */
+/* Markedsfanene skal utnytte hele skjermbredden (ikke den smale 1180px-boksen). */
+.app-content:has(.wide-page) { max-width: none; }
+.wide-page .table-scroll.table-tall { max-height: calc(100vh - 250px); }
+.wide-page .db-stats { max-width: none; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+/* Låst / tatt sak i markedspoolen */
+.data-table tr.row-locked { opacity: .62; background: var(--surface-2); }
+.data-table tr.row-locked:hover { opacity: 1; background: var(--green-soft); }
+.lock-tag { display: inline-block; font-size: 11.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.lock-tag.mine { color: var(--green-dark); }
+.btn-primary.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+/* Ventet-tid fargekoding (utatte saker som hoper seg opp) */
+.ventet-amber { color: var(--warn); font-weight: 600; }
+.ventet-rod { color: var(--danger); font-weight: 700; }
+
+/* ---------- Oppfølging: kontakt / neste ---------- */
+.opf-ok { color: var(--green-dark); font-weight: 600; }
+.opf-amber { color: var(--warn); font-weight: 600; }
+.opf-rod { color: var(--danger); font-weight: 700; }
+.opf-date { border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 4px 8px; font-family: inherit; font-size: 12.5px; color: var(--text); background: var(--surface); }
+
+/* ---------- Utatte-varsel på dashbord ---------- */
+.utatt-banner {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 14px 20px; border-radius: var(--r-md); margin-bottom: 20px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm);
+    transition: border-color .12s, box-shadow .12s;
+}
+.utatt-banner:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.utatt-banner.varsel { background: #fdf6ec; border-color: #f2ddba; }
+.utatt-banner.kritisk { background: var(--danger-soft); border-color: #f4cdc9; }
+.utatt-big { font-family: var(--mono); font-size: 30px; font-weight: 700; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.utatt-banner.varsel .utatt-big { color: #9a5b06; }
+.utatt-banner.kritisk .utatt-big { color: var(--danger); }
+.utatt-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); font-weight: 600; }
+.utatt-meta { font-size: 13px; color: var(--text-2); }
+.utatt-meta strong { color: var(--ink); }
+.utatt-spacer { flex: 1; }
+.utatt-cta { font-size: 12.5px; font-weight: 600; color: var(--green-dark); white-space: nowrap; }
+
+/* ---------- Kundekort: samlet kundeheader ---------- */
+.kunde-header { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green); border-radius: var(--r-md); padding: 14px 18px; margin-bottom: 11px; box-shadow: var(--shadow-sm); }
+.kunde-header-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.kunde-navn { font-size: 18px; font-weight: 650; color: var(--ink); letter-spacing: -0.02em; }
+.kunde-facts { display: flex; flex-wrap: wrap; gap: 8px 26px; }
+.kunde-fact { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.kunde-fact .kf-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); font-weight: 600; }
+.kunde-fact .kf-val { font-size: 13.5px; color: var(--text); font-weight: 500; }
+.kunde-fact .kf-val.mono { font-family: var(--mono); font-size: 12.5px; }
+
+.status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--border-strong); }
+
+/* ---------- Notatlogg ---------- */
+.notat-item { border-top: 1px solid var(--border); padding: 10px 0; }
+.notat-item:first-child { border-top: none; }
+.notat-meta { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
+.notat-tid { font-family: var(--mono); font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.notat-forfatter { font-size: 11.5px; font-weight: 600; color: var(--green-dark); }
+.notat-tekst { font-size: 13px; color: var(--text); white-space: pre-wrap; }
+.notat-empty { font-size: 12.5px; color: var(--text-muted); padding: 8px 0; }

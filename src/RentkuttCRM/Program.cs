@@ -35,6 +35,9 @@ builder.Services.AddScoped<SupabaseUserService>();
 // Kundekort (lånesøknader).
 builder.Services.AddScoped<KundekortService>();
 
+// Tidsstemplede saksnotater.
+builder.Services.AddScoped<NotatService>();
+
 // Webhooks (inbound lead-mottak).
 builder.Services.AddScoped<WebhookService>();
 

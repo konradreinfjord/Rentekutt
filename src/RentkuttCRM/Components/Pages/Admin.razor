@@ -344,6 +344,58 @@ ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
         <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
         <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
     }
+    else if (_apiTab == "Tredjeparter")
+    {
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Tredjeparter <span class="ww-tag">GET · status</span></h2>
+                <span class="status @(_tpEnabled ? "on" : "off")">@(_tpEnabled ? "Aktiv" : "Av")</span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 16px">
+                Utgående GET-API der en tredjepart slår opp en sak på <strong>mobilnummer</strong> og får
+                forenklet status tilbake — om saken er <strong>åpen</strong> eller <strong>ferdig (utbetalt/avslått)</strong>.
+                Ingen sensitive detaljer eksponeres. Sikret med token (HTTPS + Bearer).
+            </p>
+
+            <label class="ff-check" style="margin-bottom:14px"><input type="checkbox" @bind="_tpEnabled" /> Aktiver tredjepart-API-et</label>
+
+            <h3 class="ww-h">Endepunkt</h3>
+            <pre class="code-block">GET @TredjepartUrl?mobil=+4791234567
+Authorization: Bearer &lt;token&gt;</pre>
+            <p class="page-sub" style="margin:8px 0 14px; font-size:12px">Token kan alternativt sendes som <code>?token=…</code> i URL-en.</p>
+
+            <h3 class="ww-h">API-token</h3>
+            <div class="rule-builder" style="margin-bottom:8px">
+                <div class="rb-field" style="flex:1; min-width:280px">
+                    <label>Token</label>
+                    <input class="rb-input" style="font-family:var(--mono)" @bind="_tpToken" placeholder="Ingen token generert ennå" />
+                </div>
+                <button class="btn-sm rb-add" @onclick="() => _tpToken = TredjepartController.NewToken()">Generer nytt</button>
+                <button class="btn-primary rb-add" @onclick="LagreTredjepart">Lagre</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_tpMsg)) { <p class="page-sub" style="margin:0 0 12px; font-size:12px">@_tpMsg</p> }
+
+            <h3 class="ww-h">Svar (JSON)</h3>
+            <pre class="code-block">{
+  "funnet": true,
+  "mobil": "+4791234567",
+  "status": "apen",            // apen | utbetalt | avslatt
+  "status_tekst": "Åpen",
+  "ferdig": false,             // true = ferdigbehandlet
+  "opprettet": "2026-06-01T10:22:00Z",
+  "sist_oppdatert": "2026-06-14T08:05:00Z"
+}</pre>
+            <h3 class="ww-h" style="margin-top:16px">Statuskart</h3>
+            <table class="data-table">
+                <thead><tr><th>Sakstatus i CRM</th><th>API-status</th><th>Ferdig</th></tr></thead>
+                <tbody>
+                    <tr><td>Fullført og utbetalt</td><td class="mono-cell">utbetalt</td><td>✓</td></tr>
+                    <tr><td>Avslått</td><td class="mono-cell">avslatt</td><td>✓</td></tr>
+                    <tr><td>Åpen / Pågår / Manuell / Sendt bank / Tilbud utsendt</td><td class="mono-cell">apen</td><td class="muted">—</td></tr>
+                </tbody>
+            </table>
+        </div>
+    }
     else if (_apiTab == "Bank API")
     {
         <div class="section">
@@ -790,6 +842,8 @@ else if (_active == "GDPR")
         _smsMaler = await SmsMaler.ListAsync();
         _autoEnabled = (await Settings.GetAsync(SmsMalService.KeyAutoEnabled)) == "true";
         _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
+        _tpToken = await Settings.GetAsync(TredjepartController.KeyToken) ?? "";
+        _tpEnabled = (await Settings.GetAsync(TredjepartController.KeyEnabled)) == "true";
         var bp = await Beregning.HentParametreAsync();
         _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
@@ -859,6 +913,19 @@ else if (_active == "GDPR")
     private List<Webhook> _inboundWebhooks = new();
     private List<Hendelse> _events = new();
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
+    private string TredjepartUrl => $"{Nav.BaseUri}api/tredjepart/status";
+
+    // ---- Tredjepart-API (GET status på mobilnummer) ----
+    private string _tpToken = "";
+    private bool _tpEnabled;
+    private string? _tpMsg;
+    private async Task LagreTredjepart()
+    {
+        await Settings.SetAsync(TredjepartController.KeyToken, _tpToken?.Trim());
+        await Settings.SetAsync(TredjepartController.KeyEnabled, _tpEnabled ? "true" : "false");
+        await Events.LogAsync("Tredjepart-API", _tpEnabled ? "Aktivert / token oppdatert" : "Deaktivert", "Admin");
+        _tpMsg = "Lagret.";
+    }
     private static bool WebhookFresh(Webhook w) => w.Active && w.LastReceivedAt is { } t && t > DateTime.UtcNow.AddDays(-7);
     // Lampe: grønn hvis det er mottatt data siste 3 døgn.
     private static bool DataSiste3Dogn(DateTime? last) => last is { } t && t > DateTime.UtcNow.AddDays(-3);
@@ -944,7 +1011,7 @@ else if (_active == "GDPR")
     private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
-    private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
+    private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
     private string _apiTab = "Oversikt";
     private readonly string[] _dataTjenester = { "BankID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
 

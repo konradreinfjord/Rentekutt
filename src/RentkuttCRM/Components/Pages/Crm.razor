@@ -19,6 +19,18 @@
 else
 {
     <div class="kpi-grid">
+        <div class="kpi-card kpi-click" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
+            <div class="kpi-value">@_utatte</div>
+            <div class="kpi-label">Utatte saker</div>
+        </div>
+        <div class="kpi-card kpi-click" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
+            <div class="kpi-value">@_b2c</div>
+            <div class="kpi-label">B2C — personmarked</div>
+        </div>
+        <div class="kpi-card kpi-click" @onclick='() => Nav.NavigateTo("/crm/marked/bedrift")'>
+            <div class="kpi-value">@_b2b</div>
+            <div class="kpi-label">B2B — bedriftsmarked</div>
+        </div>
         <div class="kpi-card">
             <div class="kpi-value">@_nye24</div>
             <div class="kpi-label">Nye søknader (24t)</div>
@@ -146,6 +158,9 @@ else
     private decimal _pipeline;
     private bool _loading = true;
 
+    // Utatte saker = ikke plukket (ingen eier) og ikke ferdigbehandlet.
+    private int _utatte, _b2c, _b2b;
+
     private List<DagBar> _dager = new();
     private int _maxDag = 1;
     private record DagBar(string Label, Dictionary<string, int> PerStatus, int Total);
@@ -186,6 +201,12 @@ else
             .ToList();
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
+
+        // Utatte: ingen eier + fortsatt aktiv (ikke fullført/avslått).
+        _utatte = _rows.Count(k => string.IsNullOrWhiteSpace(k.Eier)
+                                   && k.Status is not (KundekortService.StatusFullfort or "Avslått"));
+        _b2c = _rows.Count(k => k.KundeType == "B2C");
+        _b2b = _rows.Count(k => k.KundeType == "B2B");
         var idag = DateTime.Now.Date;
         _dager = new();
         for (var i = 29; i >= 0; i--)

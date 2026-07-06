@@ -1,0 +1,409 @@
+@page "/crm/marked/person"
+@page "/crm/marked/bedrift"
+@implements IDisposable
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.BeregningService Beregning
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>@Tittel — Rentekutt</PageTitle>
+
+<div class="wide-page">
+
+<h1 class="page-title">@Tittel</h1>
+<p class="page-sub">@(ErBedrift ? "Bedriftskunder (B2B)." : "Privatkunder (B2C).") Plukk en sak for å ta eierskap — den flyttes til «Mine søknader» og låses for andre.</p>
+
+@if (_copied is not null)
+{
+    <div class="copy-toast">@_copied</div>
+}
+
+<div class="db-stats">
+    <div class="db-box accent-amber"><span class="db-box-num">@Utatte.Count</span><span class="db-box-lbl">Utatte saker</span></div>
+    <div class="db-box"><span class="db-box-num">@_mine</span><span class="db-box-lbl">Mine i @(ErBedrift ? "bedrift" : "person")</span></div>
+    <div class="db-box"><span class="db-box-num">@_typeRows.Count</span><span class="db-box-lbl">Totalt @(ErBedrift ? "B2B" : "B2C")</span></div>
+    <div class="db-box"><span class="db-box-num">@EldsteVentetTekst</span><span class="db-box-lbl">Eldste utatte</span></div>
+    <div class="db-box"><span class="db-box-num">@SamletBelop<span class="db-box-unit">@SamletEnhet</span></span><span class="db-box-lbl">Samlet beløp (utatte)</span></div>
+</div>
+
+<div class="db-toolbar">
+    <button class="btn-add" title="Opprett kunde" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+</button>
+    <input class="db-search" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" placeholder="Søk — navn, bank, kommune, adresse, postnr, telefon …" />
+    <select class="db-select" @bind="_statusFilter" @bind:after="ResetPage">
+        <option value="">Alle statuser</option>
+        @foreach (var s in _statuses) { <option value="@s">@s</option> }
+    </select>
+    <select class="db-select" @bind="_bankFilter" @bind:after="ResetPage">
+        <option value="">Alle banker</option>
+        @foreach (var b in BankListe) { <option value="@b.Navn">@b.Navn (@b.Antall)</option> }
+    </select>
+    <select class="db-select" @bind="_kommuneFilter" @bind:after="ResetPage">
+        <option value="">Alle områder</option>
+        @foreach (var f in KommunerPerFylke)
+        {
+            <optgroup label="@f.Fylke">
+                @foreach (var o in f.Kommuner) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
+            </optgroup>
+        }
+    </select>
+    <label class="ff-check" style="white-space:nowrap"><input type="checkbox" @bind="_visTatte" @bind:after="ResetPage" /> Vis også tatte (låst)</label>
+    <div class="db-spacer"></div>
+    <span class="db-count">@View.Count av @_typeRows.Count</span>
+</div>
+
+@if (_loading)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    <div class="table-scroll table-tall">
+    <table class="data-table">
+        <thead>
+            <tr>
+                @Header("status", "Status")
+                @Header("delegert", "Delegert til bank")
+                @Header("navn", "Navn")
+                @Header("telefon", "Telefon")
+                @Header("epost", "E-post")
+                @Header("personnr", ErBedrift ? "Orgnr" : "Personnr")
+                @Header("bank", "Bank")
+                @Header("belop", "Ønsket beløp")
+                @Header("kommune", "Kommune")
+                @Header("ventet", "Ventet")
+                @Header("kilde", "Leadskilde")
+                <th>Handling</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (View.Count == 0)
+            {
+                <tr><td colspan="12" class="empty-row">@(_visTatte ? "Ingen treff." : "Ingen utatte saker her akkurat nå 🎉")</td></tr>
+            }
+            @foreach (var k in PagedView)
+            {
+                var tatt = !string.IsNullOrWhiteSpace(k.Eier);
+                var mine = tatt && k.Eier == (Session.Email ?? Session.UserName);
+                <tr class="row-link @(tatt ? "row-locked" : "")" @onclick="() => Open(k.Id)">
+                    <td @onclick:stopPropagation="true">
+                        <select class="inline-select stsel @StatusKlasse(k.Status)" @onchange="e => ChangeStatus(k, e)">
+                            @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
+                        </select>
+                    </td>
+                    <td @onclick:stopPropagation="true">
+                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "delsel-unset" : "delsel-set")" @onchange="e => DelegateBank(k, e)">
+                            <option value="">— ingen —</option>
+                            @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
+                        </select>
+                    </td>
+                    <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span></td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
+                    <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? (string.IsNullOrWhiteSpace(k.KundeId) ? "—" : k.KundeId) : k.Foedselsnummer)</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
+                    <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
+                    <td class="@VentetKlasse(k)">@Ventet(k.CreatedAt)</td>
+                    <td>
+                        @if (string.IsNullOrWhiteSpace(k.Kilde)) { <span>—</span> }
+                        else { <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span> }
+                    </td>
+                    <td @onclick:stopPropagation="true">
+                        @if (!tatt)
+                        {
+                            <button class="btn-primary btn-sm" @onclick="() => Plukk(k)">Plukk sak</button>
+                        }
+                        else if (mine)
+                        {
+                            <span class="lock-tag mine">✓ Din</span>
+                        }
+                        else
+                        {
+                            <span class="lock-tag" title="Låst — en annen rådgiver jobber med denne">🔒 @(k.EierNavn ?? k.Eier)</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    </div>
+
+    @if (PageCount > 1)
+    {
+        <div class="pager">
+            <button class="pager-btn" disabled="@(_page == 0)" @onclick="() => _page = 0" title="Første">«</button>
+            <button class="pager-btn" disabled="@(_page == 0)" @onclick="() => _page--">‹ Forrige</button>
+            <span class="pager-info">Side @(_page + 1) av @PageCount · viser @(PageStart)–@(PageEnd) av @View.Count</span>
+            <button class="pager-btn" disabled="@(_page >= PageCount - 1)" @onclick="() => _page++">Neste ›</button>
+            <button class="pager-btn" disabled="@(_page >= PageCount - 1)" @onclick="() => _page = PageCount - 1" title="Siste">»</button>
+        </div>
+    }
+}
+
+</div>
+
+@code {
+    private List<Kundekort> _rows = new();
+    private bool _loading = true;
+    private bool _visTatte;
+
+    private string _search = "";
+    private string _statusFilter = "";
+    private string _bankFilter = "";
+    private string _kommuneFilter = "";
+
+    private bool ErBedrift => Nav.Uri.Contains("/marked/bedrift", StringComparison.OrdinalIgnoreCase);
+    private string KundeType => ErBedrift ? "B2B" : "B2C";
+    private string Tittel => ErBedrift ? "Bedriftsmarked" : "Personmarked";
+
+    private readonly string[] _statuses = KundekortService.Statuser;
+    private List<Partner> _partnere = new();
+    private BeregningParametre _berParams = BeregningService.Standard;
+    private int _mine;
+
+    private Dictionary<Guid, string> _searchCache = new();
+    private string _sortField = "ventet";
+    private bool _sortAsc = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        var rowsTask = Svc.ListAsync();
+        var partnereTask = Partners.ListAsync();
+        var berTask = Beregning.HentParametreAsync();
+        await Task.WhenAll(rowsTask, partnereTask, berTask);
+        _rows = rowsTask.Result;
+        _partnere = partnereTask.Result;
+        _berParams = berTask.Result;
+        _searchCache = _rows.ToDictionary(k => k.Id, Searchable);
+        RecomputeType();
+        _loading = false;
+    }
+
+    // Person- og bedrift-ruten deler samme komponent-instans. Både OnParametersSet OG
+    // LocationChanged sikrer at typefilteret (B2C/B2B) alltid følger gjeldende URL.
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
+    protected override void OnParametersSet() => RecomputeType();
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        RecomputeType();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private List<Kundekort> _typeRows = new();
+    private void RecomputeType()
+    {
+        _typeRows = _rows.Where(k => k.KundeType == KundeType).ToList();
+        _mine = _typeRows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
+        InvaliderView();
+        // Facet-cacher avhenger av type — nullstill.
+        _bankListe = null; _kommuneListe = null; _kommunerPerFylke = null;
+    }
+
+    private List<Kundekort> Utatte => _typeRows.Where(k => string.IsNullOrWhiteSpace(k.Eier)).ToList();
+
+    private string EldsteVentetTekst
+    {
+        get
+        {
+            var eldste = Utatte.Where(k => k.CreatedAt != default).OrderBy(k => k.CreatedAt).FirstOrDefault();
+            return eldste is null ? "—" : Ventet(eldste.CreatedAt);
+        }
+    }
+
+    private decimal SamletSum => Utatte.Sum(k => k.OnsketLaanebelop ?? 0);
+    private string SamletBelop => SamletSum >= 1_000_000 ? $"{SamletSum / 1_000_000:N0}" : $"{SamletSum / 1_000:N0}";
+    private string SamletEnhet => SamletSum >= 1_000_000 ? "MNOK" : "kNOK";
+
+    // ---- Facets ----
+    private IEnumerable<(string Navn, int Antall)>? _bankListe;
+    private IEnumerable<(string Navn, int Antall)> BankListe => _bankListe ??= _typeRows
+        .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank))
+        .GroupBy(k => k.NavarendeBank!).Select(g => (g.Key, g.Count()))
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
+
+    private IEnumerable<(string Navn, int Antall)>? _kommuneListe;
+    private IEnumerable<(string Navn, int Antall)> KommuneListe => _kommuneListe ??= _typeRows
+        .Where(k => !string.IsNullOrWhiteSpace(k.Kommune))
+        .GroupBy(k => k.Kommune!).Select(g => (g.Key, g.Count()))
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
+
+    private List<(string Fylke, List<(string Navn, int Antall)> Kommuner)>? _kommunerPerFylke;
+    private List<(string Fylke, List<(string Navn, int Antall)> Kommuner)> KommunerPerFylke => _kommunerPerFylke ??= KommuneListe
+        .GroupBy(o => NorskeKommuner.Fylke(o.Navn))
+        .Select(g => (Fylke: g.Key, Kommuner: g.OrderByDescending(o => o.Antall).ThenBy(o => o.Navn).ToList()))
+        .OrderBy(x => { var i = Array.IndexOf(NorskeKommuner.Fylker, x.Fylke); return i < 0 ? 999 : i; })
+        .ToList();
+
+    // ---- View (filtrert + sortert) ----
+    private List<Kundekort>? _viewCache;
+    private string _viewKey = "";
+    private void InvaliderView() => _viewCache = null;
+
+    private List<Kundekort> View
+    {
+        get
+        {
+            var cacheKey = $"{KundeType}|{_typeRows.Count}|{_visTatte}|{_search}|{_statusFilter}|{_bankFilter}|{_kommuneFilter}|{_sortField}|{_sortAsc}";
+            if (_viewCache is not null && cacheKey == _viewKey) return _viewCache;
+
+            IEnumerable<Kundekort> q = _typeRows;
+            if (!_visTatte) q = q.Where(k => string.IsNullOrWhiteSpace(k.Eier));
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var terms = _search.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                q = q.Where(k =>
+                {
+                    var hay = _searchCache.GetValueOrDefault(k.Id) ?? Searchable(k);
+                    return terms.All(t => hay.Contains(t));
+                });
+            }
+            if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
+            if (!string.IsNullOrEmpty(_bankFilter)) q = q.Where(k => k.NavarendeBank == _bankFilter);
+            if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
+
+            Func<Kundekort, object?> key = _sortField switch
+            {
+                "navn" => k => k.FulltNavn ?? "",
+                "personnr" => k => k.Foedselsnummer ?? k.KundeId ?? "",
+                "telefon" => k => k.Mobilnummer ?? "",
+                "epost" => k => k.Epost ?? "",
+                "kommune" => k => k.Kommune ?? "",
+                "kilde" => k => k.Kilde ?? "",
+                "bank" => k => k.NavarendeBank ?? "",
+                "belop" => k => k.OnsketLaanebelop ?? 0,
+                "status" => k => k.Status,
+                "delegert" => k => k.DelegertBank ?? "",
+                // "ventet" = eldste øverst → eldste CreatedAt først når asc; default viser eldste øverst
+                _ => k => k.CreatedAt,
+            };
+            // Ventet: eldste (minst CreatedAt) skal øverst som standard.
+            q = _sortField == "ventet"
+                ? (_sortAsc ? q.OrderByDescending(key) : q.OrderBy(key))
+                : (_sortAsc ? q.OrderBy(key) : q.OrderByDescending(key));
+            _viewKey = cacheKey;
+            return _viewCache = q.ToList();
+        }
+    }
+
+    private const int PageSize = 100;
+    private int _page;
+    private void ResetPage() => _page = 0;
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(View.Count / (double)PageSize));
+    private int PageStart => View.Count == 0 ? 0 : _page * PageSize + 1;
+    private int PageEnd => Math.Min(View.Count, (_page + 1) * PageSize);
+    private IEnumerable<Kundekort> PagedView
+    {
+        get { if (_page > PageCount - 1) _page = PageCount - 1; return View.Skip(_page * PageSize).Take(PageSize); }
+    }
+
+    private static string Searchable(Kundekort k) => string.Join(" ", new[]
+    {
+        k.KundeId, k.FulltNavn, k.Foedselsnummer, k.Mobilnummer, k.Epost,
+        k.Adresse, k.Postnummer, k.Poststed, k.Kommune, k.NavarendeBank,
+        k.Laanetype, k.Status, k.EierNavn, k.Kilde, k.DelegertBank, k.OnsketLaanebelop?.ToString()
+    }.Where(x => !string.IsNullOrEmpty(x))).ToLowerInvariant();
+
+    private void InvaliderRad(Kundekort k) { InvaliderView(); _searchCache[k.Id] = Searchable(k); }
+
+    private static string StatusKlasse(string s) => s switch
+    {
+        "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
+        "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
+        "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
+    };
+
+    // ---- Ventet-tid (siden opprettet) ----
+    private static string Ventet(DateTime created)
+    {
+        if (created == default) return "—";
+        var d = DateTime.UtcNow - created.ToUniversalTime();
+        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes} min";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours} t";
+        return $"{(int)d.TotalDays} d";
+    }
+    private static string VentetKlasse(Kundekort k)
+    {
+        if (k.CreatedAt == default) return "";
+        var t = (DateTime.UtcNow - k.CreatedAt.ToUniversalTime()).TotalHours;
+        if (t >= 48) return "ventet-rod";
+        if (t >= 24) return "ventet-amber";
+        return "";
+    }
+
+    private RenderFragment Header(string field, string label) => builder =>
+    {
+        builder.OpenElement(0, "th");
+        builder.AddAttribute(1, "class", "sortable");
+        builder.AddAttribute(2, "onclick", EventCallback.Factory.Create(this, () => Sort(field)));
+        builder.AddContent(3, label);
+        if (_sortField == field)
+        {
+            builder.OpenElement(4, "span");
+            builder.AddAttribute(5, "class", "sort-arrow");
+            builder.AddContent(6, _sortAsc ? "▲" : "▼");
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private void Sort(string field)
+    {
+        if (_sortField == field) _sortAsc = !_sortAsc;
+        else { _sortField = field; _sortAsc = false; }
+        InvaliderView();
+    }
+
+    private async Task ChangeStatus(Kundekort k, ChangeEventArgs e)
+    {
+        var status = e.Value?.ToString() ?? k.Status;
+        k.Status = status;
+        InvaliderRad(k);
+        await Svc.SetStatusAsync(k.Id, status);
+    }
+
+    private async Task DelegateBank(Kundekort k, ChangeEventArgs e)
+    {
+        var bank = e.Value?.ToString();
+        k.DelegertBank = string.IsNullOrWhiteSpace(bank) ? null : bank;
+        InvaliderRad(k);
+        await Svc.SetDelegertBankAsync(k.Id, k.DelegertBank);
+    }
+
+    private async Task Plukk(Kundekort k)
+    {
+        var eier = Session.Email ?? Session.UserName ?? "ukjent";
+        await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier);
+        k.Eier = eier;
+        k.EierNavn = Session.UserName ?? eier;
+        _mine++;
+        InvaliderRad(k);
+        _copied = $"Sak plukket → flyttet til «Mine søknader» ✓";
+        StateHasChanged();
+        await Task.Delay(1600);
+        if (_disposed) return;
+        _copied = null;
+        StateHasChanged();
+    }
+
+    private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");
+
+    private string? _copied;
+    private async Task Copy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+        _copied = $"Kopiert: {value} ✓";
+        StateHasChanged();
+        await Task.Delay(1400);
+        if (_disposed) return;
+        _copied = null;
+        StateHasChanged();
+    }
+
+    private bool _disposed;
+    public void Dispose() { _disposed = true; Nav.LocationChanged -= OnLocationChanged; }
+}

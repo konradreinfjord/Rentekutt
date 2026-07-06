@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
+@inject RentkuttCRM.Services.NotatService Notater
 @inject NavigationManager Nav
 
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
@@ -10,10 +11,72 @@
 <h1 class="page-title">@(_isEdit ? "Kundekort" : "Ny kunde")</h1>
 <p class="page-sub">Lånesøknad med kunde- og lånedata.</p>
 
-@* Notater + behovssammendrag øverst *@
+@* Samlet kundeinfo øverst — se hvem kunden er med én gang *@
+<div class="kunde-header">
+    <div class="kunde-header-top">
+        <span class="kunde-navn">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</span>
+        <span class="type-tag @(_k.KundeType == "B2C" ? "lead" : "bank")">@(_k.KundeType == "B2C" ? "Privat" : "Bedrift")</span>
+        @if (_isEdit) { <span class="status-pill @StatusKlasse(_k.Status)">@_k.Status</span> }
+        @if (!string.IsNullOrWhiteSpace(_k.Kilde)) { <span class="kilde-badge @KundekortService.KildeBadgeKlasse(_k.Kilde)">@_k.Kilde</span> }
+    </div>
+    <div class="kunde-facts">
+        <div class="kunde-fact"><span class="kf-lbl">Telefon</span><span class="kf-val mono">@Vis(_k.Mobilnummer)</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">E-post</span><span class="kf-val">@Vis(_k.Epost)</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">@(_k.KundeType == "B2B" ? "Orgnr" : "Personnr")</span><span class="kf-val mono">@Vis(string.IsNullOrWhiteSpace(_k.Foedselsnummer) ? _k.KundeId : _k.Foedselsnummer)</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">Adresse</span><span class="kf-val">@Vis(_k.Adresse)</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">Poststed</span><span class="kf-val">@Vis($"{_k.Postnummer} {_k.Poststed}".Trim())</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">Kommune</span><span class="kf-val">@Vis(_k.Kommune)</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">Ønsket beløp</span><span class="kf-val">@(_k.OnsketLaanebelop.HasValue ? $"{_k.OnsketLaanebelop:N0} kr" : "—")</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">Nåværende bank</span><span class="kf-val">@Vis(_k.NavarendeBank)</span></div>
+    </div>
+</div>
+
+@* Tidsstemplet notatlogg *@
 <div class="form-card note-card">
-    <h2>Notater</h2>
-    <textarea class="note-area" @bind="_k.Notater" placeholder="Skriv notater om kunden / søknaden her…"></textarea>
+    <div style="display:flex; justify-content:space-between; align-items:center">
+        <h2 style="margin:0">Notatlogg</h2>
+        @if (!_visNyttNotat)
+        {
+            <button class="btn-primary btn-sm" @onclick="() => _visNyttNotat = true" disabled="@(!_isEdit)"
+                    title="@(_isEdit ? "" : "Lagre kundekortet først")">+ Nytt notat</button>
+        }
+    </div>
+    @if (!_isEdit)
+    {
+        <p class="page-sub" style="margin:8px 0 0; font-size:12px">Lagre kundekortet først for å legge til notater.</p>
+    }
+    @if (_visNyttNotat)
+    {
+        <textarea class="note-area" style="margin-top:10px" @bind="_nyttNotat" placeholder="Skriv notat — hva ble avtalt, hva skjedde i samtalen…"></textarea>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
+            <button class="btn-primary" @onclick="LagreNotat" disabled="@_notatLagrer">@(_notatLagrer ? "Lagrer…" : "Lagre notat")</button>
+            <button class="btn-logout" @onclick="() => { _visNyttNotat = false; _nyttNotat = string.Empty; }">Avbryt</button>
+            <span class="page-sub" style="margin:0; font-size:12px">Dato og klokkeslett registreres automatisk.</span>
+        </div>
+    }
+    <div style="margin-top:12px">
+        @if (!string.IsNullOrWhiteSpace(_k.Notater))
+        {
+            <div class="notat-item">
+                <div class="notat-meta"><span class="notat-forfatter">Tidligere notat</span></div>
+                <div class="notat-tekst">@_k.Notater</div>
+            </div>
+        }
+        @if (_notatLogg.Count == 0 && string.IsNullOrWhiteSpace(_k.Notater))
+        {
+            <p class="notat-empty">Ingen notater ennå.</p>
+        }
+        @foreach (var n in _notatLogg)
+        {
+            <div class="notat-item">
+                <div class="notat-meta">
+                    <span class="notat-tid">@n.Opprettet.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+                    @if (!string.IsNullOrWhiteSpace(n.ForfatterNavn)) { <span class="notat-forfatter">@n.ForfatterNavn</span> }
+                </div>
+                <div class="notat-tekst">@n.Tekst</div>
+            </div>
+        }
+    </div>
 </div>
 
 <div class="form-card summary-top">
@@ -311,6 +374,36 @@
     private string? _smsMsg;
     private bool _smsOk, _smsSending;
 
+    // Notatlogg
+    private List<Saksnotat> _notatLogg = new();
+    private bool _visNyttNotat;
+    private string _nyttNotat = "";
+    private bool _notatLagrer;
+
+    private static string Vis(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+
+    private static string StatusKlasse(string s) => s switch
+    {
+        "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
+        "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
+        "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
+    };
+
+    private async Task LagreNotat()
+    {
+        if (string.IsNullOrWhiteSpace(_nyttNotat) || _k.Id == Guid.Empty) return;
+        _notatLagrer = true;
+        var ok = await Notater.AddAsync(_k.Id, _nyttNotat,
+            Session.Email ?? Session.UserName, Session.UserName ?? Session.Email);
+        if (ok)
+        {
+            _notatLogg = await Notater.ListAsync(_k.Id);
+            _nyttNotat = "";
+            _visNyttNotat = false;
+        }
+        _notatLagrer = false;
+    }
+
     private void VelgMal(ChangeEventArgs e)
     {
         var navn = e.Value?.ToString();
@@ -342,7 +435,7 @@
         if (Guid.TryParse(Id, out var caseId))
         {
             var existing = await Svc.GetAsync(caseId);
-            if (existing is not null) { _k = existing; _isEdit = true; }
+            if (existing is not null) { _k = existing; _isEdit = true; _notatLogg = await Notater.ListAsync(_k.Id); }
         }
     }
 

@@ -114,6 +114,10 @@ public class Kundekort : BaseModel
     [Column("eier")] public string? Eier { get; set; }
     [Column("eier_navn")] public string? EierNavn { get; set; }
 
+    // Oppfølging (egne saker)
+    [Column("siste_kontakt")] public DateTime? SisteKontakt { get; set; }
+    [Column("neste_oppfolging")] public DateTime? NesteOppfolging { get; set; }
+
     // Tidsstempler — leses for sortering, men skrives ikke (DB styrer dem).
     [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
     public DateTime CreatedAt { get; set; }

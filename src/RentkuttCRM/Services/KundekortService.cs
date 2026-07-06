@@ -9,6 +9,15 @@ public class KundekortService
     public static readonly string[] Statuser =
         { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
     public const string StatusFullfort = "Fullført og utbetalt";
+    public const string StatusAvslatt = "Avslått";
+
+    /// <summary>Forenklet status for tredjeparter: åpen / utbetalt / avslått + om saken er ferdigbehandlet.</summary>
+    public static (string kode, string tekst, bool ferdig) TredjepartStatus(string? status) => status switch
+    {
+        StatusFullfort => ("utbetalt", "Utbetalt", true),
+        StatusAvslatt => ("avslatt", "Avslått", true),
+        _ => ("apen", "Åpen", false),
+    };
 
     public static readonly string[] Laanetyper = { "Forbrukslån", "Refinansiering", "Boliglån" };
     public static readonly string[] Sivilstatuser = { "Singel", "Samboer", "Gift", "Skilt", "Separert", "Enke(mann)" };
@@ -137,6 +146,80 @@ public class KundekortService
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
+    }
+
+    /// <summary>Gi fra seg eierskap (saken går tilbake til den utatte poolen).</summary>
+    public async Task ReleaseEierAsync(Guid id)
+    {
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) { k.Eier = null; k.EierNavn = null; }
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>()
+                .Where(x => x.Id == id)
+                .Set(x => x.Eier!, (string?)null)
+                .Set(x => x.EierNavn!, (string?)null)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Frigi eierskap feilet"); }
+    }
+
+    /// <summary>Registrer at kunden ble kontaktet nå (nullstiller «tid siden siste kontakt»).</summary>
+    public async Task RegistrerKontaktAsync(Guid id, DateTime naa)
+    {
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) k.SisteKontakt = naa;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.SisteKontakt!, naa).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Registrering av kontakt feilet"); }
+    }
+
+    /// <summary>Sett (eller nullstill) neste planlagte oppfølging.</summary>
+    public async Task SetNesteOppfolgingAsync(Guid id, DateTime? neste)
+    {
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) k.NesteOppfolging = neste;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.NesteOppfolging!, neste).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Lagring av neste oppfølging feilet"); }
+    }
+
+    /// <summary>Nyeste sak som matcher et mobilnummer (siffer-normalisert). Brukes av tredjepart-API-et.</summary>
+    public async Task<Kundekort?> FindByMobilAsync(string? mobil)
+    {
+        var digits = new string((mobil ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length < 8) return null;
+        // Match de siste 8 sifrene (håndterer +47 / landkode-varianter).
+        var tail = digits[^8..];
+        var alle = await ListAsync();
+        return alle
+            .Where(k =>
+            {
+                var m = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
+                var id = new string((k.KundeId ?? "").Where(char.IsDigit).ToArray());
+                return m.EndsWith(tail) || id.EndsWith(tail);
+            })
+            .OrderByDescending(k => k.CreatedAt)
+            .FirstOrDefault();
     }
 
     public async Task SetStatusAsync(Guid id, string status)
