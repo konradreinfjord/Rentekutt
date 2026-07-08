@@ -71,8 +71,11 @@ else
                 @Header("epost", "E-post")
                 @Header("personnr", ErBedrift ? "Orgnr" : "Personnr")
                 @Header("bank", "Bank")
+                @Header("forslag", "Forslag bank")
                 @Header("belop", "Ønsket beløp")
                 @Header("kommune", "Kommune")
+                @Header("postnr", "Postnr")
+                @Header("adresse", "Adresse")
                 @Header("ventet", "Ventet")
                 @Header("kilde", "Leadskilde")
                 <th>Handling</th>
@@ -81,7 +84,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="13" class="empty-row">@(_visTatte ? "Ingen treff." : "Ingen utatte saker her akkurat nå 🎉")</td></tr>
+                <tr><td colspan="16" class="empty-row">@(_visTatte ? "Ingen treff." : "Ingen utatte saker her akkurat nå 🎉")</td></tr>
             }
             @foreach (var k in PagedView)
             {
@@ -105,8 +108,21 @@ else
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
                     <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? (string.IsNullOrWhiteSpace(k.KundeId) ? "—" : k.KundeId) : k.Foedselsnummer)</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
+                    <td>
+                        @{ var forslag = Forslag(k); }
+                        @if (forslag.Count == 0) { <span class="muted">—</span> }
+                        else
+                        {
+                            @foreach (var navn in forslag)
+                            {
+                                <span class="type-tag bank" title="Dekker postnr @k.Postnummer" style="margin:0 4px 2px 0; display:inline-block">@navn</span>
+                            }
+                        }
+                    </td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
                     <td>@(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)</td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Postnummer) ? "—" : k.Postnummer)</td>
+                    <td>@(string.IsNullOrWhiteSpace(k.Adresse) ? "—" : k.Adresse)</td>
                     <td class="@VentetKlasse(k)">@Ventet(k.CreatedAt)</td>
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Kilde)) { <span>—</span> }
@@ -164,6 +180,17 @@ else
     private List<Partner> _partnere = new();
     private BeregningParametre _berParams = BeregningService.Standard;
     private int _mine;
+
+    // Forslag til bank ut fra kundens postnummer mot bankenes dekning (satt i admin).
+    // Cache per kort — samme postnr/partnersett gir samme svar, kjøres én gang.
+    private readonly Dictionary<Guid, List<string>> _forslagCache = new();
+    private List<string> Forslag(Kundekort k)
+    {
+        if (_forslagCache.TryGetValue(k.Id, out var r)) return r;
+        r = BankDekning.ForeslaBanker(k.Postnummer, _partnere);
+        _forslagCache[k.Id] = r;
+        return r;
+    }
 
     private Dictionary<Guid, string> _searchCache = new();
     private string _sortField = "opprettet";
@@ -274,8 +301,11 @@ else
                 "telefon" => k => k.Mobilnummer ?? "",
                 "epost" => k => k.Epost ?? "",
                 "kommune" => k => k.Kommune ?? "",
+                "postnr" => k => k.Postnummer ?? "",
+                "adresse" => k => k.Adresse ?? "",
                 "kilde" => k => k.Kilde ?? "",
                 "bank" => k => k.NavarendeBank ?? "",
+                "forslag" => k => Forslag(k).FirstOrDefault() ?? "",
                 "belop" => k => k.OnsketLaanebelop ?? 0,
                 "status" => k => k.Status,
                 "opprettet" => k => k.CreatedAt,
