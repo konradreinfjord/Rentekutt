@@ -63,6 +63,7 @@ else
     <table class="data-table">
         <thead>
             <tr>
+                @Header("opprettet", "Opprettet")
                 @Header("status", "Status")
                 @Header("delegert", "Delegert til bank")
                 @Header("navn", "Navn")
@@ -80,13 +81,14 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="12" class="empty-row">@(_visTatte ? "Ingen treff." : "Ingen utatte saker her akkurat nå 🎉")</td></tr>
+                <tr><td colspan="13" class="empty-row">@(_visTatte ? "Ingen treff." : "Ingen utatte saker her akkurat nå 🎉")</td></tr>
             }
             @foreach (var k in PagedView)
             {
                 var tatt = !string.IsNullOrWhiteSpace(k.Eier);
                 var mine = tatt && k.Eier == (Session.Email ?? Session.UserName);
                 <tr class="row-link @(tatt ? "row-locked" : "")" @onclick="() => Open(k.Id)">
+                    <td class="mono-cell" title="@OpprettetTittel(k.CreatedAt)">@OpprettetTekst(k.CreatedAt)</td>
                     <td @onclick:stopPropagation="true">
                         <select class="inline-select stsel @StatusKlasse(k.Status)" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
@@ -276,6 +278,7 @@ else
                 "bank" => k => k.NavarendeBank ?? "",
                 "belop" => k => k.OnsketLaanebelop ?? 0,
                 "status" => k => k.Status,
+                "opprettet" => k => k.CreatedAt,
                 "delegert" => k => k.DelegertBank ?? "",
                 // "ventet" = eldste øverst → eldste CreatedAt først når asc; default viser eldste øverst
                 _ => k => k.CreatedAt,
@@ -315,6 +318,12 @@ else
         "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
         "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
     };
+
+    // ---- Opprettet-dato ----
+    private static string OpprettetTekst(DateTime created)
+        => created == default ? "—" : created.ToLocalTime().ToString("dd.MM.yyyy");
+    private static string OpprettetTittel(DateTime created)
+        => created == default ? "" : created.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
 
     // ---- Ventet-tid (siden opprettet) ----
     private static string Ventet(DateTime created)
