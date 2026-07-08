@@ -43,11 +43,11 @@ else if (_active == "Partnere")
     <div class="section">
         <h2>Bankpartnere & provisjonssatser <span class="pill pill-warn">@_banks.Count</span></h2>
         <table class="data-table">
-            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th></tr></thead>
+            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th><th>Postnummer-dekning</th></tr></thead>
             <tbody>
                 @if (_banks.Count == 0)
                 {
-                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
+                    <tr><td colspan="4" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
                 }
                 @foreach (var b in _banks)
                 {
@@ -74,6 +74,12 @@ else if (_active == "Partnere")
                                 <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(b.Engangssum) ? "0" : b.Engangssum) kr</span>
                             }
                         </td>
+                        <td>
+                            <input class="inline-input" style="width:220px" value="@b.PostnummerDekning"
+                                   placeholder="0001-1299, 5000, 7000-7099"
+                                   title="Kommaseparerte postnummer og/eller intervaller"
+                                   @onchange="e => SavePostnummerDekning(b, e)" />
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -86,6 +92,7 @@ else if (_active == "Partnere")
             <div class="rb-field"><label>Banknavn</label><input class="rb-input" @bind="_nbName" placeholder="f.eks. DNB" /></div>
             <div class="rb-field rb-op" style="max-width:130px"><label>Provisjon %</label><input class="rb-input" @bind="_nbRate" placeholder="1,20" /></div>
             <div class="rb-field rb-op" style="max-width:170px"><label>Engangssum (kr)</label><input class="rb-input" @bind="_nbEngangssum" placeholder="0" /></div>
+            <div class="rb-field" style="max-width:260px"><label>Postnummer-dekning</label><input class="rb-input" @bind="_nbDekning" placeholder="0001-1299, 5000, 7000-7099" /></div>
             <button class="btn-primary rb-add" @onclick="AddBank">Legg til partner</button>
         </div>
         @if (!string.IsNullOrEmpty(_nbMsg))
@@ -1267,7 +1274,7 @@ else if (_active == "GDPR")
     private List<Partner> _banks = new();
 
     // Ny partner
-    private string _nbName = "", _nbRate = "", _nbEngangssum = "";
+    private string _nbName = "", _nbRate = "", _nbEngangssum = "", _nbDekning = "";
     private string? _nbMsg;
 
     private readonly HashSet<Guid> _compUnlocked = new();
@@ -1277,14 +1284,21 @@ else if (_active == "GDPR")
         var (ok, error) = await Partners.AddAsync(
             _nbName,
             string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim(),
-            string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim());
+            string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim(),
+            _nbDekning);
         if (ok)
         {
-            _nbName = _nbRate = _nbEngangssum = "";
+            _nbName = _nbRate = _nbEngangssum = _nbDekning = "";
             _nbMsg = null;
             _banks = await Partners.ListAsync();
         }
         else { _nbMsg = error; }
+    }
+
+    private async Task SavePostnummerDekning(Partner b, ChangeEventArgs e)
+    {
+        b.PostnummerDekning = e.Value?.ToString();
+        await Partners.UpdatePostnummerDekningAsync(b.Id, b.PostnummerDekning);
     }
 
     private async Task SaveProvisjon(Partner b, ChangeEventArgs e)
