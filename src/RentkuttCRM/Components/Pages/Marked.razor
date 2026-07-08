@@ -166,8 +166,8 @@ else
     private int _mine;
 
     private Dictionary<Guid, string> _searchCache = new();
-    private string _sortField = "ventet";
-    private bool _sortAsc = false;
+    private string _sortField = "opprettet";
+    private bool _sortAsc = false;   // opprettet + asc=false → nyeste øverst (OrderByDescending CreatedAt)
 
     protected override async Task OnInitializedAsync()
     {
