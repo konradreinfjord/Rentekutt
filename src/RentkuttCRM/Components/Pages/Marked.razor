@@ -39,6 +39,11 @@
         <option value="">Alle banker</option>
         @foreach (var b in BankListe) { <option value="@b.Navn">@b.Navn (@b.Antall)</option> }
     </select>
+    <select class="db-select" @bind="_forslagFilter" @bind:after="ResetPage" title="Filtrer på foreslått bank (postnr-dekning)">
+        <option value="">Alle bankforslag</option>
+        <option value="__ingen__">Uten forslag</option>
+        @foreach (var f in ForslagListe) { <option value="@f.Navn">→ @f.Navn (@f.Antall)</option> }
+    </select>
     <select class="db-select" @bind="_kommuneFilter" @bind:after="ResetPage">
         <option value="">Alle områder</option>
         @foreach (var f in KommunerPerFylke)
@@ -171,6 +176,7 @@ else
     private string _statusFilter = "";
     private string _bankFilter = "";
     private string _kommuneFilter = "";
+    private string _forslagFilter = "";
 
     private bool ErBedrift => Nav.Uri.Contains("/marked/bedrift", StringComparison.OrdinalIgnoreCase);
     private string KundeType => ErBedrift ? "B2B" : "B2C";
@@ -228,7 +234,7 @@ else
         _mine = _typeRows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         InvaliderView();
         // Facet-cacher avhenger av type — nullstill.
-        _bankListe = null; _kommuneListe = null; _kommunerPerFylke = null;
+        _bankListe = null; _kommuneListe = null; _kommunerPerFylke = null; _forslagListe = null;
     }
 
     private List<Kundekort> Utatte => _typeRows.Where(k => string.IsNullOrWhiteSpace(k.Eier)).ToList();
@@ -253,6 +259,13 @@ else
         .GroupBy(k => k.NavarendeBank!).Select(g => (g.Key, g.Count()))
         .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
 
+    // Foreslåtte banker (postnr-dekning) på tvers av kortene, med antall kort per bank.
+    private IEnumerable<(string Navn, int Antall)>? _forslagListe;
+    private IEnumerable<(string Navn, int Antall)> ForslagListe => _forslagListe ??= _typeRows
+        .SelectMany(Forslag)
+        .GroupBy(n => n).Select(g => (g.Key, g.Count()))
+        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
+
     private IEnumerable<(string Navn, int Antall)>? _kommuneListe;
     private IEnumerable<(string Navn, int Antall)> KommuneListe => _kommuneListe ??= _typeRows
         .Where(k => !string.IsNullOrWhiteSpace(k.Kommune))
@@ -275,7 +288,7 @@ else
     {
         get
         {
-            var cacheKey = $"{KundeType}|{_typeRows.Count}|{_visTatte}|{_search}|{_statusFilter}|{_bankFilter}|{_kommuneFilter}|{_sortField}|{_sortAsc}";
+            var cacheKey = $"{KundeType}|{_typeRows.Count}|{_visTatte}|{_search}|{_statusFilter}|{_bankFilter}|{_kommuneFilter}|{_forslagFilter}|{_sortField}|{_sortAsc}";
             if (_viewCache is not null && cacheKey == _viewKey) return _viewCache;
 
             IEnumerable<Kundekort> q = _typeRows;
@@ -293,6 +306,8 @@ else
             if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
             if (!string.IsNullOrEmpty(_bankFilter)) q = q.Where(k => k.NavarendeBank == _bankFilter);
             if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
+            if (_forslagFilter == "__ingen__") q = q.Where(k => Forslag(k).Count == 0);
+            else if (!string.IsNullOrEmpty(_forslagFilter)) q = q.Where(k => Forslag(k).Contains(_forslagFilter));
 
             Func<Kundekort, object?> key = _sortField switch
             {
