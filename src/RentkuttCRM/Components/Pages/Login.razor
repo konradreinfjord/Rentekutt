@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.TwoFactorService TwoFactor
 @inject NavigationManager Nav
 @inject ILogger<Login> Logger
+@inject ProtectedLocalStorage LocalStorage
 
 <PageTitle>Logg inn — Rentekutt</PageTitle>
 
@@ -106,8 +107,7 @@
                 return;
             }
 
-            Session.SignIn(user);
-            Nav.NavigateTo("/crm");
+            await FullforInnlogging(user);
         }
         catch (Exception ex)
         {
@@ -117,7 +117,7 @@
         }
     }
 
-    private void HandleVerify()
+    private async Task HandleVerify()
     {
         _busy = true;
         _error = null;
@@ -125,8 +125,7 @@
         {
             if (_pending is not null && TwoFactor.Verifiser(_pending.Email, _code))
             {
-                Session.SignIn(_pending);
-                Nav.NavigateTo("/crm");
+                await FullforInnlogging(_pending);
                 return;
             }
             _error = "Feil eller utløpt kode.";
@@ -138,6 +137,15 @@
             _error = "Teknisk feil. Prøv igjen senere.";
             _busy = false;
         }
+    }
+
+    // Sett in-memory-sesjon + persister kryptert i nettleseren (overlever refresh), og gå til CRM.
+    private async Task FullforInnlogging(UserRow user)
+    {
+        Session.SignIn(user);
+        try { await LocalStorage.SetAsync("rk_session", new PersistertSesjon(user.Id, user.Email, user.FullName, user.Role)); }
+        catch (Exception ex) { Logger.LogWarning(ex, "Kunne ikke persistere sesjon (fortsetter uten)"); }
+        Nav.NavigateTo("/crm");
     }
 
     private void Reset()

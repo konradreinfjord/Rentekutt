@@ -3,9 +3,13 @@ using Microsoft.Extensions.Hosting;
 
 namespace RentkuttCRM.Services;
 
+/// <summary>Kryptert sesjon lagret i nettleseren (ProtectedLocalStorage) så innloggingen
+/// overlever full sidelast/refresh. Gjenopprettes ved oppstart av Blazor-circuiten.</summary>
+public record PersistertSesjon(Guid Id, string Email, string Navn, string Rolle);
+
 /// <summary>
 /// Innloggings-tilstand per Blazor-økt (in-memory). Settes etter validert innlogging.
-/// Byttes ut med cookie/Supabase Auth-sesjon før konsesjon.
+/// Persisteres i ProtectedLocalStorage (se PersistertSesjon) så refresh ikke logger ut.
 /// </summary>
 public class SessionState
 {

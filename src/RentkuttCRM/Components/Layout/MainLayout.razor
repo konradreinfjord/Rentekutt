@@ -5,8 +5,15 @@
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
 @inject RentkuttCRM.Services.WebhookService Webhooks
 @inject NavigationManager Nav
+@inject ProtectedLocalStorage LocalStorage
 
-@if (!Session.IsLoggedIn)
+@if (!_ready)
+{
+    @* Vent til sesjonen er gjenopprettet fra nettleseren før noe rendres —
+       ellers rekker en beskyttet side å sende oss til /login ved refresh. *@
+    <div class="app-boot"></div>
+}
+else if (!Session.IsLoggedIn)
 {
     @* Login og andre åpne sider vises uten skall *@
     @Body
@@ -76,6 +83,30 @@ else
     private List<(string Navn, string Melding)> _issues = new();
     private bool _healthOpen;
     private int _tick;
+    private bool _ready;
+
+    // Gjenopprett innloggingen fra kryptert nettleserlagring ved oppstart av circuiten
+    // (skjer også ved full refresh, siden in-memory SessionState da er tom). JS-interop er
+    // først tilgjengelig etter første render, derfor OnAfterRenderAsync.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            if (!Session.IsLoggedIn)
+            {
+                var res = await LocalStorage.GetAsync<PersistertSesjon>("rk_session");
+                if (res is { Success: true, Value: { } s })
+                    Session.SignIn(new UserRow(s.Id, s.Email, s.Navn, s.Rolle, true));
+            }
+        }
+        catch { /* korrupt/utløpt lagring → forbli utlogget */ }
+        finally
+        {
+            _ready = true;
+            StateHasChanged();
+        }
+    }
 
     // Sjekk om noen tekniske overføringer feiler (vises som varsellampe i headeren).
     private async Task SjekkHelseAsync()
@@ -115,8 +146,9 @@ else
         }, null, 0, 1000);
     }
 
-    private void LogOut()
+    private async Task LogOut()
     {
+        try { await LocalStorage.DeleteAsync("rk_session"); } catch { /* fjernes uansett ved SignOut */ }
         Session.SignOut();
         Nav.NavigateTo("/login", forceLoad: false);
     }
