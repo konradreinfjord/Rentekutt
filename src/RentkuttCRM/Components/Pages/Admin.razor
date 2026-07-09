@@ -1402,7 +1402,7 @@ else if (_active == "GDPR")
         { _regelMsg = "Fyll inn verdi (Fra/Til for intervall)."; _regelOk = false; return; }
 
         var prioritet = _rules.Count == 0 ? 1 : _rules.Max(r => r.Prioritet) + 1;
-        var lagret = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, verdi, _newBanks.OrderBy(b => b));
+        var (lagret, feil) = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, verdi, _newBanks.OrderBy(b => b));
         if (lagret is not null)
         {
             _rules = await Ruting.ListAsync();   // hent frisk liste fra DB (bekrefter lagring)
@@ -1410,7 +1410,7 @@ else if (_active == "GDPR")
             _regelOk = true;
             _newFra = _newTil = "";
         }
-        else { _regelMsg = "Kunne ikke lagre regelen (databasefeil). Prøv igjen."; _regelOk = false; }
+        else { _regelMsg = "Kunne ikke lagre regelen: " + (feil ?? "ukjent databasefeil"); _regelOk = false; }
     }
 
     private async Task ToggleRegel(Rutingsregel r, bool aktiv)

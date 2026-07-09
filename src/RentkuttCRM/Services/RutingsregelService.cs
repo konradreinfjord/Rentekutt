@@ -1,4 +1,5 @@
 using System.Globalization;
+using Newtonsoft.Json;
 using Supabase.Postgrest;
 using Supabase.Postgrest.Attributes;
 using Supabase.Postgrest.Models;
@@ -17,7 +18,8 @@ public class Rutingsregel : BaseModel
     [Column("aktiv")] public bool Aktiv { get; set; } = true;
     [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)] public DateTime CreatedAt { get; set; }
 
-    /// <summary>Banklista som liste (banker lagres komma-separert).</summary>
+    /// <summary>Banklista som liste (banker lagres komma-separert). Ikke en DB-kolonne.</summary>
+    [JsonIgnore]
     public List<string> BankerListe =>
         (Banker ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 }
@@ -51,7 +53,7 @@ public class RutingsregelService
         catch (Exception ex) { _log.LogError(ex, "Henting av rutingsregler feilet"); return new(); }
     }
 
-    public async Task<Rutingsregel?> AddAsync(int prioritet, string feltNokkel, string @operator, string verdi, IEnumerable<string> banker)
+    public async Task<(Rutingsregel? Regel, string? Feil)> AddAsync(int prioritet, string feltNokkel, string @operator, string verdi, IEnumerable<string> banker)
     {
         var regel = new Rutingsregel
         {
@@ -62,13 +64,18 @@ public class RutingsregelService
             Banker = string.Join(", ", banker),
             Aktiv = true,
         };
-        if (!IsConfigured) { regel.Id = Guid.NewGuid(); _staging.Add(regel); return regel; }
+        if (!IsConfigured) { regel.Id = Guid.NewGuid(); _staging.Add(regel); return (regel, null); }
         try
         {
             await EnsureInitAsync();
-            return (await _client.From<Rutingsregel>().Insert(regel)).Models.FirstOrDefault();
+            var lagret = (await _client.From<Rutingsregel>().Insert(regel)).Models.FirstOrDefault();
+            return (lagret, null);
         }
-        catch (Exception ex) { _log.LogError(ex, "Lagring av rutingsregel feilet"); return null; }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Lagring av rutingsregel feilet");
+            return (null, ex.Message);
+        }
     }
 
     public async Task SetAktivAsync(Guid id, bool aktiv)
