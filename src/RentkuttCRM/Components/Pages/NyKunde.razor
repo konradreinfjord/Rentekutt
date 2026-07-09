@@ -48,7 +48,7 @@
     <div class="rq-row">
         <div class="ff"><label>Kundens bank</label><input @bind="_k.NavarendeBank" placeholder="f.eks. DNB" /></div>
         <div class="ff"><label>Nåværende rente (%)</label><input type="number" step="0.01" @bind="_k.NaavaerendeRente" placeholder="f.eks. 6,25" /></div>
-        <button class="btn-primary btn-sm" @onclick="LagreBankRente" disabled="@(_bankRenteLagrer || !_isEdit)"
+        <button class="btn-primary btn-sm" @onclick="LagreBankRente" disabled="@(_bankRenteLagrer || !_isEdit || !KanEndre)"
                 title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_bankRenteLagrer ? "Lagrer…" : "Lagre bank & rente")</button>
         @if (!string.IsNullOrEmpty(_bankRenteMsg)) { <span class="form-msg ok">@_bankRenteMsg</span> }
     </div>
@@ -62,13 +62,13 @@
     <div class="rq-row">
         <div class="ff" style="min-width:200px">
             <label>Bank</label>
-            <select @bind="_valgtBank" disabled="@(!_isEdit)">
+            <select @bind="_valgtBank" disabled="@(!_isEdit || !KanEndre)">
                 <option value="">— velg bank —</option>
                 @foreach (var b in _banker) { <option value="@b.Navn">@b.Navn@(InstabankService.ErInstabankNavn(b.Navn) ? " (API)" : "")</option> }
             </select>
         </div>
         <button class="btn-primary btn-sm" @onclick="SendTilBank"
-                disabled="@(_sender || !_isEdit || string.IsNullOrWhiteSpace(_valgtBank))"
+                disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank))"
                 title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_sender ? "Sender…" : "Send til bank")</button>
         @if (!string.IsNullOrEmpty(_sendMsg)) { <span class="form-msg @(_sendOk ? "ok" : "err")">@_sendMsg</span> }
     </div>
@@ -102,8 +102,8 @@
         <h2 style="margin:0">Notatlogg</h2>
         @if (!_visNyttNotat)
         {
-            <button class="btn-primary btn-sm" @onclick="() => _visNyttNotat = true" disabled="@(!_isEdit)"
-                    title="@(_isEdit ? "" : "Lagre kundekortet først")">+ Nytt notat</button>
+            <button class="btn-primary btn-sm" @onclick="() => _visNyttNotat = true" disabled="@(!_isEdit || !KanEndre)"
+                    title="@(!KanEndre ? "Skrivebeskyttet — du eier ikke saken" : _isEdit ? "" : "Lagre kundekortet først")">+ Nytt notat</button>
         }
     </div>
     @if (!_isEdit)
@@ -221,12 +221,18 @@
     </div>
     <textarea class="note-area" style="margin-top:12px; min-height:80px" @bind="_smsTekst" placeholder="Skriv meldingen her, eller velg en mal over…"></textarea>
     <div style="display:flex; align-items:center; gap:12px; margin-top:12px">
-        <button class="btn-primary" @onclick="SendSms" disabled="@(_smsSending || string.IsNullOrWhiteSpace(_k.Mobilnummer))">@(_smsSending ? "Sender…" : "Send SMS")</button>
+        <button class="btn-primary" @onclick="SendSms" disabled="@(_smsSending || !KanEndre || string.IsNullOrWhiteSpace(_k.Mobilnummer))">@(_smsSending ? "Sender…" : "Send SMS")</button>
         @if (!string.IsNullOrEmpty(_smsMsg)) { <span class="form-msg @(_smsOk ? "ok" : "err")">@_smsMsg</span> }
     </div>
 </div>
 
-@if (_isEdit)
+@if (_isEdit && !KanEndre)
+{
+    <div class="las-bar laast">
+        <span>🔒 Skrivebeskyttet — saken eies av <strong>@(_k.EierNavn ?? _k.Eier)</strong>. Kun eier eller admin kan endre. Du kan lese, men må eie saken for å redigere.</span>
+    </div>
+}
+else if (_isEdit)
 {
     <div class="las-bar @(_laast ? "laast" : "aapen")" @ondblclick="LaasOpp">
         @if (_laast)
@@ -241,7 +247,7 @@
     </div>
 }
 
-<div class="kort-felter @(_isEdit && _laast ? "laast" : "")" @ondblclick="LaasOpp">
+<div class="kort-felter @(_isEdit && (_laast || !KanEndre) ? "laast" : "")" @ondblclick="LaasOpp">
 @* Kundetype *@
 <div class="form-card">
     <h2>Kundetype</h2>
@@ -425,26 +431,29 @@
 </div>
 </div>@* /kort-felter *@
 
-<div class="form-actions">
-    <button class="btn-primary" @onclick="Save" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre kundekort")</button>
-    @if (_isEdit)
-    {
-        @if (!_confirmDelete)
+@if (KanEndre)
+{
+    <div class="form-actions">
+        <button class="btn-primary" @onclick="Save" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre kundekort")</button>
+        @if (_isEdit)
         {
-            <button class="btn-danger-solid" @onclick="() => _confirmDelete = true">Slett kundekort</button>
+            @if (!_confirmDelete)
+            {
+                <button class="btn-danger-solid" @onclick="() => _confirmDelete = true">Slett kundekort</button>
+            }
+            else
+            {
+                <span class="confirm-text">Sikker? Dette kan ikke angres.</span>
+                <button class="btn-danger-solid" @onclick="Delete">Ja, slett permanent</button>
+                <button class="btn-logout" @onclick="() => _confirmDelete = false">Avbryt</button>
+            }
         }
-        else
+        @if (!string.IsNullOrEmpty(_msg))
         {
-            <span class="confirm-text">Sikker? Dette kan ikke angres.</span>
-            <button class="btn-danger-solid" @onclick="Delete">Ja, slett permanent</button>
-            <button class="btn-logout" @onclick="() => _confirmDelete = false">Avbryt</button>
+            <span class="form-msg @(_ok ? "ok" : "err")">@_msg</span>
         }
-    }
-    @if (!string.IsNullOrEmpty(_msg))
-    {
-        <span class="form-msg @(_ok ? "ok" : "err")">@_msg</span>
-    }
-</div>
+    </div>
+}
 
 @code {
     [SupplyParameterFromQuery] public string? Id { get; set; }
@@ -483,6 +492,7 @@
     private string? _bankRenteMsg;
     private async Task LagreBankRente()
     {
+        if (!KanEndre) return;
         if (_k.Id == Guid.Empty) return;
         _bankRenteLagrer = true;
         _bankRenteMsg = null;
@@ -496,6 +506,7 @@
 
     private async Task LagreNotat()
     {
+        if (!KanEndre) return;
         if (string.IsNullOrWhiteSpace(_nyttNotat) || _k.Id == Guid.Empty) return;
         _notatLagrer = true;
         var ok = await Notater.AddAsync(_k.Id, _nyttNotat,
@@ -518,6 +529,7 @@
 
     private async Task SendSms()
     {
+        if (!KanEndre) return;
         _smsSending = true;
         _smsMsg = null;
         var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_k.Mobilnummer, _smsTekst, _k.FulltNavn);
@@ -528,6 +540,7 @@
 
     private async Task Delete()
     {
+        if (!KanEndre) return;
         await Svc.DeleteAsync(_k.Id);
         Nav.NavigateTo("/crm/database");
     }
@@ -560,6 +573,7 @@
 
     private async Task SendTilBank()
     {
+        if (!KanEndre) return;
         if (_k.Id == Guid.Empty || string.IsNullOrWhiteSpace(_valgtBank)) return;
         _sender = true;
         _sendMsg = null;
@@ -600,7 +614,14 @@
 
     // Feltene er låst på et eksisterende kundekort — dobbeltklikk for å redigere.
     private bool _laast;
-    private void LaasOpp() => _laast = false;
+    private void LaasOpp() { if (KanEndre) _laast = false; }
+
+    // Endringsrett: admin kan alltid; ellers må saken være uten eier eller eid av deg.
+    // Eies saken av en annen, er den skrivebeskyttet (kun lesing).
+    private bool EierAnnen => _isEdit && !string.IsNullOrWhiteSpace(_k.Eier)
+        && !string.Equals(_k.Eier, Session.Email, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(_k.Eier, Session.UserName, StringComparison.OrdinalIgnoreCase);
+    private bool KanEndre => Session.IsAdmin || !EierAnnen;
 
     // Lukk saken og gå tilbake til oversikten agenten kom fra.
     private async Task Tilbake()
@@ -626,6 +647,7 @@
 
     private async Task Save()
     {
+        if (!KanEndre) return;
         _saving = true;
         _msg = null;
         // B2B: orgnr er egen kolonne, men kunde_id speiler det for gruppering.

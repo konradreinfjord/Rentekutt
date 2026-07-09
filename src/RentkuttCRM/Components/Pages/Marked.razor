@@ -439,9 +439,12 @@ else
     private async Task Plukk(Kundekort k)
     {
         var eier = Session.Email ?? Session.UserName ?? "ukjent";
-        await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier);
+        // Ta eierskap → flytt «Åpen» til «Pågår».
+        var nyStatus = k.Status == "Åpen" ? "Pågår" : null;
+        await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier, nyStatus);
         k.Eier = eier;
         k.EierNavn = Session.UserName ?? eier;
+        if (nyStatus is not null) k.Status = nyStatus;
         _mine++;
         InvaliderRad(k);
         Open(k.Id);

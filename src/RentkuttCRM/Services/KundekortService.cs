@@ -143,25 +143,27 @@ public class KundekortService
         }
     }
 
-    /// <summary>Ta eierskap til en sak (på sak-Id).</summary>
-    public async Task SetEierAsync(Guid id, string eier, string eierNavn)
+    /// <summary>Ta eierskap til en sak. <paramref name="nyStatus"/> settes samtidig hvis oppgitt
+    /// (brukes til å flytte «Åpen» → «Pågår» når en rådgiver overtar saken).</summary>
+    public async Task SetEierAsync(Guid id, string eier, string eierNavn, string? nyStatus = null)
     {
         var naa = DateTime.UtcNow;
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
-            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; }
+            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; if (nyStatus is not null) k.Status = nyStatus; }
             return;
         }
         try
         {
             await EnsureReadyAsync();
-            await _client.From<Kundekort>()
+            var q = _client.From<Kundekort>()
                 .Where(x => x.Id == id)
                 .Set(x => x.Eier!, eier)
                 .Set(x => x.EierNavn!, eierNavn)
-                .Set(x => x.EierTattAt!, naa)
-                .Update();
+                .Set(x => x.EierTattAt!, naa);
+            if (nyStatus is not null) q = q.Set(x => x.Status, nyStatus);
+            await q.Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
     }

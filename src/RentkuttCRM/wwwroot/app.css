@@ -710,8 +710,10 @@ a { color: var(--accent); text-decoration: none; }
 .wide-page .db-stats { max-width: none; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 /* Låst / tatt sak i markedspoolen */
-.data-table tr.row-locked { opacity: .62; background: var(--surface-2); }
-.data-table tr.row-locked:hover { opacity: 1; background: var(--green-soft); }
+/* Låst rad (eid av noen andre) — «Pågår»-blå, med blå venstremarkør */
+.data-table tr.row-locked { background: #eaf1fb; }
+.data-table tr.row-locked td:first-child { box-shadow: inset 3px 0 0 #1f5fc4; }
+.data-table tr.row-locked:hover { background: #dbe7f8; }
 .lock-tag { display: inline-block; font-size: 11.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
 .lock-tag.mine { color: var(--green-dark); }
 .btn-primary.btn-sm { padding: 5px 12px; font-size: 12px; }
