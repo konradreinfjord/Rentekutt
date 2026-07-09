@@ -195,7 +195,8 @@ else
     private List<string> Forslag(Kundekort k)
     {
         if (_forslagCache.TryGetValue(k.Id, out var r)) return r;
-        r = BankDekning.ForeslaBanker(k.Postnummer, _partnere);
+        // Foreslå kun banker der automatisk sending er AV — de med auto-send rutes automatisk.
+        r = BankDekning.ForeslaBanker(k.Postnummer, _partnere.Where(p => !p.AutoSend));
         _forslagCache[k.Id] = r;
         return r;
     }

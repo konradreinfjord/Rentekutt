@@ -17,6 +17,10 @@ public class Partner : BaseModel
     // f.eks. "0001-1299, 5000, 7000-7099". Brukes til å foreslå bank ut fra kundens postnummer.
     [Column("postnummer_dekning")] public string? PostnummerDekning { get; set; }
 
+    // Automatisk sending: true = matchende søknader rutes automatisk til banken.
+    // false = banken vises som «foreslått bank» i markedet (menneske bestemmer).
+    [Column("auto_send")] public bool AutoSend { get; set; }
+
     // Transient (ikke persistert) — metode-valg i API-fanen. JsonIgnore så den
     // ikke sendes til databasen (ingen Method-kolonne der).
     [JsonIgnore] public string Method { get; set; } = "Webhook";
@@ -115,6 +119,24 @@ public class PartnerService
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av postnummer-dekning feilet"); }
+    }
+
+    public async Task UpdateAutoSendAsync(Guid id, bool autoSend)
+    {
+        if (!IsConfigured)
+        {
+            var p = _staging.FirstOrDefault(x => x.Id == id);
+            if (p is not null) p.AutoSend = autoSend;
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<Partner>().Where(x => x.Id == id)
+                .Set(x => x.AutoSend, autoSend)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av auto-send feilet"); }
     }
 
     private async Task EnsureInitAsync()

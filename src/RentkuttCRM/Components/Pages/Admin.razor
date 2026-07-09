@@ -43,12 +43,13 @@ else if (_active == "Partnere")
 {
     <div class="section">
         <h2>Bankpartnere & provisjonssatser <span class="pill pill-warn">@_banks.Count</span></h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Postnummer-dekning og automatisk sending styres under <strong>Logikk-matrise</strong>.</p>
         <table class="data-table">
-            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th><th>Postnummer-dekning</th></tr></thead>
+            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th></tr></thead>
             <tbody>
                 @if (_banks.Count == 0)
                 {
-                    <tr><td colspan="4" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
+                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
                 }
                 @foreach (var b in _banks)
                 {
@@ -75,12 +76,6 @@ else if (_active == "Partnere")
                                 <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(b.Engangssum) ? "0" : b.Engangssum) kr</span>
                             }
                         </td>
-                        <td>
-                            <input class="inline-input" style="width:220px" value="@b.PostnummerDekning"
-                                   placeholder="0001-1299, 5000, 7000-7099"
-                                   title="Kommaseparerte postnummer og/eller intervaller"
-                                   @onchange="e => SavePostnummerDekning(b, e)" />
-                        </td>
                     </tr>
                 }
             </tbody>
@@ -93,7 +88,6 @@ else if (_active == "Partnere")
             <div class="rb-field"><label>Banknavn</label><input class="rb-input" @bind="_nbName" placeholder="f.eks. DNB" /></div>
             <div class="rb-field rb-op" style="max-width:130px"><label>Provisjon %</label><input class="rb-input" @bind="_nbRate" placeholder="1,20" /></div>
             <div class="rb-field rb-op" style="max-width:170px"><label>Engangssum (kr)</label><input class="rb-input" @bind="_nbEngangssum" placeholder="0" /></div>
-            <div class="rb-field" style="max-width:260px"><label>Postnummer-dekning</label><input class="rb-input" @bind="_nbDekning" placeholder="0001-1299, 5000, 7000-7099" /></div>
             <button class="btn-primary rb-add" @onclick="AddBank">Legg til partner</button>
         </div>
         @if (!string.IsNullOrEmpty(_nbMsg))
@@ -736,6 +730,43 @@ else if (_active == "Logikk-matrise")
             og oppdateres automatisk her når ekte kundedatafelt opprettes / kobles til API-et (PSD2/scoring).
         </p>
     </div>
+
+    <div class="section">
+        <h2>Banker — postnummer-dekning & automatisk sending <span class="pill pill-warn">@_banks.Count</span></h2>
+        <p class="page-sub" style="margin:-4px 0 14px">
+            Postnummer-dekning avgjør hvilke banker som treffer en søknad geografisk.
+            Er <strong>automatisk sending</strong> på, rutes matchende søknader automatisk til banken.
+            Er den <strong>av</strong>, vises banken som <strong>foreslått bank</strong> i person-/bedriftsmarkedet
+            (dekning treffer, men rådgiver bestemmer).
+        </p>
+        <table class="data-table">
+            <thead><tr><th>Bank</th><th>Postnummer-dekning</th><th>Automatisk sending</th></tr></thead>
+            <tbody>
+                @if (_banks.Count == 0)
+                {
+                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under Partnere.</td></tr>
+                }
+                @foreach (var b in _banks)
+                {
+                    <tr>
+                        <td>@b.Navn</td>
+                        <td>
+                            <input class="inline-input" style="width:240px" value="@b.PostnummerDekning"
+                                   placeholder="0001-1299, 5000, 7000-7099"
+                                   title="Kommaseparerte postnummer og/eller intervaller"
+                                   @onchange="e => SavePostnummerDekning(b, e)" />
+                        </td>
+                        <td>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@b.AutoSend" @onchange="e => SaveAutoSend(b, e)" />
+                                <span class="status @(b.AutoSend ? "on" : "off")">@(b.AutoSend ? "På — auto-rutes" : "Av — foreslås")</span>
+                            </label>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 else if (_active == "Beregningsmodell")
 {
@@ -1376,7 +1407,7 @@ else if (_active == "GDPR")
     private List<Partner> _banks = new();
 
     // Ny partner
-    private string _nbName = "", _nbRate = "", _nbEngangssum = "", _nbDekning = "";
+    private string _nbName = "", _nbRate = "", _nbEngangssum = "";
     private string? _nbMsg;
 
     private readonly HashSet<Guid> _compUnlocked = new();
@@ -1386,11 +1417,10 @@ else if (_active == "GDPR")
         var (ok, error) = await Partners.AddAsync(
             _nbName,
             string.IsNullOrWhiteSpace(_nbRate) ? "0,00" : _nbRate.Trim(),
-            string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim(),
-            _nbDekning);
+            string.IsNullOrWhiteSpace(_nbEngangssum) ? "0" : _nbEngangssum.Trim());
         if (ok)
         {
-            _nbName = _nbRate = _nbEngangssum = _nbDekning = "";
+            _nbName = _nbRate = _nbEngangssum = "";
             _nbMsg = null;
             _banks = await Partners.ListAsync();
         }
@@ -1401,6 +1431,12 @@ else if (_active == "GDPR")
     {
         b.PostnummerDekning = e.Value?.ToString();
         await Partners.UpdatePostnummerDekningAsync(b.Id, b.PostnummerDekning);
+    }
+
+    private async Task SaveAutoSend(Partner b, ChangeEventArgs e)
+    {
+        b.AutoSend = e.Value is true;
+        await Partners.UpdateAutoSendAsync(b.Id, b.AutoSend);
     }
 
     private async Task SaveProvisjon(Partner b, ChangeEventArgs e)
