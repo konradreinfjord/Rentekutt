@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.StyringsrenteService StyringSvc
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Markedsinnsikt — Rentekutt</PageTitle>
 
@@ -24,6 +25,7 @@ else
         <div class="db-box"><span class="db-box-num">@_banker.Count</span><span class="db-box-lbl">Banker</span></div>
         <div class="db-box accent-blue"><span class="db-box-num">@(_punkter.Count > 0 ? _snittRente.ToString("N2", Nb) + " %" : "—")</span><span class="db-box-lbl">Snitt kunderente</span></div>
         <div class="db-box accent-amber"><span class="db-box-num">@(_punkter.Count > 0 ? _snittMargin.ToString("N2", Nb) + " pp" : "—")</span><span class="db-box-lbl">Snitt over styringsrente</span></div>
+        <div class="db-box accent-purple"><span class="db-box-num">@(_antLtv > 0 ? _snittLtv.ToString("N0", Nb) + " %" : "—")</span><span class="db-box-lbl">Snitt LTV@(_antLtv > 0 ? $" ({_antLtv})" : "")</span></div>
     </div>
 
     <div class="section">
@@ -42,9 +44,10 @@ else
                 <span class="mi-leg"><span class="mi-dot" style="background:#6b3fc4"></span>Manuelt registrert (@_antManuell)</span>
             </div>
             <div class="mi-chart">
-                <svg viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå siste 12 måneder">
+                <svg id="mi-svg-trend" data-ymax="@_yMaxTrend" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå siste 12 måneder">
                     @((MarkupString)_svgTrend)
                 </svg>
+                <div id="mi-tip-trend" class="mi-tip"></div>
             </div>
         }
     </div>
@@ -64,9 +67,10 @@ else
                 <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente nå (@_naaStyring.ToString("N2", Nb) %)</span>
             </div>
             <div class="mi-chart">
-                <svg viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rente mot lånebeløp">
+                <svg id="mi-svg-belop" data-ymax="@_yMaxBelop" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rente mot lånebeløp">
                     @((MarkupString)_svgBelop)
                 </svg>
+                <div id="mi-tip-belop" class="mi-tip"></div>
             </div>
         }
     </div>
@@ -76,12 +80,12 @@ else
         <div class="table-scroll">
         <table class="data-table">
             <thead>
-                <tr><th>Bank</th><th class="num">Antall</th><th class="num">Snitt</th><th class="num">Laveste</th><th class="num">Høyeste</th><th class="num">Over styringsrente</th><th>Sist registrert</th></tr>
+                <tr><th>Bank</th><th class="num">Antall</th><th class="num">Snitt rente</th><th class="num">Laveste</th><th class="num">Høyeste</th><th class="num">Over styringsrente</th><th class="num">Snitt lånebeløp</th><th class="num">Snitt LTV</th><th>Sist registrert</th></tr>
             </thead>
             <tbody>
                 @if (_banker.Count == 0)
                 {
-                    <tr><td colspan="7" class="empty-row">Ingen data ennå.</td></tr>
+                    <tr><td colspan="9" class="empty-row">Ingen data ennå.</td></tr>
                 }
                 @foreach (var b in _banker)
                 {
@@ -92,7 +96,39 @@ else
                         <td class="num">@b.Min.ToString("N2", Nb) %</td>
                         <td class="num">@b.Max.ToString("N2", Nb) %</td>
                         <td class="num">@((b.Snitt - (decimal)_naaStyring).ToString("N2", Nb)) pp</td>
+                        <td class="num">@(b.SnittBelop is > 0 ? (b.SnittBelop!.Value / 1_000_000m).ToString("N2", Nb) + " M" : "—")</td>
+                        <td class="num">@(b.SnittLtv is not null ? b.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
                         <td>@b.Siste.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Rentenivå per lånebeløp</h2>
+        <p class="page-sub">Snitt rente og LTV gruppert på lånestørrelse — ser vi forskjell mellom store og små lån?</p>
+        <div class="table-scroll">
+        <table class="data-table">
+            <thead>
+                <tr><th>Lånebeløp</th><th class="num">Antall</th><th class="num">Snitt rente</th><th class="num">Laveste</th><th class="num">Høyeste</th><th class="num">Snitt lånebeløp</th><th class="num">Snitt LTV</th></tr>
+            </thead>
+            <tbody>
+                @if (_segmenter.Count == 0)
+                {
+                    <tr><td colspan="7" class="empty-row">Ingen kunder med lånebeløp registrert ennå.</td></tr>
+                }
+                @foreach (var s in _segmenter)
+                {
+                    <tr>
+                        <td>@s.Navn</td>
+                        <td class="num">@s.Antall</td>
+                        <td class="num">@s.Snitt.ToString("N2", Nb) %</td>
+                        <td class="num">@s.Min.ToString("N2", Nb) %</td>
+                        <td class="num">@s.Max.ToString("N2", Nb) %</td>
+                        <td class="num">@((s.SnittBelop / 1_000_000m).ToString("N2", Nb)) M</td>
+                        <td class="num">@(s.SnittLtv is not null ? s.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
                     </tr>
                 }
             </tbody>
@@ -109,13 +145,16 @@ else
     private List<Punkt> _punkter = new();      // alle med bank + rente
     private List<Punkt> _punkter12 = new();     // siste 12 måneder
     private List<BankRad> _banker = new();
-    private decimal _snittRente, _snittMargin;
+    private List<Segment> _segmenter = new();
+    private decimal _snittRente, _snittMargin, _snittLtv;
     private double _naaStyring;
-    private int _antSoknad, _antManuell, _belopPunkter;
+    private int _antSoknad, _antManuell, _belopPunkter, _antLtv;
     private double _maxBelop;
+    private int _yMaxTrend = 8, _yMaxBelop = 8;
 
-    private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, bool Soknad);
-    private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, DateTime Siste);
+    private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, decimal? Ltv, bool Soknad);
+    private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, decimal? SnittBelop, decimal? SnittLtv, DateTime Siste);
+    private record Segment(string Navn, int Antall, decimal Snitt, decimal Min, decimal Max, decimal SnittBelop, decimal? SnittLtv);
 
     // Norges Banks styringsrente (endringsdatoer) — hentes live via StyringsrenteService.
     private IReadOnlyList<(DateTime Dato, decimal Rente)> _styring = Array.Empty<(DateTime, decimal)>();
@@ -151,7 +190,7 @@ else
         _punkter = rows
             .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank) && k.NaavaerendeRente is > 0)
             .Select(k => new Punkt(k.CreatedAt, k.NavarendeBank!.Trim(), k.NaavaerendeRente!.Value,
-                k.OnsketLaanebelop,
+                k.OnsketLaanebelop, Ltv(k),
                 !string.IsNullOrWhiteSpace(k.Kilde) && !k.Kilde.Equals("Manuell", StringComparison.OrdinalIgnoreCase)))
             .OrderBy(p => p.Dato)
             .ToList();
@@ -163,12 +202,21 @@ else
             _snittRente = _punkter.Average(p => p.Rente);
             _snittMargin = _punkter.Average(p => p.Rente - RentePaa(p.Dato));
 
+            var medLtv = _punkter.Where(p => p.Ltv is not null).ToList();
+            _antLtv = medLtv.Count;
+            if (_antLtv > 0) _snittLtv = medLtv.Average(p => p.Ltv!.Value);
+
             _banker = _punkter
                 .GroupBy(p => p.Bank, StringComparer.OrdinalIgnoreCase)
                 .Select(g => new BankRad(g.Key, g.Count(), g.Average(x => x.Rente),
-                    g.Min(x => x.Rente), g.Max(x => x.Rente), g.Max(x => x.Dato)))
+                    g.Min(x => x.Rente), g.Max(x => x.Rente),
+                    SnittEllerNull(g.Where(x => x.Belop is > 0).Select(x => x.Belop!.Value)),
+                    SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value)),
+                    g.Max(x => x.Dato)))
                 .OrderByDescending(b => b.Antall).ThenBy(b => b.Bank)
                 .ToList();
+
+            ByggSegmenter();
 
             _maxBelop = _punkter.Where(p => p.Belop is > 0).Select(p => (double)p.Belop!.Value).DefaultIfEmpty(0).Max();
 
@@ -177,6 +225,40 @@ else
         }
 
         _loading = false;
+    }
+
+    // LTV = belåningsgrad, samme definisjon som BeregningService: (boliggjeld + ønsket lån) / boligverdi.
+    // Aktiveres kun når vi har eiendomsverdi (boligverdi > 0).
+    private static decimal? Ltv(Kundekort k) =>
+        (k.Boligverdi ?? 0) > 0 ? Math.Round(((k.Boliggjeld ?? 0) + (k.OnsketLaanebelop ?? 0)) / k.Boligverdi!.Value * 100m, 1) : null;
+
+    private static decimal? SnittEllerNull(IEnumerable<decimal> xs)
+    {
+        var l = xs.ToList();
+        return l.Count > 0 ? l.Average() : null;
+    }
+
+    // Grupper på lånestørrelse for å se om rente/LTV varierer med beløp.
+    private void ByggSegmenter()
+    {
+        var (grenser, navn) = (new decimal[] { 1_000_000m, 2_000_000m, 3_000_000m, 5_000_000m },
+            new[] { "< 1 MNOK", "1–2 MNOK", "2–3 MNOK", "3–5 MNOK", "5 MNOK +" });
+        int Bucket(decimal b) { for (var i = 0; i < grenser.Length; i++) if (b < grenser[i]) return i; return grenser.Length; }
+
+        _segmenter = _punkter.Where(p => p.Belop is > 0)
+            .GroupBy(p => Bucket(p.Belop!.Value))
+            .OrderBy(g => g.Key)
+            .Select(g => new Segment(navn[g.Key], g.Count(), g.Average(x => x.Rente),
+                g.Min(x => x.Rente), g.Max(x => x.Rente), g.Average(x => x.Belop!.Value),
+                SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value))))
+            .ToList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading) return;
+        if (_punkter12.Count > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-trend", "mi-tip-trend");
+        if (_belopPunkter > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-belop", "mi-tip-belop");
     }
 
     // Bobleradius etter lånebeløp (2.5–9 px).
@@ -197,6 +279,7 @@ else
             .Concat(_punkter12.Select(p => (double)p.Rente));
         var yMax = Math.Max(8, (int)Math.Ceiling(relevant.Max() + 1));
         if (yMax % 2 != 0) yMax++;
+        _yMaxTrend = yMax;
 
         double X(DateTime d) => PadL + (d - xMin).TotalDays / Math.Max(1, (xMax - xMin).TotalDays) * PlotW;
         double Y(double r) => PadT + PlotH - r / yMax * PlotH;
@@ -230,9 +313,9 @@ else
         sb.Append(" L ").Append(Num(X(xMax))).Append(' ').Append(Num(Y(prev)));
         svg.Append($"<path d=\"{sb}\" fill=\"none\" stroke=\"#c2740a\" stroke-width=\"2.5\" stroke-linejoin=\"round\" />");
 
-        // Kundepunkter — farge = kilde, størrelse = lånebeløp
+        // Kundepunkter — farge = kilde, størrelse = lånebeløp, tooltip med detaljer
         foreach (var p in _punkter12)
-            svg.Append($"<circle cx=\"{Num(X(p.Dato))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.45\" />");
+            svg.Append($"<circle cx=\"{Num(X(p.Dato))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.45\"><title>{PunktTekst(p)}</title></circle>");
 
         // Snitt kunderente per måned
         var mnd = _punkter12
@@ -247,6 +330,9 @@ else
             svg.Append($"<path d=\"{tb}\" fill=\"none\" stroke=\"#266f32\" stroke-width=\"2\" stroke-linejoin=\"round\" />");
         }
 
+        // Hover-crosshair (styres av mi-chart.js)
+        svg.Append($"<line class=\"mi-cross\" x1=\"{Num(PadL)}\" x2=\"{Num(W - PadR)}\" y1=\"0\" y2=\"0\" stroke=\"var(--text-2)\" stroke-width=\"1\" stroke-dasharray=\"4 3\" />");
+
         _svgTrend = svg.ToString();
     }
 
@@ -260,6 +346,7 @@ else
         var bMaxM = Math.Max(1, Math.Ceiling((double)pts.Max(p => p.Belop!.Value) / 1_000_000.0)); // MNOK, rundet opp
         var yMax = Math.Max(8, (int)Math.Ceiling(Math.Max((double)pts.Max(p => p.Rente), _naaStyring) + 1));
         if (yMax % 2 != 0) yMax++;
+        _yMaxBelop = yMax;
 
         double X(double mnok) => PadL + mnok / bMaxM * PlotW;
         double Y(double r) => PadT + PlotH - r / yMax * PlotH;
@@ -281,10 +368,26 @@ else
         // Styringsrente nå — horisontal referanse
         svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(_naaStyring))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(_naaStyring))}\" stroke=\"#c2740a\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\" />");
 
-        // Punkter: x = lånebeløp, y = rente, farge = kilde
+        // Punkter: x = lånebeløp, y = rente, farge = kilde, tooltip med detaljer
         foreach (var p in pts)
-            svg.Append($"<circle cx=\"{Num(X((double)p.Belop!.Value / 1_000_000.0))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"4\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.5\" />");
+            svg.Append($"<circle cx=\"{Num(X((double)p.Belop!.Value / 1_000_000.0))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"4\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.5\"><title>{PunktTekst(p)}</title></circle>");
+
+        // Hover-crosshair (styres av mi-chart.js)
+        svg.Append($"<line class=\"mi-cross\" x1=\"{Num(PadL)}\" x2=\"{Num(W - PadR)}\" y1=\"0\" y2=\"0\" stroke=\"var(--text-2)\" stroke-width=\"1\" stroke-dasharray=\"4 3\" />");
 
         _svgBelop = svg.ToString();
     }
+
+    // Tooltip-tekst for et datapunkt (SVG <title>).
+    private static string PunktTekst(Punkt p)
+    {
+        var deler = new List<string> { p.Bank, p.Rente.ToString("N2", Nb) + " %" };
+        if (p.Belop is > 0) deler.Add((p.Belop!.Value / 1_000_000m).ToString("N2", Nb) + " MNOK");
+        if (p.Ltv is not null) deler.Add("LTV " + p.Ltv.Value.ToString("N0", Nb) + " %");
+        deler.Add(p.Dato.ToLocalTime().ToString("MMM yy", Nb));
+        return Escape(string.Join(" · ", deler));
+    }
+
+    private static string Escape(string s) =>
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 }

@@ -15,6 +15,7 @@
     @* prerender av: unngår at OnInitializedAsync (og datahenting) kjører to ganger *@
     <Routes @rendermode="@(new Microsoft.AspNetCore.Components.Web.InteractiveServerRenderMode(prerender: false))" />
     <script src="_framework/blazor.web.js"></script>
+    <script src="mi-chart.js?v=@CssVersjon"></script>
 </body>
 
 </html>

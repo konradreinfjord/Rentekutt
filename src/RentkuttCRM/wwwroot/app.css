@@ -359,8 +359,15 @@ a { color: var(--accent); text-decoration: none; }
 .mi-leg { display: inline-flex; align-items: center; gap: 7px; }
 .mi-swatch { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
 .mi-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-.mi-chart { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px; }
+.mi-chart { position: relative; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px; }
 .mi-chart svg { width: 100%; height: auto; display: block; }
+.mi-chart svg circle { cursor: pointer; }
+.mi-cross { display: none; pointer-events: none; }
+.mi-tip {
+    display: none; position: absolute; transform: translate(-50%, -140%);
+    background: var(--text, #1c2230); color: #fff; font-size: 11px; font-weight: 600;
+    padding: 3px 7px; border-radius: 5px; white-space: nowrap; pointer-events: none; z-index: 5;
+}
 
 /* Feltlåsing: dobbeltklikk for å redigere */
 .las-bar {
@@ -432,6 +439,10 @@ a { color: var(--accent); text-decoration: none; }
 .db-box.accent-green .db-box-num { color: var(--green-dark); }
 .db-box.accent-amber { border-top: 2px solid #c2740a; }
 .db-box.accent-amber .db-box-num { color: #c2740a; }
+.db-box.accent-blue { border-top: 2px solid #1f5fc4; }
+.db-box.accent-blue .db-box-num { color: #1f5fc4; }
+.db-box.accent-purple { border-top: 2px solid #6b3fc4; }
+.db-box.accent-purple .db-box-num { color: #6b3fc4; }
 @media (max-width: 900px) { .db-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sc-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
