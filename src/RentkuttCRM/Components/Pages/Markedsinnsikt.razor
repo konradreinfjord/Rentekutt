@@ -382,7 +382,7 @@ else
     private static string PunktTekst(Punkt p)
     {
         var deler = new List<string> { p.Bank, p.Rente.ToString("N2", Nb) + " %" };
-        if (p.Belop is > 0) deler.Add((p.Belop!.Value / 1_000_000m).ToString("N2", Nb) + " MNOK");
+        if (p.Belop is > 0) deler.Add("Lånesum " + p.Belop!.Value.ToString("N0", Nb) + " kr");
         if (p.Ltv is not null) deler.Add("LTV " + p.Ltv.Value.ToString("N0", Nb) + " %");
         deler.Add(p.Dato.TilOslo().ToString("MMM yy", Nb));
         return Escape(string.Join(" · ", deler));

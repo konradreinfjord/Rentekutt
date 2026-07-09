@@ -44,16 +44,13 @@ else if (_active == "Partnere")
 {
     <div class="section">
         <h2>Bankpartnere & provisjonssatser <span class="pill pill-warn">@_banks.Count</span></h2>
-        <p class="page-sub" style="margin:-4px 0 14px">
-            Postnummer-dekning avgjør hvilke banker som treffer geografisk. Er <strong>automatisk sending</strong> av,
-            vises banken som «foreslått bank» i markedet (dekning treffer, men rådgiver bestemmer).
-        </p>
+        <p class="page-sub" style="margin:-4px 0 14px">Postnummer-dekning og automatisk sending styres under <strong>Logikk-matrise</strong>.</p>
         <table class="data-table">
-            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th><th>Postnummer-dekning</th><th>Automatisk sending</th></tr></thead>
+            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th></tr></thead>
             <tbody>
                 @if (_banks.Count == 0)
                 {
-                    <tr><td colspan="5" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
+                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
                 }
                 @foreach (var b in _banks)
                 {
@@ -79,18 +76,6 @@ else if (_active == "Partnere")
                             {
                                 <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(b.Engangssum) ? "0" : b.Engangssum) kr</span>
                             }
-                        </td>
-                        <td>
-                            <input class="inline-input" style="width:230px" value="@b.PostnummerDekning"
-                                   placeholder="0001-1299, 5000, 7000-7099"
-                                   title="Kommaseparerte postnummer og/eller intervaller"
-                                   @onchange="e => SavePostnummerDekning(b, e)" />
-                        </td>
-                        <td>
-                            <label class="toggle">
-                                <input type="checkbox" checked="@b.AutoSend" @onchange="e => SaveAutoSend(b, e)" />
-                                <span class="status @(b.AutoSend ? "on" : "off")">@(b.AutoSend ? "På — auto-rutes" : "Av — foreslås")</span>
-                            </label>
                         </td>
                     </tr>
                 }
@@ -416,18 +401,18 @@ Authorization: Bearer &lt;token&gt;</pre>
     }
     else if (_apiTab == "Bank API")
     {
-        <p class="page-sub" style="margin:0 0 16px">Hver bankintegrasjon er hardkodet med sin egen widget. Postnummer-dekning og automatisk sending styres under <strong>Partnere</strong>.</p>
+        <p class="page-sub" style="margin:0 0 16px">Hver bankintegrasjon er hardkodet med sin egen widget. Automatisk sending styres under <strong>Logikk-matrise</strong>.</p>
 
         @* ---- Instabank Agent API-widget ---- *@
-        <div class="section">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
-                <h2 style="margin:0">Instabank <span class="ww-tag">Agent API</span></h2>
-                <span class="status @(_ibKonfigurert && _ibEnabled ? "on" : "off")">@(_ibKonfigurert && _ibEnabled ? "Aktiv" : "Av")</span>
+        <div class="bank-widget @(_ibKonfigurert && _ibEnabled ? "aktiv" : "")">
+            <div class="bw-head">
+                <div class="bw-logo">IB</div>
+                <div class="bw-titles">
+                    <div class="bw-title">Instabank <span class="ww-tag">Agent API</span></div>
+                    <div class="bw-sub">Delegerte lånesøknader — Basic Auth, kunden får SigningUrl for å fullføre</div>
+                </div>
+                <span class="bw-status status @(_ibKonfigurert && _ibEnabled ? "on" : "off")">@(_ibKonfigurert && _ibEnabled ? "Aktiv" : "Av")</span>
             </div>
-            <p class="page-sub" style="margin:8px 0 16px">
-                Send delegerte lånesøknader til Instabank for kunder som skal dit. Agent API (Basic Auth) —
-                kunden får en <strong>SigningUrl</strong> tilbake for å fullføre. Min. statusintervall: 5 min.
-            </p>
 
             <div class="kv-list" style="margin-bottom:16px">
                 <span class="k">Legitimasjon</span>
@@ -442,9 +427,13 @@ Authorization: Bearer &lt;token&gt;</pre>
 
             <h3 class="ww-h">Styring</h3>
             <div class="rule-builder" style="margin-bottom:8px; align-items:flex-end">
-                <label class="ff-check" style="white-space:nowrap; margin-bottom:6px">
-                    <input type="checkbox" checked="@_ibEnabled" @onchange="ToggleInstabank" /> Integrasjon aktivert
-                </label>
+                <div class="rb-field" style="max-width:180px">
+                    <label>Integrasjon</label>
+                    <div class="seg onoff">
+                        <button class="@(!_ibEnabled ? "active av" : "")" @onclick="() => SettInstabankAktivert(false)">AV</button>
+                        <button class="@(_ibEnabled ? "active" : "")" @onclick="() => SettInstabankAktivert(true)">PÅ</button>
+                    </div>
+                </div>
                 <div class="rb-field rb-op" style="max-width:150px">
                     <label>Miljø</label>
                     <select class="rb-input" @bind="_ibMiljo" @bind:after="LagreInstabankMiljo">
@@ -742,6 +731,37 @@ else if (_active == "Logikk-matrise")
             💡 Feltlisten er foreløpig eksempeldata. Den styres fra ett sted (feltkatalogen),
             og oppdateres automatisk her når ekte kundedatafelt opprettes / kobles til API-et (PSD2/scoring).
         </p>
+    </div>
+
+    <div class="section">
+        <h2>Automatisk sending</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">
+            Kun banker med ferdig konfigurert sending. Er sending <strong>PÅ</strong> rutes matchende søknader
+            automatisk til banken; er den <strong>AV</strong> vises banken som <strong>foreslått bank</strong> i
+            person-/bedriftsmarkedet. Hvilke søknader som treffer styres av rutingsreglene over (f.eks. postnummer).
+        </p>
+        @{ var hardkodet = _banks.Where(b => InstabankService.ErInstabankNavn(b.Navn)).ToList(); }
+        <table class="data-table" style="max-width:520px">
+            <thead><tr><th>Bank</th><th>Automatisk sending</th></tr></thead>
+            <tbody>
+                @if (hardkodet.Count == 0)
+                {
+                    <tr><td colspan="2" class="empty-row">Ingen banker med konfigurert sending ennå — kun Instabank støttes.</td></tr>
+                }
+                @foreach (var b in hardkodet)
+                {
+                    <tr>
+                        <td><strong>@b.Navn</strong></td>
+                        <td>
+                            <div class="seg onoff">
+                                <button class="@(!b.AutoSend ? "active av" : "")" @onclick="() => SettAutoSend(b, false)">AV</button>
+                                <button class="@(b.AutoSend ? "active" : "")" @onclick="() => SettAutoSend(b, true)">PÅ</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     </div>
 }
 else if (_active == "Beregningsmodell")
@@ -1112,11 +1132,11 @@ else if (_active == "GDPR")
     private List<BankSending> _sisteSendinger = new();
 
 
-    private async Task ToggleInstabank(ChangeEventArgs e)
+    private async Task SettInstabankAktivert(bool på)
     {
-        _ibEnabled = e.Value is true;
-        await Instabank.SettAktivertAsync(_ibEnabled);
-        _ibMsg = _ibEnabled ? "Integrasjon aktivert." : "Integrasjon deaktivert.";
+        _ibEnabled = på;
+        await Instabank.SettAktivertAsync(på);
+        _ibMsg = på ? "Integrasjon aktivert." : "Integrasjon deaktivert.";
         _ibOk = true;
     }
 
@@ -1405,16 +1425,10 @@ else if (_active == "GDPR")
         else { _nbMsg = error; }
     }
 
-    private async Task SavePostnummerDekning(Partner b, ChangeEventArgs e)
+    private async Task SettAutoSend(Partner b, bool på)
     {
-        b.PostnummerDekning = e.Value?.ToString();
-        await Partners.UpdatePostnummerDekningAsync(b.Id, b.PostnummerDekning);
-    }
-
-    private async Task SaveAutoSend(Partner b, ChangeEventArgs e)
-    {
-        b.AutoSend = e.Value is true;
-        await Partners.UpdateAutoSendAsync(b.Id, b.AutoSend);
+        b.AutoSend = på;
+        await Partners.UpdateAutoSendAsync(b.Id, på);
     }
 
     private async Task SaveProvisjon(Partner b, ChangeEventArgs e)

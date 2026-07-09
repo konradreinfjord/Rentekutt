@@ -10,6 +10,12 @@
 <h1 class="page-title">Mine søknader</h1>
 <p class="page-sub">Sakene du har plukket. Følg opp i tide — fargen på oppfølgingsdatoen viser forfalt/i dag.</p>
 
+<div class="seg typeseg" style="margin-bottom:16px">
+    <button class="@(_typeFilter == "" ? "active" : "")" @onclick='() => _typeFilter = ""'>Vis begge (@_rows.Count)</button>
+    <button class="@(_typeFilter == "B2C" ? "active" : "")" @onclick='() => _typeFilter = "B2C"'>Privat · B2C (@_rows.Count(k => k.KundeType == "B2C"))</button>
+    <button class="@(_typeFilter == "B2B" ? "active" : "")" @onclick='() => _typeFilter = "B2B"'>Bedrift · B2B (@_rows.Count(k => k.KundeType == "B2B"))</button>
+</div>
+
 @if (Session.IsAdmin)
 {
     <div class="db-toolbar" style="margin-bottom:16px">
@@ -28,9 +34,9 @@
 }
 
 <div class="db-stats">
-    <div class="db-box"><span class="db-box-num">@_rows.Count</span><span class="db-box-lbl">@(VisEier ? "Saker i visning" : "Mine saker")</span></div>
+    <div class="db-box"><span class="db-box-num">@Vist.Count</span><span class="db-box-lbl">@TypeLabel</span></div>
     <div class="db-box accent-blue"><span class="db-box-num">@SnittTid</span><span class="db-box-lbl">Snitt tid per sak</span></div>
-    <div class="db-box"><span class="db-box-num">@_rows.Count(k => k.NesteOppfolging is { } n && n.Date <= Tid.IDag)</span><span class="db-box-lbl">Oppfølging forfalt/i dag</span></div>
+    <div class="db-box"><span class="db-box-num">@Vist.Count(k => k.NesteOppfolging is { } n && n.Date <= Tid.IDag)</span><span class="db-box-lbl">Oppfølging forfalt/i dag</span></div>
 </div>
 
 <div class="section">
@@ -49,11 +55,11 @@
                 </tr>
             </thead>
             <tbody>
-                @if (_rows.Count == 0)
+                @if (Vist.Count == 0)
                 {
                     <tr><td colspan="@(VisEier ? 9 : 8)" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak i Personmarked eller Bedriftsmarked." : "Ingen saker på valgt rådgiver.")</td></tr>
                 }
-                @foreach (var k in _rows.OrderBy(SortNokkel))
+                @foreach (var k in Vist.OrderBy(SortNokkel))
                 {
                     <tr class="row-link" @onclick="() => Open(k.Id)">
                         <td><span class="status on">@k.Status</span></td>
@@ -86,6 +92,11 @@
     private string MittEier => Session.Email ?? Session.UserName ?? "";
     // Vis rådgiver-kolonne når admin ser andres/alle saker.
     private bool VisEier => Session.IsAdmin && _selectedEier != "__mine__";
+
+    // Skille B2B/B2C: "" = begge, ellers "B2C"/"B2B".
+    private string _typeFilter = "";
+    private List<Kundekort> Vist => _typeFilter.Length == 0 ? _rows : _rows.Where(k => k.KundeType == _typeFilter).ToList();
+    private string TypeLabel => _typeFilter switch { "B2C" => "Privatsaker", "B2B" => "Bedriftssaker", _ => VisEier ? "Saker i visning" : "Mine saker" };
 
     protected override async Task OnInitializedAsync()
     {
@@ -123,9 +134,9 @@
     private static DateTime SortNokkel(Kundekort k) => k.NesteOppfolging ?? DateTime.MinValue;
 
     // Snitt tid per sak = snittalder (nå − opprettet) på sakene i visning.
-    private string SnittTid => _rows.Count == 0
+    private string SnittTid => Vist.Count == 0
         ? "—"
-        : Alder(TimeSpan.FromTicks((long)_rows.Average(k => (DateTime.UtcNow - k.CreatedAt.ToUniversalTime()).Ticks)));
+        : Alder(TimeSpan.FromTicks((long)Vist.Average(k => (DateTime.UtcNow - k.CreatedAt.ToUniversalTime()).Ticks)));
 
     private static string Alder(TimeSpan t) =>
         t.TotalDays >= 1
