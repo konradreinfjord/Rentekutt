@@ -8,6 +8,7 @@
 @inject RentkuttCRM.Services.EventService Events
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
+@inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 
@@ -420,11 +421,74 @@ Authorization: Bearer &lt;token&gt;</pre>
                         <tr>
                             <td>@b.Navn</td>
                             <td><select class="inline-select" @bind="b.Method">@foreach (var m in _methods) { <option value="@m">@m</option> }</select></td>
-                            <td><span class="status off">Ikke tilkoblet</span></td>
+                            <td>
+                                @if (ErInstabank(b.Navn))
+                                {
+                                    <span class="status @(_ibKonfigurert && _ibEnabled ? "on" : "off")">@(_ibKonfigurert && _ibEnabled ? "Instabank API aktiv" : "Se Instabank-widget under")</span>
+                                }
+                                else
+                                {
+                                    <span class="status off">Ikke tilkoblet</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
             </table>
+        </div>
+
+        @* ---- Instabank Agent API-widget ---- *@
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Instabank <span class="ww-tag">Agent API</span></h2>
+                <span class="status @(_ibKonfigurert && _ibEnabled ? "on" : "off")">@(_ibKonfigurert && _ibEnabled ? "Aktiv" : "Av")</span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 16px">
+                Send delegerte lånesøknader til Instabank for kunder som skal dit. Agent API (Basic Auth) —
+                kunden får en <strong>SigningUrl</strong> tilbake for å fullføre. Min. statusintervall: 5 min.
+            </p>
+
+            <div class="kv-list" style="margin-bottom:16px">
+                <span class="k">Legitimasjon</span>
+                <span class="v">@(_ibKonfigurert ? "Brukernavn + passord satt ✓" : "Mangler brukernavn/passord for valgt miljø")</span>
+                <span class="k">Miljø</span>
+                <span class="v">@(_ibMiljo == "prod" ? "Produksjon" : "Test")</span>
+                <span class="k">Base-URL</span>
+                <span class="v mono">@InstabankService.BaseUrl(_ibMiljo)</span>
+                <span class="k">Produkter</span>
+                <span class="v">Forbrukslån (151) · Kredittlinje (251) · Kredittkort (600) · Bedriftslån (2001) · Bedriftskreditt (2000)</span>
+            </div>
+
+            <h3 class="ww-h">Styring</h3>
+            <div class="rule-builder" style="margin-bottom:8px; align-items:flex-end">
+                <label class="ff-check" style="white-space:nowrap; margin-bottom:6px">
+                    <input type="checkbox" checked="@_ibEnabled" @onchange="ToggleInstabank" /> Integrasjon aktivert
+                </label>
+                <div class="rb-field rb-op" style="max-width:150px">
+                    <label>Miljø</label>
+                    <select class="rb-input" @bind="_ibMiljo" @bind:after="LagreInstabankMiljo">
+                        <option value="test">Test</option>
+                        <option value="prod">Produksjon</option>
+                    </select>
+                </div>
+                <button class="btn-primary rb-add" @onclick="TestInstabank" disabled="@_ibTester">
+                    @(_ibTester ? "Tester…" : "Test tilkobling")
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(_ibMsg))
+            {
+                <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:@(_ibOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_ibMsg</p>
+            }
+
+            <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+            <pre class="code-block">Instabank__Username      = &lt;agent-brukernavn&gt;
+Instabank__PasswordTest  = &lt;passord for test (netbankpp)&gt;
+Instabank__PasswordProd  = &lt;passord for prod (netbank)&gt;
+Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</pre>
+            <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+                🔒 Brukernavn/passord leses kun fra server-config (Azure), aldri fra databasen. Miljø og på/av lagres i innstillinger.
+                Test bruker <span class="mono">netbankpp.instabank.no</span>, produksjon <span class="mono">netbank.instabank.no</span>.
+            </p>
         </div>
     }
     else if (_apiTab == "LinkMobility")
@@ -853,6 +917,9 @@ else if (_active == "GDPR")
         _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
         _tpToken = await Settings.GetAsync(TredjepartController.KeyToken) ?? "";
         _tpEnabled = (await Settings.GetAsync(TredjepartController.KeyEnabled)) == "true";
+        _ibEnabled = await Instabank.AktivertAsync();
+        _ibMiljo = await Instabank.MiljoAsync();
+        _ibKonfigurert = await Instabank.ErKonfigurertAsync();
         var bp = await Beregning.HentParametreAsync();
         _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
@@ -1027,6 +1094,40 @@ else if (_active == "GDPR")
     private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
     private string _apiTab = "Oversikt";
     private readonly string[] _dataTjenester = { "BankID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
+
+    // ---- Instabank Agent API-widget ----
+    private bool _ibEnabled, _ibKonfigurert, _ibTester, _ibOk;
+    private string _ibMiljo = "test";
+    private string? _ibMsg;
+
+    private static bool ErInstabank(string? navn) =>
+        !string.IsNullOrWhiteSpace(navn) && navn.Replace(" ", "").Contains("instabank", StringComparison.OrdinalIgnoreCase);
+
+    private async Task ToggleInstabank(ChangeEventArgs e)
+    {
+        _ibEnabled = e.Value is true;
+        await Instabank.SettAktivertAsync(_ibEnabled);
+        _ibMsg = _ibEnabled ? "Integrasjon aktivert." : "Integrasjon deaktivert.";
+        _ibOk = true;
+    }
+
+    private async Task LagreInstabankMiljo()
+    {
+        await Instabank.SettMiljoAsync(_ibMiljo);
+        _ibKonfigurert = await Instabank.ErKonfigurertAsync();
+        _ibMsg = $"Miljø satt til {(_ibMiljo == "prod" ? "produksjon" : "test")}.";
+        _ibOk = true;
+    }
+
+    private async Task TestInstabank()
+    {
+        _ibTester = true;
+        _ibMsg = null;
+        var (ok, detalj) = await Instabank.TestTilkoblingAsync();
+        _ibOk = ok;
+        _ibMsg = detalj;
+        _ibTester = false;
+    }
 
     // Feltoversikt for kundekort-tabellen: betydning + hva hver kanal mapper fra + manuell.
     // Rentekutt.no = full lånesøknad. Prismatch = forenklede leads (kontakt + grunnleggende lånedata).

@@ -88,6 +88,9 @@ builder.Services.AddScoped<EventService>();
 // Bankpartnere.
 builder.Services.AddScoped<PartnerService>();
 
+// Instabank Agent API (delegerte søknader for kunder som skal til Instabank).
+builder.Services.AddScoped<InstabankService>();
+
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();
 
