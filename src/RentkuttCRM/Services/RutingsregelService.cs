@@ -123,6 +123,8 @@ public static class RutingEval
 
     public static bool Matcher(Rutingsregel r, Kundekort k)
     {
+        if (!r.Aktiv) return false;
+
         // Postnummer: intervall-/listeparsing («7000-8000», «5000, 7000-7099») uansett operator.
         if (r.FeltNokkel == "postnummer")
             return BankDekning.Dekker(r.Verdi, k.Postnummer);
