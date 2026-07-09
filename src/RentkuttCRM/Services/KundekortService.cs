@@ -70,6 +70,10 @@ public class KundekortService
         if (k.KundeType == "B2C" && string.IsNullOrWhiteSpace(k.Foedselsnummer) && k.KundeId.Length == 11)
             k.Foedselsnummer = k.KundeId;
 
+        // B2B: hold orgnr-feltet i synk med et gyldig 9-sifret kunde_id.
+        if (k.KundeType == "B2B" && string.IsNullOrWhiteSpace(k.Orgnr) && k.KundeId.Length == 9 && k.KundeId.All(char.IsDigit))
+            k.Orgnr = k.KundeId;
+
         if (!IsConfigured)
         {
             if (k.Id == Guid.Empty) k.Id = Guid.NewGuid();
@@ -130,10 +134,11 @@ public class KundekortService
     /// <summary>Ta eierskap til en sak (på sak-Id).</summary>
     public async Task SetEierAsync(Guid id, string eier, string eierNavn)
     {
+        var naa = DateTime.UtcNow;
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
-            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; }
+            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; }
             return;
         }
         try
@@ -143,6 +148,7 @@ public class KundekortService
                 .Where(x => x.Id == id)
                 .Set(x => x.Eier!, eier)
                 .Set(x => x.EierNavn!, eierNavn)
+                .Set(x => x.EierTattAt!, naa)
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
@@ -154,7 +160,7 @@ public class KundekortService
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
-            if (k is not null) { k.Eier = null; k.EierNavn = null; }
+            if (k is not null) { k.Eier = null; k.EierNavn = null; k.EierTattAt = null; }
             return;
         }
         try
@@ -164,6 +170,7 @@ public class KundekortService
                 .Where(x => x.Id == id)
                 .Set(x => x.Eier!, (string?)null)
                 .Set(x => x.EierNavn!, (string?)null)
+                .Set(x => x.EierTattAt!, (DateTime?)null)
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Frigi eierskap feilet"); }

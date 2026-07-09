@@ -16,6 +16,10 @@ public class Kundekort : BaseModel
     [Column("kunde_id")] public string KundeId { get; set; } = "";
     [Column("kunde_type")] public string KundeType { get; set; } = "B2C";
 
+    /// <summary>Organisasjonsnummer for B2B. Mappes fra payload-feltet «orgnr».
+    /// kunde_id speiler dette for gruppering, men «Orgnr» i UI leser herfra.</summary>
+    [Column("orgnr")] public string? Orgnr { get; set; }
+
     // A. Søker
     [Column("fullt_navn")] public string? FulltNavn { get; set; }
     [Column("foedselsnummer")] public string? Foedselsnummer { get; set; }
@@ -114,6 +118,7 @@ public class Kundekort : BaseModel
     // Eierskap til saken
     [Column("eier")] public string? Eier { get; set; }
     [Column("eier_navn")] public string? EierNavn { get; set; }
+    [Column("eier_tatt_at")] public DateTime? EierTattAt { get; set; }
 
     // Oppfølging (egne saker)
     [Column("siste_kontakt")] public DateTime? SisteKontakt { get; set; }

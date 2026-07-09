@@ -78,6 +78,32 @@ else
             <div class="stat-sub">dine aktive saker</div>
         </div>
 
+        @* Pågår hos rådgiver — eide, aktive saker *@
+        <div class="stat-card accent-blue">
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                <span class="stat-lbl">Pågår hos rådgiver</span>
+            </div>
+            <div class="stat-num">@_eideAktive</div>
+            <div class="stat-sub">
+                @if (_eideAktive > 0)
+                {
+                    <span>Eldste: @Alder(_eldsteAlder) · snitt @Alder(_snittAlder)</span>
+                }
+                else { <span>Ingen pågående, eide saker</span> }
+            </div>
+        </div>
+
+        @* Ferdig-andel *@
+        <div class="stat-card accent-green">
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+                <span class="stat-lbl">Ferdigbehandlet</span>
+            </div>
+            <div class="stat-num">@_ferdigPct<span class="stat-unit">%</span></div>
+            <div class="stat-sub">@_utbetalt utbetalt · @_avslatt avslått av @_rows.Count</div>
+        </div>
+
         @* Totalt søknader *@
         <div class="stat-card">
             <div class="stat-top">
@@ -96,6 +122,28 @@ else
             </div>
             <div class="stat-num">@($"{_pipeline / 1_000_000:N1}")<span class="stat-unit">MNOK</span></div>
             <div class="stat-sub">aktiv pipeline</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Eierskap tatt siste 30 dager</h2>
+        <p class="page-sub">Hvor mange saker en rådgiver tok eierskap til per dag.</p>
+        <div class="daybar-wrap">
+            <div class="daybar-chart daybar-30">
+                @foreach (var dag in _eierDager)
+                {
+                    <div class="daybar-col" title="@dag.Label — @dag.Antall eierskap tatt">
+                        <div class="daybar-total">@(dag.Antall > 0 ? dag.Antall.ToString() : "")</div>
+                        <div class="daybar-stack">
+                            @if (dag.Antall > 0)
+                            {
+                                <div class="daybar-seg" style="height:@(((double)dag.Antall / _maxEierDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:#1f5fc4" title="@dag.Antall"></div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="daybar-axis"><span>@_eierDager.FirstOrDefault()?.Label</span><span>I dag</span></div>
         </div>
     </div>
 
@@ -185,6 +233,23 @@ else
     private decimal _pipeline;
     private bool _loading = true;
 
+    // Pågår hos rådgiver = eide, aktive saker (ikke fullført/avslått).
+    private int _eideAktive;
+    private TimeSpan _eldsteAlder, _snittAlder;
+
+    // Ferdigbehandlet-andel.
+    private int _utbetalt, _avslatt, _ferdigPct;
+
+    // Eierskap tatt per dag (siste 30).
+    private List<EierBar> _eierDager = new();
+    private int _maxEierDag = 1;
+    private record EierBar(string Label, int Antall);
+
+    private static string Alder(TimeSpan t) =>
+        t.TotalDays >= 1
+            ? $"{(int)t.TotalDays} d {t.Hours} t"
+            : t.TotalHours >= 1 ? $"{(int)t.TotalHours} t" : $"{(int)t.TotalMinutes} min";
+
     // Utatte saker = ikke plukket (ingen eier) og ikke ferdigbehandlet.
     private int _utatte, _b2c, _b2b;
 
@@ -229,6 +294,24 @@ else
                                    && k.Status is not (KundekortService.StatusFullfort or "Avslått"));
         _b2c = _rows.Count(k => k.KundeType == "B2C");
         _b2b = _rows.Count(k => k.KundeType == "B2B");
+
+        // Pågår hos rådgiver: har eier + fortsatt aktiv (ikke fullført/avslått).
+        var eideAktive = _rows.Where(k => !string.IsNullOrWhiteSpace(k.Eier)
+                                          && k.Status is not (KundekortService.StatusFullfort or KundekortService.StatusAvslatt))
+                              .ToList();
+        _eideAktive = eideAktive.Count;
+        if (_eideAktive > 0)
+        {
+            var aldre = eideAktive.Select(k => na - k.CreatedAt.ToUniversalTime()).ToList();
+            _eldsteAlder = aldre.Max();
+            _snittAlder = TimeSpan.FromTicks((long)aldre.Average(t => t.Ticks));
+        }
+
+        // Ferdigbehandlet-andel (utbetalt + avslått av totalt).
+        _utbetalt = _rows.Count(k => k.Status == KundekortService.StatusFullfort);
+        _avslatt = _rows.Count(k => k.Status == KundekortService.StatusAvslatt);
+        _ferdigPct = _rows.Count > 0 ? (int)Math.Round((_utbetalt + _avslatt) * 100.0 / _rows.Count) : 0;
+
         var idag = DateTime.Now.Date;
         _dager = new();
         for (var i = 29; i >= 0; i--)
@@ -240,6 +323,17 @@ else
             _dager.Add(new DagBar(label, perStatus, dagLeads.Count));
         }
         _maxDag = Math.Max(1, _dager.Max(d => d.Total));
+
+        // Eierskap tatt per dag (siste 30).
+        _eierDager = new();
+        for (var i = 29; i >= 0; i--)
+        {
+            var d = idag.AddDays(-i);
+            var antall = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.ToLocalTime().Date == d);
+            var label = i == 0 ? "I dag" : i == 1 ? "I går" : d.ToString("dd.MM");
+            _eierDager.Add(new EierBar(label, antall));
+        }
+        _maxEierDag = Math.Max(1, _eierDager.Max(d => d.Antall));
 
         var fra30 = idag.AddDays(-29);
         var siste30 = _rows.Where(k => k.CreatedAt.ToLocalTime().Date >= fra30).ToList();

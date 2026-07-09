@@ -6,7 +6,7 @@
 <PageTitle>Mine søknader — Rentekutt</PageTitle>
 
 <h1 class="page-title">Mine søknader</h1>
-<p class="page-sub">Sakene du har plukket. Følg opp i tide — fargen viser hvor lenge det er siden siste kontakt.</p>
+<p class="page-sub">Sakene du har plukket. Følg opp i tide — fargen på oppfølgingsdatoen viser forfalt/i dag.</p>
 
 @if (Session.IsAdmin)
 {
@@ -27,7 +27,7 @@
 
 <div class="db-stats">
     <div class="db-box"><span class="db-box-num">@_rows.Count</span><span class="db-box-lbl">@(VisEier ? "Saker i visning" : "Mine saker")</span></div>
-    <div class="db-box accent-amber"><span class="db-box-num">@_rows.Count(k => KontaktKlasse(k) == "opf-rod")</span><span class="db-box-lbl">Trenger kontakt</span></div>
+    <div class="db-box accent-blue"><span class="db-box-num">@SnittTid</span><span class="db-box-lbl">Snitt tid per sak</span></div>
     <div class="db-box"><span class="db-box-num">@_rows.Count(k => k.NesteOppfolging is { } n && n.Date <= DateTime.Today)</span><span class="db-box-lbl">Oppfølging forfalt/i dag</span></div>
 </div>
 
@@ -41,35 +41,29 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Navn</th>@if (VisEier) { <th>Rådgiver</th> }<th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th><th>Status</th>
-                    <th>Siste kontakt</th><th>Neste oppfølging</th><th>Handling</th>
+                    <th>Status</th><th>Opprettet</th><th>Neste oppfølging</th>
+                    <th>Navn</th>@if (VisEier) { <th>Rådgiver</th> }<th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th>
                 </tr>
             </thead>
             <tbody>
                 @if (_rows.Count == 0)
                 {
-                    <tr><td colspan="@(VisEier ? 10 : 9)" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak i Personmarked eller Bedriftsmarked." : "Ingen saker på valgt rådgiver.")</td></tr>
+                    <tr><td colspan="@(VisEier ? 9 : 8)" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak i Personmarked eller Bedriftsmarked." : "Ingen saker på valgt rådgiver.")</td></tr>
                 }
                 @foreach (var k in _rows.OrderBy(SortNokkel))
                 {
                     <tr class="row-link" @onclick="() => Open(k.Id)">
+                        <td><span class="status on">@k.Status</span></td>
+                        <td>@k.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                        <td @onclick:stopPropagation="true">
+                            <input type="date" class="opf-date @OppfolgingKlasse(k)" value="@(k.NesteOppfolging?.ToString("yyyy-MM-dd"))" @onchange="e => SetOppfolging(k, e)" />
+                        </td>
                         <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
                         @if (VisEier) { <td>@(k.Eier == MittEier ? "Deg" : k.EierNavn ?? k.Eier)</td> }
                         <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
                         <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
                         <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                         <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
-                        <td><span class="status on">@k.Status</span></td>
-                        <td class="@KontaktKlasse(k)">@KontaktTekst(k)</td>
-                        <td @onclick:stopPropagation="true">
-                            <input type="date" class="opf-date @OppfolgingKlasse(k)" value="@(k.NesteOppfolging?.ToString("yyyy-MM-dd"))" @onchange="e => SetOppfolging(k, e)" />
-                        </td>
-                        <td @onclick:stopPropagation="true">
-                            <div style="display:flex; gap:6px; flex-wrap:wrap">
-                                <button class="btn-sm btn-primary" @onclick="() => RegistrerKontakt(k)" title="Registrer at du snakket med kunden nå">Registrer kontakt</button>
-                                <button class="btn-sm" @onclick="() => Slipp(k)" title="Legg saken tilbake i markedspoolen">Slipp</button>
-                            </div>
-                        </td>
                     </tr>
                 }
             </tbody>
@@ -124,23 +118,15 @@
     // Sortér: forfalt/manglende oppfølging øverst, deretter etter neste oppfølging.
     private static DateTime SortNokkel(Kundekort k) => k.NesteOppfolging ?? DateTime.MinValue;
 
-    // ---- Siste kontakt ----
-    private static string KontaktTekst(Kundekort k)
-    {
-        if (k.SisteKontakt is not { } t) return "Aldri";
-        var d = DateTime.UtcNow - t.ToUniversalTime();
-        if (d.TotalHours < 1) return "Nettopp";
-        if (d.TotalHours < 24) return $"{(int)d.TotalHours} t siden";
-        return $"{(int)d.TotalDays} d siden";
-    }
-    private static string KontaktKlasse(Kundekort k)
-    {
-        if (k.SisteKontakt is not { } t) return "opf-rod";               // aldri kontaktet
-        var dager = (DateTime.UtcNow - t.ToUniversalTime()).TotalDays;
-        if (dager >= 7) return "opf-rod";
-        if (dager >= 3) return "opf-amber";
-        return "opf-ok";
-    }
+    // Snitt tid per sak = snittalder (nå − opprettet) på sakene i visning.
+    private string SnittTid => _rows.Count == 0
+        ? "—"
+        : Alder(TimeSpan.FromTicks((long)_rows.Average(k => (DateTime.UtcNow - k.CreatedAt.ToUniversalTime()).Ticks)));
+
+    private static string Alder(TimeSpan t) =>
+        t.TotalDays >= 1
+            ? $"{(int)t.TotalDays} d {t.Hours} t"
+            : t.TotalHours >= 1 ? $"{(int)t.TotalHours} t" : $"{(int)t.TotalMinutes} min";
 
     // ---- Neste oppfølging ----
     private static string OppfolgingKlasse(Kundekort k)
@@ -151,25 +137,11 @@
         return "";
     }
 
-    private async Task RegistrerKontakt(Kundekort k)
-    {
-        var naa = DateTime.UtcNow;
-        k.SisteKontakt = naa;
-        await Svc.RegistrerKontaktAsync(k.Id, naa);
-    }
-
     private async Task SetOppfolging(Kundekort k, ChangeEventArgs e)
     {
         DateTime? dato = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null;
         k.NesteOppfolging = dato;
         await Svc.SetNesteOppfolgingAsync(k.Id, dato);
-    }
-
-    private async Task Slipp(Kundekort k)
-    {
-        await Svc.ReleaseEierAsync(k.Id);
-        _rows.Remove(k);
-        _alleEide.Remove(k);
     }
 
     private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");

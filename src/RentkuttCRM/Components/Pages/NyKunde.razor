@@ -5,11 +5,20 @@
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.NotatService Notater
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
 
-<h1 class="page-title">@(_isEdit ? "Kundekort" : "Ny kunde")</h1>
-<p class="page-sub">Lånesøknad med kunde- og lånedata.</p>
+<div class="kort-topp">
+    @if (_isEdit)
+    {
+        <button class="btn-back" @onclick="Tilbake" title="Lukk sak og gå tilbake til oversikten">← Tilbake</button>
+    }
+    <div>
+        <h1 class="page-title">@(_isEdit ? "Kundekort" : "Ny kunde")</h1>
+        <p class="page-sub">Lånesøknad med kunde- og lånedata.</p>
+    </div>
+</div>
 
 @* Samlet kundeinfo øverst — se hvem kunden er med én gang *@
 <div class="kunde-header">
@@ -22,7 +31,7 @@
     <div class="kunde-facts">
         <div class="kunde-fact"><span class="kf-lbl">Telefon</span><span class="kf-val mono">@Vis(_k.Mobilnummer)</span></div>
         <div class="kunde-fact"><span class="kf-lbl">E-post</span><span class="kf-val">@Vis(_k.Epost)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">@(_k.KundeType == "B2B" ? "Orgnr" : "Personnr")</span><span class="kf-val mono">@Vis(string.IsNullOrWhiteSpace(_k.Foedselsnummer) ? _k.KundeId : _k.Foedselsnummer)</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">@(_k.KundeType == "B2B" ? "Orgnr" : "Personnr")</span><span class="kf-val mono">@Vis(_k.KundeType == "B2B" ? _k.Orgnr : (string.IsNullOrWhiteSpace(_k.Foedselsnummer) ? _k.KundeId : _k.Foedselsnummer))</span></div>
         <div class="kunde-fact"><span class="kf-lbl">Adresse</span><span class="kf-val">@Vis(_k.Adresse)</span></div>
         <div class="kunde-fact"><span class="kf-lbl">Poststed</span><span class="kf-val">@Vis($"{_k.Postnummer} {_k.Poststed}".Trim())</span></div>
         <div class="kunde-fact"><span class="kf-lbl">Kommune</span><span class="kf-val">@Vis(_k.Kommune)</span></div>
@@ -161,6 +170,22 @@
     </div>
 </div>
 
+@if (_isEdit)
+{
+    <div class="las-bar @(_laast ? "laast" : "aapen")" @ondblclick="LaasOpp">
+        @if (_laast)
+        {
+            <span>🔒 Feltene er låst — <strong>dobbeltklikk</strong> for å redigere</span>
+        }
+        else
+        {
+            <span>🔓 Redigering aktiv</span>
+            <button class="btn-sm" @onclick="() => _laast = true" @onclick:stopPropagation="true">Lås igjen</button>
+        }
+    </div>
+}
+
+<div class="kort-felter @(_isEdit && _laast ? "laast" : "")" @ondblclick="LaasOpp">
 @* Kundetype *@
 <div class="form-card">
     <h2>Kundetype</h2>
@@ -171,7 +196,14 @@
     <div class="form-grid" style="margin-top:16px">
         <div class="ff">
             <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(valgfritt hvis mobil oppgis)</span></label>
-            <input @bind="_k.KundeId" disabled="@_isEdit" placeholder="@(_k.KundeType == "B2B" ? "9 siffer" : "11 siffer")" />
+            @if (_k.KundeType == "B2B")
+            {
+                <input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" />
+            }
+            else
+            {
+                <input @bind="_k.KundeId" disabled="@_isEdit" placeholder="11 siffer" />
+            }
         </div>
     </div>
 </div>
@@ -335,6 +367,7 @@
         <div class="ff"><label>Medsøker arbeidssituasjon-kode</label><input @bind="_k.MedsokerArbeidssituasjonKode" /></div>
     </div>
 </div>
+</div>@* /kort-felter *@
 
 <div class="form-actions">
     <button class="btn-primary" @onclick="Save" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre kundekort")</button>
@@ -435,8 +468,19 @@
         if (Guid.TryParse(Id, out var caseId))
         {
             var existing = await Svc.GetAsync(caseId);
-            if (existing is not null) { _k = existing; _isEdit = true; _notatLogg = await Notater.ListAsync(_k.Id); }
+            if (existing is not null) { _k = existing; _isEdit = true; _laast = true; _notatLogg = await Notater.ListAsync(_k.Id); }
         }
+    }
+
+    // Feltene er låst på et eksisterende kundekort — dobbeltklikk for å redigere.
+    private bool _laast;
+    private void LaasOpp() => _laast = false;
+
+    // Lukk saken og gå tilbake til oversikten agenten kom fra.
+    private async Task Tilbake()
+    {
+        try { await JS.InvokeVoidAsync("history.back"); }
+        catch { Nav.NavigateTo("/crm/database"); }
     }
 
     private string Behovssammendrag
@@ -458,6 +502,12 @@
     {
         _saving = true;
         _msg = null;
+        // B2B: orgnr er egen kolonne, men kunde_id speiler det for gruppering.
+        if (_k.KundeType == "B2B" && !string.IsNullOrWhiteSpace(_k.Orgnr))
+        {
+            _k.Orgnr = new string(_k.Orgnr.Where(char.IsDigit).ToArray());
+            if (string.IsNullOrWhiteSpace(_k.KundeId)) _k.KundeId = _k.Orgnr;
+        }
         // Tillat enten fødselsnr/orgnr eller mobilnummer som identifikator.
         if (string.IsNullOrWhiteSpace(_k.KundeId) && !string.IsNullOrWhiteSpace(_k.Mobilnummer))
             _k.KundeId = new string(_k.Mobilnummer.Where(char.IsDigit).ToArray());

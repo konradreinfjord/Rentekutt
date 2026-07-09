@@ -207,8 +207,11 @@ public class WebhookController : ControllerBase
         var org = Get(f, "orgnr", "organisasjonsnummer", "orgnummer");
         var mobil = Get(f, "mobilnummer", "mobil", "phone", "telefon", "tlf", "phonenumber");
 
+        // Orgnr lagres i eget felt (kun for B2B, og kun når det er et reelt nummer).
+        var orgnr = type == "B2B" && !string.IsNullOrWhiteSpace(org) && org != "0" ? Digits(org) : null;
+
         string id;
-        if (type == "B2B" && !string.IsNullOrWhiteSpace(org) && org != "0") id = org;
+        if (!string.IsNullOrWhiteSpace(orgnr)) id = orgnr;   // kunde_id speiler orgnr for gruppering
         else if (!string.IsNullOrWhiteSpace(fnr)) id = fnr;
         else id = Digits(mobil); // tom → SaveAsync genererer fallback
 
@@ -227,6 +230,7 @@ public class WebhookController : ControllerBase
         {
             KundeType = type,
             KundeId = id,
+            Orgnr = orgnr,
             Foedselsnummer = fnr,
             FulltNavn = Get(f, "fullt_navn", "navn", "name", "fullname", "kundenavn", "company_name", "companyname"),
             Mobilnummer = mobil,

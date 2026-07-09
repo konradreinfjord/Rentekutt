@@ -433,6 +433,7 @@ else
         k.Eier = eier;
         k.EierNavn = Session.UserName ?? eier;
         InvaliderRad(k);
+        Open(k.Id);
     }
 
     private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");

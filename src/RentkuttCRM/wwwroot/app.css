@@ -337,6 +337,31 @@ a { color: var(--accent); text-decoration: none; }
 .note-card { border-left: 3px solid var(--orange); }
 .summary-top { border-left: 3px solid var(--green); background: var(--green-soft); }
 .form-actions { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+
+/* Kundekort-topp med tilbakeknapp */
+.kort-topp { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 12px; }
+.btn-back {
+    flex: none; font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text);
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+    padding: 7px 13px; cursor: pointer; transition: background .12s, border-color .12s;
+}
+.btn-back:hover { background: var(--surface-2); border-color: #cfd2d8; }
+
+/* Feltlåsing: dobbeltklikk for å redigere */
+.las-bar {
+    display: flex; align-items: center; gap: 12px; justify-content: space-between;
+    font-size: 12.5px; border-radius: var(--r-sm); padding: 8px 13px; margin-bottom: 11px; cursor: pointer;
+}
+.las-bar.laast { background: var(--surface-2); border: 1px dashed var(--border-strong); color: var(--text-2); }
+.las-bar.aapen { background: var(--green-soft); border: 1px solid var(--green); color: var(--green-dark); cursor: default; }
+.las-bar .btn-sm {
+    font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 4px 10px;
+}
+/* Når låst: barn er klikk-transparente, wrapperen fanger dobbeltklikket for å låse opp */
+.kort-felter.laast { position: relative; }
+.kort-felter.laast * { pointer-events: none; }
+.kort-felter.laast .form-card { opacity: .72; }
 .form-msg { font-size: 13px; font-weight: 500; }
 .form-msg.ok { color: var(--green-dark); }
 .form-msg.err { color: var(--danger); }

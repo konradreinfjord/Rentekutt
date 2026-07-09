@@ -1040,6 +1040,7 @@ else if (_active == "GDPR")
         {
             new("kunde_id", "Unik ID: fødselsnr (B2C) / orgnr (B2B) / mobil-fallback", "utledet: fodselsnummer / orgnr / mobilnummer", "utledet: personnummer / telefon", true),
             new("kunde_type", "B2C (privat) eller B2B (bedrift)", "kunde_type", "default B2C", true),
+            new("orgnr", "Organisasjonsnummer for B2B (9 siffer). Vises i «Orgnr»-kolonnen.", "orgnr / organisasjonsnummer / orgnummer", "—", true),
             new("foedselsnummer", "Søkers fødselsnummer (11 siffer)", "fodselsnummer", "personnummer", true),
         }),
         new("A · Søker", new FeltRad[]

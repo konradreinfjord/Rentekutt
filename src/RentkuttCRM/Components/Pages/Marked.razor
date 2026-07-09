@@ -13,7 +13,7 @@
 <div class="wide-page">
 
 <h1 class="page-title">@Tittel</h1>
-<p class="page-sub">@(ErBedrift ? "Bedriftskunder (B2B)." : "Privatkunder (B2C).") Plukk en sak for å ta eierskap — den flyttes til «Mine søknader» og låses for andre.</p>
+<p class="page-sub">@(ErBedrift ? "Bedriftskunder (B2B)." : "Privatkunder (B2C).") Plukk en sak for å ta eierskap — den flyttes til «Mine søknader», låses for andre og åpnes.</p>
 
 @if (_copied is not null)
 {
@@ -111,7 +111,9 @@ else
                     <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span></td>
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
-                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Foedselsnummer) ? (string.IsNullOrWhiteSpace(k.KundeId) ? "—" : k.KundeId) : k.Foedselsnummer)</td>
+                    <td class="mono-cell">@(ErBedrift
+                        ? (string.IsNullOrWhiteSpace(k.Orgnr) ? "—" : k.Orgnr)
+                        : (string.IsNullOrWhiteSpace(k.Foedselsnummer) ? (string.IsNullOrWhiteSpace(k.KundeId) ? "—" : k.KundeId) : k.Foedselsnummer))</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>
                         @{ var forslag = Forslag(k); }
@@ -136,7 +138,7 @@ else
                     <td @onclick:stopPropagation="true">
                         @if (!tatt)
                         {
-                            <button class="btn-primary btn-sm" @onclick="() => Plukk(k)">Plukk sak</button>
+                            <button class="btn-primary btn-sm" @onclick="() => Plukk(k)">Ta eierskap</button>
                         }
                         else if (mine)
                         {
@@ -312,7 +314,7 @@ else
             Func<Kundekort, object?> key = _sortField switch
             {
                 "navn" => k => k.FulltNavn ?? "",
-                "personnr" => k => k.Foedselsnummer ?? k.KundeId ?? "",
+                "personnr" => k => ErBedrift ? (k.Orgnr ?? "") : (k.Foedselsnummer ?? k.KundeId ?? ""),
                 "telefon" => k => k.Mobilnummer ?? "",
                 "epost" => k => k.Epost ?? "",
                 "kommune" => k => k.Kommune ?? "",
@@ -350,7 +352,7 @@ else
 
     private static string Searchable(Kundekort k) => string.Join(" ", new[]
     {
-        k.KundeId, k.FulltNavn, k.Foedselsnummer, k.Mobilnummer, k.Epost,
+        k.KundeId, k.Orgnr, k.FulltNavn, k.Foedselsnummer, k.Mobilnummer, k.Epost,
         k.Adresse, k.Postnummer, k.Poststed, k.Kommune, k.NavarendeBank,
         k.Laanetype, k.Status, k.EierNavn, k.Kilde, k.DelegertBank, k.OnsketLaanebelop?.ToString()
     }.Where(x => !string.IsNullOrEmpty(x))).ToLowerInvariant();
@@ -435,12 +437,7 @@ else
         k.EierNavn = Session.UserName ?? eier;
         _mine++;
         InvaliderRad(k);
-        _copied = $"Sak plukket → flyttet til «Mine søknader» ✓";
-        StateHasChanged();
-        await Task.Delay(1600);
-        if (_disposed) return;
-        _copied = null;
-        StateHasChanged();
+        Open(k.Id);
     }
 
     private void Open(Guid id) => Nav.NavigateTo($"/crm/ny-kunde?id={id}");

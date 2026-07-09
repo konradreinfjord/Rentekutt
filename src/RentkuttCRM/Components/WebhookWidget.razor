@@ -60,7 +60,7 @@
             <ol class="flow-steps" style="margin-bottom:18px">
                 <li>Leverandør sender <strong>POST</strong> med JSON til endepunktet over <strong>HTTPS</strong>.</li>
                 <li>Forespørselen autentiseres med <strong>Bearer-token</strong> (konstant-tid). Ugyldig token → <code>401</code>.</li>
-                <li>Payloaden <strong>mappes til et kundekort</strong> (fødselsnummer blir kunde-ID for B2C, orgnr for B2B).</li>
+                <li>Payloaden <strong>mappes til et kundekort</strong> (fødselsnummer for B2C; for B2B sendes <code>orgnr</code> som eget felt og vises i «Orgnr»-kolonnen).</li>
                 <li>Kundekortet lagres i <strong>Supabase</strong> (EU, Postgres) med RLS — kun serveren har tilgang.</li>
                 <li>Søknaden dukker opp i <strong>Database</strong>-fanen og kan rutes videre via Logikk-matrise.</li>
             </ol>
