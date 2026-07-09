@@ -27,21 +27,45 @@ else
     </div>
 
     <div class="section">
-        <h2>Rentenivå over tid</h2>
-        @if (_punkter.Count == 0)
+        <h2>Siste 12 måneder</h2>
+        <p class="page-sub">Styringsrenten som referanse, med kundenes registrerte rente rundt. Boblestørrelse følger lånebeløpet.</p>
+        @if (_punkter12.Count == 0)
         {
-            <p class="page-sub">Ingen registrerte renter ennå. De kommer inn fra søknadene og fra «Lagre bank &amp; rente» på kundekortet.</p>
+            <p class="page-sub">Ingen registrerte renter siste 12 måneder. De kommer inn fra søknadene og fra «Lagre bank &amp; rente» på kundekortet.</p>
         }
         else
         {
             <div class="mi-legend">
                 <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente — @_styringKilde</span>
                 <span class="mi-leg"><span class="mi-swatch" style="background:#266f32"></span>Snitt kunderente (mnd)</span>
-                <span class="mi-leg"><span class="mi-dot" style="background:#1f5fc4"></span>Registrert kunderente</span>
+                <span class="mi-leg"><span class="mi-dot" style="background:#1f5fc4"></span>Fra søknad (@_antSoknad)</span>
+                <span class="mi-leg"><span class="mi-dot" style="background:#6b3fc4"></span>Manuelt registrert (@_antManuell)</span>
             </div>
             <div class="mi-chart">
-                <svg viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå over tid">
-                    @((MarkupString)_svgInner)
+                <svg viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå siste 12 måneder">
+                    @((MarkupString)_svgTrend)
+                </svg>
+            </div>
+        }
+    </div>
+
+    <div class="section">
+        <h2>Rente vs lånebeløp</h2>
+        <p class="page-sub">Hvert punkt er en kunde: lånebeløp (MNOK) mot oppgitt rente. Viser rentespredning på tvers av lånestørrelse.</p>
+        @if (_belopPunkter == 0)
+        {
+            <p class="page-sub">Ingen kunder med både lånebeløp og rente registrert ennå.</p>
+        }
+        else
+        {
+            <div class="mi-legend">
+                <span class="mi-leg"><span class="mi-dot" style="background:#1f5fc4"></span>Fra søknad</span>
+                <span class="mi-leg"><span class="mi-dot" style="background:#6b3fc4"></span>Manuelt registrert</span>
+                <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente nå (@_naaStyring.ToString("N2", Nb) %)</span>
+            </div>
+            <div class="mi-chart">
+                <svg viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rente mot lånebeløp">
+                    @((MarkupString)_svgBelop)
                 </svg>
             </div>
         }
@@ -82,28 +106,31 @@ else
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     private bool _loading = true;
-    private List<Punkt> _punkter = new();
+    private List<Punkt> _punkter = new();      // alle med bank + rente
+    private List<Punkt> _punkter12 = new();     // siste 12 måneder
     private List<BankRad> _banker = new();
     private decimal _snittRente, _snittMargin;
     private double _naaStyring;
+    private int _antSoknad, _antManuell, _belopPunkter;
+    private double _maxBelop;
 
-    private record Punkt(DateTime Dato, string Bank, decimal Rente);
+    private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, bool Soknad);
     private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, DateTime Siste);
 
     // Norges Banks styringsrente (endringsdatoer) — hentes live via StyringsrenteService.
     private IReadOnlyList<(DateTime Dato, decimal Rente)> _styring = Array.Empty<(DateTime, decimal)>();
     private string _styringKilde = "";
 
-    // Chart-geometri
+    // Chart-geometri (delt av begge bildene)
     private const double W = 900, H = 340, PadL = 40, PadR = 16, PadT = 14, PadB = 26;
-    private double PlotW => W - PadL - PadR;
-    private double PlotH => H - PadT - PadB;
-    private DateTime _xMin, _xMax;
-    private int _yMax = 8;
-    private string _svgInner = "";
+    private const double PlotW = W - PadL - PadR;
+    private const double PlotH = H - PadT - PadB;
 
-    private double X(DateTime d) => PadL + (d - _xMin).TotalDays / Math.Max(1, (_xMax - _xMin).TotalDays) * PlotW;
-    private double Y(double rente) => PadT + PlotH - rente / _yMax * PlotH;
+    private string _svgTrend = "", _svgBelop = "";
+
+    private static string Num(double v) => v.ToString("0.##", Inv);
+    private const string BlaSoknad = "#1f5fc4", LillaManuell = "#6b3fc4";
+    private static string Farge(bool soknad) => soknad ? BlaSoknad : LillaManuell;
 
     private decimal RentePaa(DateTime dato)
     {
@@ -123,7 +150,9 @@ else
         var rows = await Svc.ListAsync();
         _punkter = rows
             .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank) && k.NaavaerendeRente is > 0)
-            .Select(k => new Punkt(k.CreatedAt, k.NavarendeBank!.Trim(), k.NaavaerendeRente!.Value))
+            .Select(k => new Punkt(k.CreatedAt, k.NavarendeBank!.Trim(), k.NaavaerendeRente!.Value,
+                k.OnsketLaanebelop,
+                !string.IsNullOrWhiteSpace(k.Kilde) && !k.Kilde.Equals("Manuell", StringComparison.OrdinalIgnoreCase)))
             .OrderBy(p => p.Dato)
             .ToList();
 
@@ -141,76 +170,121 @@ else
                 .OrderByDescending(b => b.Antall).ThenBy(b => b.Bank)
                 .ToList();
 
-            ByggGraf();
+            _maxBelop = _punkter.Where(p => p.Belop is > 0).Select(p => (double)p.Belop!.Value).DefaultIfEmpty(0).Max();
+
+            ByggTrend();
+            ByggBelop();
         }
 
         _loading = false;
     }
 
-    private void ByggGraf()
+    // Bobleradius etter lånebeløp (2.5–9 px).
+    private double Radius(decimal? belop) =>
+        _maxBelop <= 0 || belop is not > 0 ? 3 : 2.5 + Math.Sqrt((double)belop.Value / _maxBelop) * 6.5;
+
+    // ---- Bilde 1: siste 12 måneder (tid → rente) ----
+    private void ByggTrend()
     {
-        // X-vindu: fra tidligste datapunkt (start av måned) til i dag.
-        _xMin = new DateTime(_punkter[0].Dato.Year, _punkter[0].Dato.Month, 1);
-        _xMax = DateTime.Today;
-        if (_xMax <= _xMin) _xMax = _xMin.AddMonths(1);
+        var xMax = DateTime.Today;
+        var xMin = new DateTime(xMax.Year, xMax.Month, 1).AddMonths(-11);
+        _punkter12 = _punkter.Where(p => p.Dato.ToLocalTime().Date >= xMin).ToList();
+        _antSoknad = _punkter12.Count(p => p.Soknad);
+        _antManuell = _punkter12.Count - _antSoknad;
+        if (_punkter12.Count == 0) return;
 
-        var maxRente = (double)_punkter.Max(p => p.Rente);
-        _yMax = Math.Max(8, (int)Math.Ceiling(maxRente + 1));
-        if (_yMax % 2 != 0) _yMax++;
+        var relevant = _styring.Where(s => s.Dato <= xMax).Select(s => (double)s.Rente)
+            .Concat(_punkter12.Select(p => (double)p.Rente));
+        var yMax = Math.Max(8, (int)Math.Ceiling(relevant.Max() + 1));
+        if (yMax % 2 != 0) yMax++;
 
-        string N(double v) => v.ToString("0.##", Inv);
+        double X(DateTime d) => PadL + (d - xMin).TotalDays / Math.Max(1, (xMax - xMin).TotalDays) * PlotW;
+        double Y(double r) => PadT + PlotH - r / yMax * PlotH;
         var svg = new StringBuilder();
 
-        // Y-gridlinjer + labels
-        for (var g = 0; g <= _yMax; g += 2)
+        for (var g = 0; g <= yMax; g += 2)
         {
-            svg.Append($"<line x1=\"{N(PadL)}\" y1=\"{N(Y(g))}\" x2=\"{N(W - PadR)}\" y2=\"{N(Y(g))}\" stroke=\"var(--border)\" stroke-width=\"1\" />");
-            svg.Append($"<text x=\"{N(PadL - 6)}\" y=\"{N(Y(g) + 3)}\" text-anchor=\"end\" font-size=\"10\" fill=\"var(--text-2)\">{g} %</text>");
+            svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(g))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(g))}\" stroke=\"var(--border)\" stroke-width=\"1\" />");
+            svg.Append($"<text x=\"{Num(PadL - 6)}\" y=\"{Num(Y(g) + 3)}\" text-anchor=\"end\" font-size=\"10\" fill=\"var(--text-2)\">{g} %</text>");
         }
-
-        // X-ticks (~6 jevnt fordelt)
-        var totalDays = (_xMax - _xMin).TotalDays;
-        for (var i = 0; i <= 5; i++)
+        // Måned-ticks
+        for (var m = 0; m <= 12; m += 2)
         {
-            var t = _xMin.AddDays(totalDays * i / 5);
+            var t = xMin.AddMonths(m);
             var x = X(t);
-            svg.Append($"<line x1=\"{N(x)}\" y1=\"{N(PadT)}\" x2=\"{N(x)}\" y2=\"{N(H - PadB)}\" stroke=\"var(--border)\" stroke-width=\"1\" stroke-dasharray=\"2 3\" />");
-            svg.Append($"<text x=\"{N(x)}\" y=\"{N(H - PadB + 14)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"var(--text-2)\">{t.ToString("MMM yy", Nb)}</text>");
+            svg.Append($"<line x1=\"{Num(x)}\" y1=\"{Num(PadT)}\" x2=\"{Num(x)}\" y2=\"{Num(H - PadB)}\" stroke=\"var(--border)\" stroke-width=\"1\" stroke-dasharray=\"2 3\" />");
+            svg.Append($"<text x=\"{Num(x)}\" y=\"{Num(H - PadB + 14)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"var(--text-2)\">{t.ToString("MMM yy", Nb)}</text>");
         }
-
-        // Styringsrente-sti (stegvis), klippet til vinduet.
+        // Styringsrente (stegvis, fremhevet referanse)
         var sb = new StringBuilder();
-        var startR = (double)RentePaa(_xMin);
-        sb.Append("M ").Append(N(X(_xMin))).Append(' ').Append(N(Y(startR)));
+        var startR = (double)RentePaa(xMin);
+        sb.Append("M ").Append(Num(X(xMin))).Append(' ').Append(Num(Y(startR)));
         var prev = startR;
-        foreach (var s in _styring.Where(s => s.Dato > _xMin && s.Dato <= _xMax))
+        foreach (var s in _styring.Where(s => s.Dato > xMin && s.Dato <= xMax))
         {
-            var x = N(X(s.Dato));
-            sb.Append(" L ").Append(x).Append(' ').Append(N(Y(prev)));            // horisontalt
-            sb.Append(" L ").Append(x).Append(' ').Append(N(Y((double)s.Rente))); // steg
+            var x = Num(X(s.Dato));
+            sb.Append(" L ").Append(x).Append(' ').Append(Num(Y(prev)));
+            sb.Append(" L ").Append(x).Append(' ').Append(Num(Y((double)s.Rente)));
             prev = (double)s.Rente;
         }
-        sb.Append(" L ").Append(N(X(_xMax))).Append(' ').Append(N(Y(prev)));
-        svg.Append($"<path d=\"{sb}\" fill=\"none\" stroke=\"#c2740a\" stroke-width=\"2\" stroke-linejoin=\"round\" />");
+        sb.Append(" L ").Append(Num(X(xMax))).Append(' ').Append(Num(Y(prev)));
+        svg.Append($"<path d=\"{sb}\" fill=\"none\" stroke=\"#c2740a\" stroke-width=\"2.5\" stroke-linejoin=\"round\" />");
 
-        // Kundepunkter
-        foreach (var p in _punkter)
-            svg.Append($"<circle cx=\"{N(X(p.Dato))}\" cy=\"{N(Y((double)p.Rente))}\" r=\"2.5\" fill=\"#1f5fc4\" fill-opacity=\"0.5\" />");
+        // Kundepunkter — farge = kilde, størrelse = lånebeløp
+        foreach (var p in _punkter12)
+            svg.Append($"<circle cx=\"{Num(X(p.Dato))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.45\" />");
 
-        // Trend: snitt kunderente per måned.
-        var mnd = _punkter
+        // Snitt kunderente per måned
+        var mnd = _punkter12
             .GroupBy(p => new DateTime(p.Dato.Year, p.Dato.Month, 15))
             .Select(g => (Dato: g.Key, Snitt: (double)g.Average(x => x.Rente)))
-            .OrderBy(x => x.Dato)
-            .ToList();
+            .OrderBy(x => x.Dato).ToList();
         if (mnd.Count >= 2)
         {
             var tb = new StringBuilder();
             for (var i = 0; i < mnd.Count; i++)
-                tb.Append(i == 0 ? "M " : " L ").Append(N(X(mnd[i].Dato))).Append(' ').Append(N(Y(mnd[i].Snitt)));
+                tb.Append(i == 0 ? "M " : " L ").Append(Num(X(mnd[i].Dato))).Append(' ').Append(Num(Y(mnd[i].Snitt)));
             svg.Append($"<path d=\"{tb}\" fill=\"none\" stroke=\"#266f32\" stroke-width=\"2\" stroke-linejoin=\"round\" />");
         }
 
-        _svgInner = svg.ToString();
+        _svgTrend = svg.ToString();
+    }
+
+    // ---- Bilde 2: rente vs lånebeløp ----
+    private void ByggBelop()
+    {
+        var pts = _punkter.Where(p => p.Belop is > 0).ToList();
+        _belopPunkter = pts.Count;
+        if (pts.Count == 0) return;
+
+        var bMaxM = Math.Max(1, Math.Ceiling((double)pts.Max(p => p.Belop!.Value) / 1_000_000.0)); // MNOK, rundet opp
+        var yMax = Math.Max(8, (int)Math.Ceiling(Math.Max((double)pts.Max(p => p.Rente), _naaStyring) + 1));
+        if (yMax % 2 != 0) yMax++;
+
+        double X(double mnok) => PadL + mnok / bMaxM * PlotW;
+        double Y(double r) => PadT + PlotH - r / yMax * PlotH;
+        var svg = new StringBuilder();
+
+        for (var g = 0; g <= yMax; g += 2)
+        {
+            svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(g))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(g))}\" stroke=\"var(--border)\" stroke-width=\"1\" />");
+            svg.Append($"<text x=\"{Num(PadL - 6)}\" y=\"{Num(Y(g) + 3)}\" text-anchor=\"end\" font-size=\"10\" fill=\"var(--text-2)\">{g} %</text>");
+        }
+        // X-ticks i MNOK
+        for (var i = 0; i <= 5; i++)
+        {
+            var mnok = bMaxM * i / 5;
+            var x = X(mnok);
+            svg.Append($"<line x1=\"{Num(x)}\" y1=\"{Num(PadT)}\" x2=\"{Num(x)}\" y2=\"{Num(H - PadB)}\" stroke=\"var(--border)\" stroke-width=\"1\" stroke-dasharray=\"2 3\" />");
+            svg.Append($"<text x=\"{Num(x)}\" y=\"{Num(H - PadB + 14)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"var(--text-2)\">{mnok.ToString("0.#", Nb)} M</text>");
+        }
+        // Styringsrente nå — horisontal referanse
+        svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(_naaStyring))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(_naaStyring))}\" stroke=\"#c2740a\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\" />");
+
+        // Punkter: x = lånebeløp, y = rente, farge = kilde
+        foreach (var p in pts)
+            svg.Append($"<circle cx=\"{Num(X((double)p.Belop!.Value / 1_000_000.0))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"4\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.5\" />");
+
+        _svgBelop = svg.ToString();
     }
 }
