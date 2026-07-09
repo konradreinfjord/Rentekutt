@@ -14,7 +14,7 @@
 <div class="wide-page">
 
 <h1 class="page-title">@Tittel</h1>
-<p class="page-sub">@(ErBedrift ? "Bedriftskunder (B2B)." : "Privatkunder (B2C).") Plukk en sak for å ta eierskap — den flyttes til «Mine søknader», låses for andre og åpnes.</p>
+<p class="page-sub">@(ErBedrift ? "Bedriftskunder (B2B)." : "Privatkunder (B2C).") Plukk en sak for å ta eierskap — den flyttes til «Mine søknader» og åpnes. Tatte saker vises fortsatt her, men låst 🔒 (kan ses, ikke tas).</p>
 
 @if (_copied is not null)
 {
@@ -54,7 +54,7 @@
             </optgroup>
         }
     </select>
-    <label class="ff-check" style="white-space:nowrap"><input type="checkbox" @bind="_visTatte" @bind:after="ResetPage" /> Vis også tatte (låst)</label>
+    <label class="ff-check" style="white-space:nowrap"><input type="checkbox" @bind="_skjulTatte" @bind:after="ResetPage" /> Skjul tatte (låste) saker</label>
     <div class="db-spacer"></div>
     <span class="db-count">@View.Count av @_typeRows.Count</span>
 </div>
@@ -90,7 +90,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="16" class="empty-row">@(_visTatte ? "Ingen treff." : "Ingen utatte saker her akkurat nå 🎉")</td></tr>
+                <tr><td colspan="16" class="empty-row">@(_skjulTatte ? "Ingen utatte saker her akkurat nå 🎉" : "Ingen treff.")</td></tr>
             }
             @foreach (var k in PagedView)
             {
@@ -99,12 +99,12 @@ else
                 <tr class="row-link @(tatt ? "row-locked" : "")" @onclick="() => Open(k.Id)">
                     <td class="mono-cell" title="@OpprettetTittel(k.CreatedAt)">@OpprettetTekst(k.CreatedAt)</td>
                     <td @onclick:stopPropagation="true">
-                        <select class="inline-select stsel @StatusKlasse(k.Status)" @onchange="e => ChangeStatus(k, e)">
+                        <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "")" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
                         </select>
                     </td>
                     <td @onclick:stopPropagation="true">
-                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "delsel-unset" : "delsel-set")" @onchange="e => DelegateBank(k, e)">
+                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "delsel-unset" : "delsel-set")" disabled="@tatt" @onchange="e => DelegateBank(k, e)">
                             <option value="">— ingen —</option>
                             @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
                         </select>
@@ -173,7 +173,7 @@ else
 @code {
     private List<Kundekort> _rows = new();
     private bool _loading = true;
-    private bool _visTatte;
+    private bool _skjulTatte;
 
     private string _search = "";
     private string _statusFilter = "";
@@ -296,11 +296,12 @@ else
     {
         get
         {
-            var cacheKey = $"{KundeType}|{_typeRows.Count}|{_visTatte}|{_search}|{_statusFilter}|{_bankFilter}|{_kommuneFilter}|{_forslagFilter}|{_sortField}|{_sortAsc}";
+            var cacheKey = $"{KundeType}|{_typeRows.Count}|{_skjulTatte}|{_search}|{_statusFilter}|{_bankFilter}|{_kommuneFilter}|{_forslagFilter}|{_sortField}|{_sortAsc}";
             if (_viewCache is not null && cacheKey == _viewKey) return _viewCache;
 
             IEnumerable<Kundekort> q = _typeRows;
-            if (!_visTatte) q = q.Where(k => string.IsNullOrWhiteSpace(k.Eier));
+            // Tatte saker vises som standard (låst) — kan skjules på ønske.
+            if (_skjulTatte) q = q.Where(k => string.IsNullOrWhiteSpace(k.Eier));
 
             if (!string.IsNullOrWhiteSpace(_search))
             {
