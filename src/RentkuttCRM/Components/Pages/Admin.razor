@@ -44,13 +44,16 @@ else if (_active == "Partnere")
 {
     <div class="section">
         <h2>Bankpartnere & provisjonssatser <span class="pill pill-warn">@_banks.Count</span></h2>
-        <p class="page-sub" style="margin:-4px 0 14px">Postnummer-dekning og automatisk sending styres under <strong>Logikk-matrise</strong>.</p>
+        <p class="page-sub" style="margin:-4px 0 14px">
+            Postnummer-dekning avgjør hvilke banker som treffer geografisk. Er <strong>automatisk sending</strong> av,
+            vises banken som «foreslått bank» i markedet (dekning treffer, men rådgiver bestemmer).
+        </p>
         <table class="data-table">
-            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th></tr></thead>
+            <thead><tr><th>Bank</th><th>Provisjon %</th><th>Engangssum per godkjent søknad (kr)</th><th>Postnummer-dekning</th><th>Automatisk sending</th></tr></thead>
             <tbody>
                 @if (_banks.Count == 0)
                 {
-                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
+                    <tr><td colspan="5" class="empty-row">Ingen bankpartnere ennå — legg til under.</td></tr>
                 }
                 @foreach (var b in _banks)
                 {
@@ -76,6 +79,18 @@ else if (_active == "Partnere")
                             {
                                 <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(b.Engangssum) ? "0" : b.Engangssum) kr</span>
                             }
+                        </td>
+                        <td>
+                            <input class="inline-input" style="width:230px" value="@b.PostnummerDekning"
+                                   placeholder="0001-1299, 5000, 7000-7099"
+                                   title="Kommaseparerte postnummer og/eller intervaller"
+                                   @onchange="e => SavePostnummerDekning(b, e)" />
+                        </td>
+                        <td>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@b.AutoSend" @onchange="e => SaveAutoSend(b, e)" />
+                                <span class="status @(b.AutoSend ? "on" : "off")">@(b.AutoSend ? "På — auto-rutes" : "Av — foreslås")</span>
+                            </label>
                         </td>
                     </tr>
                 }
@@ -401,36 +416,7 @@ Authorization: Bearer &lt;token&gt;</pre>
     }
     else if (_apiTab == "Bank API")
     {
-        <div class="section">
-            <h2>Bank API <span class="pill pill-warn">@_banks.Count</span></h2>
-            <p class="page-sub" style="margin:-4px 0 14px">Bankpartnere som mottar delegerte søknader (f.eks. Instabank, Søknedal). Velg metode for datautveksling.</p>
-            <table class="data-table">
-                <thead><tr><th>Bank</th><th>Metode</th><th>Status</th></tr></thead>
-                <tbody>
-                    @if (_banks.Count == 0)
-                    {
-                        <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — opprett under Partnere.</td></tr>
-                    }
-                    @foreach (var b in _banks)
-                    {
-                        <tr>
-                            <td>@b.Navn</td>
-                            <td><select class="inline-select" @bind="b.Method">@foreach (var m in _methods) { <option value="@m">@m</option> }</select></td>
-                            <td>
-                                @if (ErInstabank(b.Navn))
-                                {
-                                    <span class="status @(_ibKonfigurert && _ibEnabled ? "on" : "off")">@(_ibKonfigurert && _ibEnabled ? "Instabank API aktiv" : "Se Instabank-widget under")</span>
-                                }
-                                else
-                                {
-                                    <span class="status off">Ikke tilkoblet</span>
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+        <p class="page-sub" style="margin:0 0 16px">Hver bankintegrasjon er hardkodet med sin egen widget. Postnummer-dekning og automatisk sending styres under <strong>Partnere</strong>.</p>
 
         @* ---- Instabank Agent API-widget ---- *@
         <div class="section">
@@ -756,43 +742,6 @@ else if (_active == "Logikk-matrise")
             💡 Feltlisten er foreløpig eksempeldata. Den styres fra ett sted (feltkatalogen),
             og oppdateres automatisk her når ekte kundedatafelt opprettes / kobles til API-et (PSD2/scoring).
         </p>
-    </div>
-
-    <div class="section">
-        <h2>Banker — postnummer-dekning & automatisk sending <span class="pill pill-warn">@_banks.Count</span></h2>
-        <p class="page-sub" style="margin:-4px 0 14px">
-            Postnummer-dekning avgjør hvilke banker som treffer en søknad geografisk.
-            Er <strong>automatisk sending</strong> på, rutes matchende søknader automatisk til banken.
-            Er den <strong>av</strong>, vises banken som <strong>foreslått bank</strong> i person-/bedriftsmarkedet
-            (dekning treffer, men rådgiver bestemmer).
-        </p>
-        <table class="data-table">
-            <thead><tr><th>Bank</th><th>Postnummer-dekning</th><th>Automatisk sending</th></tr></thead>
-            <tbody>
-                @if (_banks.Count == 0)
-                {
-                    <tr><td colspan="3" class="empty-row">Ingen bankpartnere ennå — legg til under Partnere.</td></tr>
-                }
-                @foreach (var b in _banks)
-                {
-                    <tr>
-                        <td>@b.Navn</td>
-                        <td>
-                            <input class="inline-input" style="width:240px" value="@b.PostnummerDekning"
-                                   placeholder="0001-1299, 5000, 7000-7099"
-                                   title="Kommaseparerte postnummer og/eller intervaller"
-                                   @onchange="e => SavePostnummerDekning(b, e)" />
-                        </td>
-                        <td>
-                            <label class="toggle">
-                                <input type="checkbox" checked="@b.AutoSend" @onchange="e => SaveAutoSend(b, e)" />
-                                <span class="status @(b.AutoSend ? "on" : "off")">@(b.AutoSend ? "På — auto-rutes" : "Av — foreslås")</span>
-                            </label>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
     </div>
 }
 else if (_active == "Beregningsmodell")
@@ -1162,7 +1111,6 @@ else if (_active == "GDPR")
     // Siste søknader sendt til bank.
     private List<BankSending> _sisteSendinger = new();
 
-    private static bool ErInstabank(string? navn) => InstabankService.ErInstabankNavn(navn);
 
     private async Task ToggleInstabank(ChangeEventArgs e)
     {
@@ -1494,7 +1442,6 @@ else if (_active == "GDPR")
         new("Følg opp tilbud", "24"),
     };
 
-    private static readonly string[] _methods = { "Webhook", "API (REST)", "Manuell", "FTP/SFTP", "E-post" };
 
     private int ApiRowCount => _banks.Count + _sources.Count;
 }
