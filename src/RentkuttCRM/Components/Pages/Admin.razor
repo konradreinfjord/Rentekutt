@@ -699,23 +699,43 @@ else if (_active == "Logikk-matrise")
                     @foreach (var o in NewOperators) { <option value="@o">@o</option> }
                 </select>
             </div>
-            <div class="rb-field">
-                <label>Verdi</label>
-                @{ var nf = NewField; }
-                @if (nf?.Type == FieldType.Enum && nf.Options is not null)
-                {
-                    <select class="rb-input" @bind="_newValue">
-                        @foreach (var v in nf.Options) { <option value="@v">@v</option> }
-                    </select>
-                }
-                else
-                {
+            @{ var nf = NewField; }
+            @if (_newOp == "mellom")
+            {
+                <div class="rb-field rb-op" style="max-width:130px">
+                    <label>Fra</label>
                     <div class="input-unit">
-                        <input class="rb-input" @bind="_newValue" placeholder="@(nf?.Placeholder ?? "Verdi")" />
+                        <input class="rb-input" @bind="_newFra" placeholder="@(nf?.Key == "postnummer" ? "7000" : "fra")" />
                         @if (!string.IsNullOrEmpty(nf?.Unit)) { <span class="unit-suffix">@nf.Unit</span> }
                     </div>
-                }
-            </div>
+                </div>
+                <div class="rb-field rb-op" style="max-width:130px">
+                    <label>Til</label>
+                    <div class="input-unit">
+                        <input class="rb-input" @bind="_newTil" placeholder="@(nf?.Key == "postnummer" ? "8000" : "til")" />
+                        @if (!string.IsNullOrEmpty(nf?.Unit)) { <span class="unit-suffix">@nf.Unit</span> }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="rb-field">
+                    <label>Verdi</label>
+                    @if (nf?.Type == FieldType.Enum && nf.Options is not null)
+                    {
+                        <select class="rb-input" @bind="_newValue">
+                            @foreach (var v in nf.Options) { <option value="@v">@v</option> }
+                        </select>
+                    }
+                    else
+                    {
+                        <div class="input-unit">
+                            <input class="rb-input" @bind="_newValue" placeholder="@(nf?.Placeholder ?? "Verdi")" />
+                            @if (!string.IsNullOrEmpty(nf?.Unit)) { <span class="unit-suffix">@nf.Unit</span> }
+                        </div>
+                    }
+                </div>
+            }
             <div class="rb-arrow">→</div>
             <div class="rb-field rb-banks">
                 <label>Send til bank(er) — velg én eller flere</label>
@@ -728,9 +748,14 @@ else if (_active == "Logikk-matrise")
             </div>
         </div>
         <button class="btn-primary rb-add-row" @onclick="AddRule">Legg til regel</button>
+        @if (!string.IsNullOrEmpty(_regelMsg))
+        {
+            <p class="page-sub" style="margin:12px 0 0; font-size:12.5px; color:@(_regelOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_regelMsg</p>
+        }
         <p class="page-sub" style="margin:14px 0 0; font-size:12px">
-            💡 Feltlisten er foreløpig eksempeldata. Den styres fra ett sted (feltkatalogen),
-            og oppdateres automatisk her når ekte kundedatafelt opprettes / kobles til API-et (PSD2/scoring).
+            💡 Aktive felt mot søknadsdata: postnummer, poststed, kommune, fylke, lånetype, formål, lånebeløp,
+            løpetid, årsinntekt, sivilstatus, ansettelse, boligstatus, nåværende bank. Øvrige felt (PSD2/scoring)
+            aktiveres når kildene kobles til.
         </p>
     </div>
 
@@ -1336,7 +1361,10 @@ else if (_active == "GDPR")
     private string _newFieldKey = "laanetype";
     private string _newOp = "=";
     private string _newValue = "Forbrukslån";
-    private readonly HashSet<string> _newBanks = new() { "DNB" };
+    private string _newFra = "", _newTil = "";
+    private readonly HashSet<string> _newBanks = new();
+    private string? _regelMsg;
+    private bool _regelOk;
 
     private FieldDef? NewField => Catalog.Get(_newFieldKey);
     private string[] NewOperators => CustomerFieldCatalog.OperatorsFor(NewField?.Type ?? FieldType.Text);
@@ -1352,8 +1380,10 @@ else if (_active == "GDPR")
     {
         _newFieldKey = e.Value?.ToString() ?? "";
         var f = NewField;
-        _newOp = NewOperators.First();
+        // Postnummer er nesten alltid et intervall → default «mellom» (Fra/Til).
+        _newOp = _newFieldKey == "postnummer" && NewOperators.Contains("mellom") ? "mellom" : NewOperators.First();
         _newValue = f?.Type == FieldType.Enum && f.Options is { Length: > 0 } ? f.Options[0] : "";
+        _newFra = _newTil = "";
     }
 
     private void ToggleNewBank(string bank)
@@ -1363,10 +1393,24 @@ else if (_active == "GDPR")
 
     private async Task AddRule()
     {
-        if (string.IsNullOrWhiteSpace(_newValue) || _newBanks.Count == 0) return;
+        _regelMsg = null;
+        // «mellom» ⇒ bygg verdien fra Fra/Til.
+        var verdi = _newOp == "mellom" ? $"{_newFra.Trim()}-{_newTil.Trim()}" : _newValue?.Trim() ?? "";
+
+        if (_newBanks.Count == 0) { _regelMsg = "Velg minst én bank."; _regelOk = false; return; }
+        if (_newOp == "mellom" ? (string.IsNullOrWhiteSpace(_newFra) || string.IsNullOrWhiteSpace(_newTil)) : string.IsNullOrWhiteSpace(verdi))
+        { _regelMsg = "Fyll inn verdi (Fra/Til for intervall)."; _regelOk = false; return; }
+
         var prioritet = _rules.Count == 0 ? 1 : _rules.Max(r => r.Prioritet) + 1;
-        var lagret = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, _newValue, _newBanks.OrderBy(b => b));
-        if (lagret is not null) _rules.Add(lagret);
+        var lagret = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, verdi, _newBanks.OrderBy(b => b));
+        if (lagret is not null)
+        {
+            _rules = await Ruting.ListAsync();   // hent frisk liste fra DB (bekrefter lagring)
+            _regelMsg = $"Regel lagret: {LabelFor(_newFieldKey)} {_newOp} {verdi} → {string.Join(", ", _newBanks.OrderBy(b => b))}";
+            _regelOk = true;
+            _newFra = _newTil = "";
+        }
+        else { _regelMsg = "Kunne ikke lagre regelen (databasefeil). Prøv igjen."; _regelOk = false; }
     }
 
     private async Task ToggleRegel(Rutingsregel r, bool aktiv)
