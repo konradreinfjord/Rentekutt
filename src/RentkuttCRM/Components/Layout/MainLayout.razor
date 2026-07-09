@@ -76,7 +76,7 @@ else
 }
 
 @code {
-    private DateTime _now = DateTime.Now;
+    private DateTime _now = Tid.Naa;
     private System.Threading.Timer? _timer;
     private ErrorBoundary? _errorBoundary;
 
@@ -121,7 +121,7 @@ else
             {
                 // Feil = kanal som var aktiv og har mottatt data før, men ikke siste 3 døgn.
                 if (w is { Active: true, LastReceivedAt: { } t } && t <= DateTime.UtcNow.AddDays(-3))
-                    issues.Add(($"Kanal: {w.Name}", $"Ingen data siste 3 døgn (sist {t.ToLocalTime():dd.MM HH:mm})"));
+                    issues.Add(($"Kanal: {w.Name}", $"Ingen data siste 3 døgn (sist {t.TilOslo():dd.MM HH:mm})"));
             }
         }
         catch { /* nettverksfeil ved helsesjekk skal ikke velte UI */ }
@@ -140,7 +140,7 @@ else
             // Oppdater kun klokka når man er innlogget (skjermen vises) — unngå
             // å re-rendre login-siden hvert sekund (kan forstyrre innloggingen).
             if (!Session.IsLoggedIn) return;
-            _now = DateTime.Now;
+            _now = Tid.Naa;
             if (_tick++ % 30 == 0) await SjekkHelseAsync();   // helsesjekk hvert 30. sek (og ved oppstart)
             await InvokeAsync(StateHasChanged);
         }, null, 0, 1000);

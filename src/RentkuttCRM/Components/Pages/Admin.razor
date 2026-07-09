@@ -256,7 +256,7 @@ else if (_active == "API og Data")
                         <tr>
                             <td><span class="lampe @(DataSiste3Dogn(w.LastReceivedAt) ? "on" : "off")"></span></td>
                             <td>@w.Name</td><td>Kanal</td>
-                            <td>@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.ToLocalTime():dd.MM HH:mm}" : "Ingen data mottatt")</td>
+                            <td>@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.TilOslo():dd.MM HH:mm}" : "Ingen data mottatt")</td>
                         </tr>
                     }
                     @foreach (var d in _dataTjenester)
@@ -559,7 +559,7 @@ else if (_active == "Hendelseslogg")
                 @foreach (var e in _events)
                 {
                     <tr>
-                        <td class="mono-cell">@e.Tidspunkt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</td>
+                        <td class="mono-cell">@e.Tidspunkt.TilOslo().ToString("dd.MM.yyyy HH:mm:ss")</td>
                         <td><span class="type-tag">@e.Type</span></td>
                         <td>@e.Beskrivelse</td>
                         <td class="muted">@e.Kilde</td>

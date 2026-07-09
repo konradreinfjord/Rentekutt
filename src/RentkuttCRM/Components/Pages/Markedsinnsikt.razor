@@ -98,7 +98,7 @@ else
                         <td class="num">@((b.Snitt - (decimal)_naaStyring).ToString("N2", Nb)) pp</td>
                         <td class="num">@(b.SnittBelop is > 0 ? (b.SnittBelop!.Value / 1_000_000m).ToString("N2", Nb) + " M" : "—")</td>
                         <td class="num">@(b.SnittLtv is not null ? b.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
-                        <td>@b.Siste.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                        <td>@b.Siste.TilOslo().ToString("dd.MM.yyyy")</td>
                     </tr>
                 }
             </tbody>
@@ -268,9 +268,9 @@ else
     // ---- Bilde 1: siste 12 måneder (tid → rente) ----
     private void ByggTrend()
     {
-        var xMax = DateTime.Today;
+        var xMax = Tid.IDag;
         var xMin = new DateTime(xMax.Year, xMax.Month, 1).AddMonths(-11);
-        _punkter12 = _punkter.Where(p => p.Dato.ToLocalTime().Date >= xMin).ToList();
+        _punkter12 = _punkter.Where(p => p.Dato.TilOslo().Date >= xMin).ToList();
         _antSoknad = _punkter12.Count(p => p.Soknad);
         _antManuell = _punkter12.Count - _antSoknad;
         if (_punkter12.Count == 0) return;
@@ -384,7 +384,7 @@ else
         var deler = new List<string> { p.Bank, p.Rente.ToString("N2", Nb) + " %" };
         if (p.Belop is > 0) deler.Add((p.Belop!.Value / 1_000_000m).ToString("N2", Nb) + " MNOK");
         if (p.Ltv is not null) deler.Add("LTV " + p.Ltv.Value.ToString("N0", Nb) + " %");
-        deler.Add(p.Dato.ToLocalTime().ToString("MMM yy", Nb));
+        deler.Add(p.Dato.TilOslo().ToString("MMM yy", Nb));
         return Escape(string.Join(" · ", deler));
     }
 

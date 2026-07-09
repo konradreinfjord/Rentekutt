@@ -312,12 +312,12 @@ else
         _avslatt = _rows.Count(k => k.Status == KundekortService.StatusAvslatt);
         _ferdigPct = _rows.Count > 0 ? (int)Math.Round((_utbetalt + _avslatt) * 100.0 / _rows.Count) : 0;
 
-        var idag = DateTime.Now.Date;
+        var idag = Tid.Naa.Date;
         _dager = new();
         for (var i = 29; i >= 0; i--)
         {
             var d = idag.AddDays(-i);
-            var dagLeads = _rows.Where(k => k.CreatedAt.ToLocalTime().Date == d).ToList();
+            var dagLeads = _rows.Where(k => k.CreatedAt.TilOslo().Date == d).ToList();
             var perStatus = dagLeads.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
             var label = i == 0 ? "I dag" : i == 1 ? "I går" : d.ToString("dd.MM");
             _dager.Add(new DagBar(label, perStatus, dagLeads.Count));
@@ -329,14 +329,14 @@ else
         for (var i = 29; i >= 0; i--)
         {
             var d = idag.AddDays(-i);
-            var antall = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.ToLocalTime().Date == d);
+            var antall = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.TilOslo().Date == d);
             var label = i == 0 ? "I dag" : i == 1 ? "I går" : d.ToString("dd.MM");
             _eierDager.Add(new EierBar(label, antall));
         }
         _maxEierDag = Math.Max(1, _eierDager.Max(d => d.Antall));
 
         var fra30 = idag.AddDays(-29);
-        var siste30 = _rows.Where(k => k.CreatedAt.ToLocalTime().Date >= fra30).ToList();
+        var siste30 = _rows.Where(k => k.CreatedAt.TilOslo().Date >= fra30).ToList();
         _statusCount30 = siste30.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
         _laanetype30 = siste30
             .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)

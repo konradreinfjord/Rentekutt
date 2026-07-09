@@ -384,8 +384,8 @@ else
     {
         "7" => 7,
         "90" => 90,
-        "ytd" => Math.Max(1, (int)(DateTime.Now.Date - new DateTime(DateTime.Now.Year, 1, 1)).TotalDays + 1),
-        "all" => _all.Count == 0 ? 1 : Math.Max(1, (int)(DateTime.Now.Date - _all.Min(k => k.CreatedAt.ToLocalTime().Date)).TotalDays + 1),
+        "ytd" => Math.Max(1, (int)(Tid.Naa.Date - new DateTime(Tid.Naa.Year, 1, 1)).TotalDays + 1),
+        "all" => _all.Count == 0 ? 1 : Math.Max(1, (int)(Tid.Naa.Date - _all.Min(k => k.CreatedAt.TilOslo().Date)).TotalDays + 1),
         _ => 30,
     };
 
@@ -410,12 +410,12 @@ else
             {
                 var fra = _periode switch
                 {
-                    "7" => DateTime.Now.Date.AddDays(-6),
-                    "90" => DateTime.Now.Date.AddDays(-89),
-                    "ytd" => new DateTime(DateTime.Now.Year, 1, 1),
-                    _ => DateTime.Now.Date.AddDays(-29),
+                    "7" => Tid.Naa.Date.AddDays(-6),
+                    "90" => Tid.Naa.Date.AddDays(-89),
+                    "ytd" => new DateTime(Tid.Naa.Year, 1, 1),
+                    _ => Tid.Naa.Date.AddDays(-29),
                 };
-                q = q.Where(k => k.CreatedAt.ToLocalTime().Date >= fra);
+                q = q.Where(k => k.CreatedAt.TilOslo().Date >= fra);
             }
             if (!string.IsNullOrEmpty(_leadskilde))
                 q = q.Where(k => (string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde) == _leadskilde);

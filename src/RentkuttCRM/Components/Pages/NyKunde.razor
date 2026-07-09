@@ -91,7 +91,7 @@
         {
             <div class="notat-item">
                 <div class="notat-meta">
-                    <span class="notat-tid">@n.Opprettet.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+                    <span class="notat-tid">@n.Opprettet.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
                     @if (!string.IsNullOrWhiteSpace(n.ForfatterNavn)) { <span class="notat-forfatter">@n.ForfatterNavn</span> }
                 </div>
                 <div class="notat-tekst">@n.Tekst</div>

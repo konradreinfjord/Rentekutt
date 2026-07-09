@@ -30,7 +30,7 @@
 <div class="db-stats">
     <div class="db-box"><span class="db-box-num">@_rows.Count</span><span class="db-box-lbl">@(VisEier ? "Saker i visning" : "Mine saker")</span></div>
     <div class="db-box accent-blue"><span class="db-box-num">@SnittTid</span><span class="db-box-lbl">Snitt tid per sak</span></div>
-    <div class="db-box"><span class="db-box-num">@_rows.Count(k => k.NesteOppfolging is { } n && n.Date <= DateTime.Today)</span><span class="db-box-lbl">Oppfølging forfalt/i dag</span></div>
+    <div class="db-box"><span class="db-box-num">@_rows.Count(k => k.NesteOppfolging is { } n && n.Date <= Tid.IDag)</span><span class="db-box-lbl">Oppfølging forfalt/i dag</span></div>
 </div>
 
 <div class="section">
@@ -57,7 +57,7 @@
                 {
                     <tr class="row-link" @onclick="() => Open(k.Id)">
                         <td><span class="status on">@k.Status</span></td>
-                        <td>@k.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                        <td>@k.CreatedAt.TilOslo().ToString("dd.MM.yyyy")</td>
                         <td @onclick:stopPropagation="true">
                             <input type="date" class="opf-date @OppfolgingKlasse(k)" value="@(k.NesteOppfolging?.ToString("yyyy-MM-dd"))" @onchange="e => SetOppfolging(k, e)" />
                         </td>
@@ -136,8 +136,8 @@
     private static string OppfolgingKlasse(Kundekort k)
     {
         if (k.NesteOppfolging is not { } n) return "";
-        if (n.Date < DateTime.Today) return "opf-rod";
-        if (n.Date == DateTime.Today) return "opf-amber";
+        if (n.Date < Tid.IDag) return "opf-rod";
+        if (n.Date == Tid.IDag) return "opf-amber";
         return "";
     }
 

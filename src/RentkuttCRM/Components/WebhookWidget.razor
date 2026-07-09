@@ -8,7 +8,7 @@
         <div class="ww-meta">
             @if (Hook?.LastReceivedAt is { } t)
             {
-                <span class="ww-last">Sist mottatt @t.ToLocalTime().ToString("dd.MM.yyyy HH:mm") · @Hook.LastReceivedInfo</span>
+                <span class="ww-last">Sist mottatt @t.TilOslo().ToString("dd.MM.yyyy HH:mm") · @Hook.LastReceivedInfo</span>
             }
             else
             {

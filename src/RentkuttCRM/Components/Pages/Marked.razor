@@ -368,9 +368,9 @@ else
 
     // ---- Opprettet-dato ----
     private static string OpprettetTekst(DateTime created)
-        => created == default ? "—" : created.ToLocalTime().ToString("dd.MM.yyyy");
+        => created == default ? "—" : created.TilOslo().ToString("dd.MM.yyyy");
     private static string OpprettetTittel(DateTime created)
-        => created == default ? "" : created.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+        => created == default ? "" : created.TilOslo().ToString("dd.MM.yyyy HH:mm");
 
     // ---- Ventet-tid (siden opprettet) ----
     private static string Ventet(DateTime created)

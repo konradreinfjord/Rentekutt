@@ -418,7 +418,7 @@ else
         else { _sortField = field; _sortAsc = false; }
     }
 
-    private static string Dt(DateTime d) => d == default ? "—" : d.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    private static string Dt(DateTime d) => d == default ? "—" : d.TilOslo().ToString("dd.MM.yyyy HH:mm");
 
     private async Task ChangeStatus(Kundekort k, ChangeEventArgs e)
     {
