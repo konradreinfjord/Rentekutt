@@ -193,6 +193,27 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Registrering av kontakt feilet"); }
     }
 
+    /// <summary>Registrer/oppdater kundens nåværende bank og rente (markedsinnsikt).</summary>
+    public async Task SetBankRenteAsync(Guid id, string? bank, decimal? rente)
+    {
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) { k.NavarendeBank = bank; k.NaavaerendeRente = rente; }
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>()
+                .Where(x => x.Id == id)
+                .Set(x => x.NavarendeBank!, bank)
+                .Set(x => x.NaavaerendeRente!, rente)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Lagring av bank/rente feilet"); }
+    }
+
     /// <summary>Sett (eller nullstill) neste planlagte oppfølging.</summary>
     public async Task SetNesteOppfolgingAsync(Guid id, DateTime? neste)
     {

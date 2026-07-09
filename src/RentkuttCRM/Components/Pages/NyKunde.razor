@@ -40,6 +40,18 @@
     </div>
 </div>
 
+@* Hurtigregistrering: kundens bank + nåværende rente (mates til Markedsinnsikt) *@
+<div class="form-card rente-quick">
+    <div class="rq-row">
+        <div class="ff"><label>Kundens bank</label><input @bind="_k.NavarendeBank" placeholder="f.eks. DNB" /></div>
+        <div class="ff"><label>Nåværende rente (%)</label><input type="number" step="0.01" @bind="_k.NaavaerendeRente" placeholder="f.eks. 6,25" /></div>
+        <button class="btn-primary btn-sm" @onclick="LagreBankRente" disabled="@(_bankRenteLagrer || !_isEdit)"
+                title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_bankRenteLagrer ? "Lagrer…" : "Lagre bank & rente")</button>
+        @if (!string.IsNullOrEmpty(_bankRenteMsg)) { <span class="form-msg ok">@_bankRenteMsg</span> }
+    </div>
+    <p class="page-sub rq-hint">Registreres til Markedsinnsikt — gir oss rentenivå per bank over tid.</p>
+</div>
+
 @* Tidsstemplet notatlogg *@
 <div class="form-card note-card">
     <div style="display:flex; justify-content:space-between; align-items:center">
@@ -421,6 +433,22 @@
         "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
         "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
     };
+
+    // Hurtiglagring av bank + nåværende rente (mates til Markedsinnsikt).
+    private bool _bankRenteLagrer;
+    private string? _bankRenteMsg;
+    private async Task LagreBankRente()
+    {
+        if (_k.Id == Guid.Empty) return;
+        _bankRenteLagrer = true;
+        _bankRenteMsg = null;
+        await Svc.SetBankRenteAsync(_k.Id, _k.NavarendeBank, _k.NaavaerendeRente);
+        _bankRenteMsg = "Lagret ✓";
+        _bankRenteLagrer = false;
+        StateHasChanged();
+        await Task.Delay(1600);
+        _bankRenteMsg = null;
+    }
 
     private async Task LagreNotat()
     {
