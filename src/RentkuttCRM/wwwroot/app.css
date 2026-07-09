@@ -288,6 +288,8 @@ a { color: var(--accent); text-decoration: none; }
 .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .status.on { background: var(--green-soft); color: var(--green-dark); }
 .status.off { background: var(--surface-2); color: var(--text-muted); }
+.status.pending { background: #fef3d7; color: #a56a00; }
+.status.err { background: #fbe6e4; color: #b42318; }
 .type-tag { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
 .type-tag.bank { background: #eef4ff; color: #1f5fc4; border-color: #d8e6ff; }
 .type-tag.lead { background: #f3eefe; color: #6b3fc4; border-color: #e6dcfb; }

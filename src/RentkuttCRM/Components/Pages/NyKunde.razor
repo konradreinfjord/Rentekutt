@@ -85,7 +85,7 @@
                         <tr>
                             <td class="mono-cell">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
                             <td>@s.Bank</td>
-                            <td><span class="status @(s.Status == "Feilet" ? "off" : "on")">@s.Status</span>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "" : $" · {s.SendtAv}")</td>
+                            <td><span class="status @SendtKlasse(s.Status)">@s.Status</span>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "" : $" · {s.SendtAv}")</td>
                             <td class="mono-cell">@(string.IsNullOrWhiteSpace(s.EksternRef) ? "—" : s.EksternRef)</td>
                             <td>@if (!string.IsNullOrWhiteSpace(s.SigningUrl)) { <a href="@s.SigningUrl" target="_blank" rel="noopener" class="btn-sm">Signeringslenke</a> }</td>
                         </tr>
@@ -565,31 +565,17 @@
         _sendMsg = null;
         var avsender = Session.UserName ?? Session.Email ?? "ukjent";
 
+        // Legges i sikker sendekø — en throttlet bakgrunnsarbeider sender til bank,
+        // så vi aldri bombarderer API-et. Status oppdateres når den er behandlet.
         var s = new BankSending
         {
             KundekortId = _k.Id,
             KundeNavn = _k.FulltNavn,
             Bank = _valgtBank,
             SendtAv = avsender,
+            Status = SendStatus.IKo,
+            Detalj = "Lagt i sendekø.",
         };
-
-        // Instabank har ekte API — send reelt. Andre banker registreres som manuelt videresendt.
-        if (InstabankService.ErInstabankNavn(_valgtBank))
-        {
-            var r = await Instabank.SendSoknadAsync(_k);
-            s.Status = r.Ok ? "Sendt" : "Feilet";
-            s.EksternRef = r.ExternalReference;
-            s.SigningUrl = r.SigningUrl;
-            s.Detalj = r.Detalj;
-            _sendOk = r.Ok;
-        }
-        else
-        {
-            s.Status = "Registrert manuelt";
-            s.Detalj = "Videresendt manuelt til banken.";
-            _sendOk = true;
-        }
-
         var lagret = await BankSending.LoggAsync(s);
         _sendinger.Insert(0, lagret);
 
@@ -600,9 +586,17 @@
             await Svc.SetDelegertBankAsync(_k.Id, _valgtBank);
         }
 
-        _sendMsg = _sendOk ? $"{_valgtBank}: {s.Status} ✓" : $"{_valgtBank}: {s.Status} — {s.Detalj}";
+        _sendOk = true;
+        _sendMsg = $"{_valgtBank}: lagt i kø — sendes automatisk ✓";
         _sender = false;
     }
+
+    private static string SendtKlasse(string? status) => status switch
+    {
+        SendStatus.Feilet => "err",
+        SendStatus.IKo => "pending",
+        _ => "on",
+    };
 
     // Feltene er låst på et eksisterende kundekort — dobbeltklikk for å redigere.
     private bool _laast;

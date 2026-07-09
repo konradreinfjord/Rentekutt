@@ -135,16 +135,28 @@ public class InstabankService
     }
 
     /// <summary>
-    /// Send en delegert forbrukslånssøknad (produkt 151) til Instabank.
-    /// Feltene følger det verifiserte Agent API-skjemaet: EMail / MobilePhoneNumber,
-    /// enum-verdier for sivilstatus/arbeid/gjeldstype, og tomme/0-verdier utelates.
+    /// Ruter søknaden til riktig Instabank-produkt ut fra kundetype og lånetype:
+    /// bedrift → bedriftslån (2001), privat boliglån → gates (matrikkel via Eiendomsverdi),
+    /// ellers privat forbrukslån (151). Alle felt følger det verifiserte Agent API-skjemaet.
     /// </summary>
     public async Task<Resultat> SendSoknadAsync(Kundekort k, bool preOffer = false)
     {
-        // Bedriftslån (2001) har eget skjema (Company/Agent/PurposeForLoan) som ikke er verifisert her.
-        if (k.KundeType == "B2B")
-            return new(false, null, null, null, "Bedriftslån til Instabank er ikke ferdig mappet ennå — kun personlån (151) sendes foreløpig.");
+        if (k.KundeType == "B2B") return await SendBedriftAsync(k, preOffer);
 
+        // Boliglån (180) krever matrikkel (kommune-/gårds-/bruksnr) — tilgjengelig først når
+        // Eiendomsverdi-integrasjonen er på plass. Gates til da.
+        if (ErBoliglaan(k.Laanetype))
+            return new(false, null, null, null, "Boliglån krever eiendomsdata (matrikkel) — kommer når Eiendomsverdi-integrasjonen er implementert.");
+
+        return await SendPrivatAsync(k, preOffer);
+    }
+
+    private static bool ErBoliglaan(string? laanetype) =>
+        (laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase);
+
+    // Privat forbrukslån (produkt 151).
+    private async Task<Resultat> SendPrivatAsync(Kundekort k, bool preOffer)
+    {
         // Påkrevde felt: SSN, e-post, mobil, beløp.
         var ssn = FoerstGyldigFnr(k.Foedselsnummer, k.KundeId);
         var mangler = new List<string>();
@@ -195,6 +207,57 @@ public class InstabankService
         if (k.RefinansieresBelop is > 0) application["RefinanceAmount"] = k.RefinansieresBelop;
 
         return await PostAsync("create", new { Application = application, DoSetAccepted = false });
+    }
+
+    // Bedriftslån (produkt 2001). Krever Company (orgnr + mobil), Applicant (signer-fnr) og Agent-e-post.
+    private async Task<Resultat> SendBedriftAsync(Kundekort k, bool preOffer)
+    {
+        var orgnr = new string((k.Orgnr ?? k.KundeId ?? "").Where(char.IsDigit).ToArray());
+        var ssn = FoerstGyldigFnr(k.Foedselsnummer);
+        var mobil = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
+
+        var mangler = new List<string>();
+        if (orgnr.Length != 9) mangler.Add("organisasjonsnummer");
+        if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("signers fødselsnummer");
+        if (string.IsNullOrWhiteSpace(mobil)) mangler.Add("mobilnummer");
+        if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
+        if (string.IsNullOrWhiteSpace(AgentEmail)) mangler.Add("agent-e-post (Instabank__AgentEmail)");
+        if (mangler.Count > 0)
+            return new(false, null, null, null, "Kan ikke sende bedriftslån — mangler: " + string.Join(", ", mangler));
+
+        var application = new Dictionary<string, object?>
+        {
+            ["Product"] = new { Code = ProduktBedriftslaan },
+            ["Calculation"] = k.OnsketLopetidMnd is int lm && lm > 0
+                ? new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop, ["DurationInMonths"] = lm }
+                : new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop },
+            ["Company"] = new Dictionary<string, object?>
+            {
+                ["OrganizationNumber"] = orgnr,
+                ["Email"] = k.Epost,
+                ["MobilePhoneNumber"] = mobil,
+            },
+            ["Applicant"] = new Dictionary<string, object?>
+            {
+                ["SocialSecurityNumber"] = ssn,
+                ["EMail"] = k.Epost,
+                ["MobilePhoneNumber"] = mobil,
+            },
+            ["Agent"] = new { Email = AgentEmail },
+            ["PurposeForLoan"] = new[] { BedriftFormaal(k.Laaneformal) },
+            ["IsPreOffer"] = preOffer,
+            ["Reference"] = k.Id.ToString(),
+        };
+        return await PostAsync("create", new { Application = application, DoSetAccepted = false });
+    }
+
+    // PurposeForLoan for bedrift: Investment | Liquidity | Other.
+    private static string BedriftFormaal(string? formaal)
+    {
+        var x = (formaal ?? "").ToLowerInvariant();
+        if (x.Contains("invest") || x.Contains("kjøp") || x.Contains("utstyr")) return "Investment";
+        if (x.Contains("likvid") || x.Contains("drift") || x.Contains("refinansi")) return "Liquidity";
+        return "Other";
     }
 
     private static void Legg(Dictionary<string, object?> d, string nokkel, int? verdi)

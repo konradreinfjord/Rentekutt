@@ -10,6 +10,7 @@
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BankSendingService BankSending
+@inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 
@@ -478,7 +479,7 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                             <td class="mono-cell">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
                             <td>@(string.IsNullOrWhiteSpace(s.KundeNavn) ? "—" : s.KundeNavn)</td>
                             <td>@s.Bank</td>
-                            <td><span class="status @(s.Status == "Feilet" ? "off" : "on")">@s.Status</span></td>
+                            <td><span class="status @(s.Status == SendStatus.Feilet ? "err" : s.Status == SendStatus.IKo ? "pending" : "on")">@s.Status</span></td>
                             <td class="mono-cell">@(string.IsNullOrWhiteSpace(s.EksternRef) ? "—" : s.EksternRef)</td>
                             <td>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "—" : s.SendtAv)</td>
                         </tr>
@@ -632,7 +633,7 @@ else if (_active == "Hendelseslogg")
 else if (_active == "Logikk-matrise")
 {
     <div class="section">
-        <h2>Rutingsregler <span class="pill pill-warn">@_rules.Count(r => r.Active) aktive</span></h2>
+        <h2>Rutingsregler <span class="pill pill-warn">@_rules.Count(r => r.Aktiv) aktive</span></h2>
         <p class="page-sub" style="margin:-4px 0 14px">
             Universalfilter: segmentér søknader til bank basert på alle kundedata vi har
             (@Catalog.Fields.Count felter — geografi, lån, økonomi, personalia, PSD2).
@@ -647,16 +648,16 @@ else if (_active == "Logikk-matrise")
                 {
                     <tr><td colspan="7" class="empty-row">Ingen rutingsregler ennå — legg til under.</td></tr>
                 }
-                @foreach (var r in _rules.OrderBy(r => r.Priority))
+                @foreach (var r in _rules.OrderBy(r => r.Prioritet))
                 {
                     <tr>
-                        <td class="mono-cell">@r.Priority</td>
-                        <td>@LabelFor(r.FieldKey)</td>
+                        <td class="mono-cell">@r.Prioritet</td>
+                        <td>@LabelFor(r.FeltNokkel)</td>
                         <td class="mono-cell">@r.Operator</td>
                         <td>@DisplayValue(r)</td>
                         <td>
                             <div class="route-banks">
-                                @foreach (var bank in r.Banks)
+                                @foreach (var bank in r.BankerListe)
                                 {
                                     <span class="route-bank">@bank</span>
                                 }
@@ -664,8 +665,8 @@ else if (_active == "Logikk-matrise")
                         </td>
                         <td>
                             <label class="toggle">
-                                <input type="checkbox" checked="@r.Active" @onchange="e => r.Active = (bool)e.Value!" />
-                                <span class="status @(r.Active ? "on" : "off")">@(r.Active ? "Aktiv" : "Av")</span>
+                                <input type="checkbox" checked="@r.Aktiv" @onchange="e => ToggleRegel(r, (bool)e.Value!)" />
+                                <span class="status @(r.Aktiv ? "on" : "off")">@(r.Aktiv ? "Aktiv" : "Av")</span>
                             </label>
                         </td>
                         <td><button class="btn-sm btn-danger" @onclick="() => RemoveRule(r)">Slett</button></td>
@@ -948,6 +949,7 @@ else if (_active == "GDPR")
         _ibMiljo = await Instabank.MiljoAsync();
         _ibKonfigurert = await Instabank.ErKonfigurertAsync();
         _sisteSendinger = await BankSending.SisteAsync(25);
+        _rules = await Ruting.ListAsync();
         var bp = await Beregning.HentParametreAsync();
         _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
@@ -1328,17 +1330,7 @@ else if (_active == "GDPR")
     // datafelt opprettes, oppdateres katalogen og denne siden følger automatisk.
     private string[] BankNames => _banks.Select(b => b.Navn).ToArray();
 
-    private class Rule
-    {
-        public int Priority { get; set; }
-        public string FieldKey { get; set; } = "";
-        public string Operator { get; set; } = "=";
-        public string Value { get; set; } = "";
-        public List<string> Banks { get; set; } = new();
-        public bool Active { get; set; } = true;
-    }
-
-    private readonly List<Rule> _rules = new();
+    private List<Rutingsregel> _rules = new();
 
     // Builder-felt for ny regel
     private string _newFieldKey = "laanetype";
@@ -1350,10 +1342,10 @@ else if (_active == "GDPR")
     private string[] NewOperators => CustomerFieldCatalog.OperatorsFor(NewField?.Type ?? FieldType.Text);
 
     private string LabelFor(string key) => Catalog.Get(key)?.Label ?? key;
-    private string DisplayValue(Rule r)
+    private string DisplayValue(Rutingsregel r)
     {
-        var unit = Catalog.Get(r.FieldKey)?.Unit;
-        return string.IsNullOrEmpty(unit) ? r.Value : $"{r.Value} {unit}";
+        var unit = Catalog.Get(r.FeltNokkel)?.Unit;
+        return string.IsNullOrEmpty(unit) ? r.Verdi : $"{r.Verdi} {unit}";
     }
 
     private void OnFieldChanged(ChangeEventArgs e)
@@ -1369,21 +1361,25 @@ else if (_active == "GDPR")
         if (!_newBanks.Remove(bank)) _newBanks.Add(bank);
     }
 
-    private void AddRule()
+    private async Task AddRule()
     {
         if (string.IsNullOrWhiteSpace(_newValue) || _newBanks.Count == 0) return;
-        _rules.Add(new Rule
-        {
-            Priority = _rules.Count == 0 ? 1 : _rules.Max(r => r.Priority) + 1,
-            FieldKey = _newFieldKey,
-            Operator = _newOp,
-            Value = _newValue,
-            Banks = _newBanks.OrderBy(b => b).ToList(),
-            Active = true,
-        });
+        var prioritet = _rules.Count == 0 ? 1 : _rules.Max(r => r.Prioritet) + 1;
+        var lagret = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, _newValue, _newBanks.OrderBy(b => b));
+        if (lagret is not null) _rules.Add(lagret);
     }
 
-    private void RemoveRule(Rule r) => _rules.Remove(r);
+    private async Task ToggleRegel(Rutingsregel r, bool aktiv)
+    {
+        r.Aktiv = aktiv;
+        await Ruting.SetAktivAsync(r.Id, aktiv);
+    }
+
+    private async Task RemoveRule(Rutingsregel r)
+    {
+        await Ruting.DeleteAsync(r.Id);
+        _rules.Remove(r);
+    }
 
     private readonly string[] _roles = { "Saksbeh.", "Compliance", "Leder", "Admin" };
 

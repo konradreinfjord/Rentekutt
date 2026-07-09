@@ -94,6 +94,12 @@ builder.Services.AddScoped<InstabankService>();
 // Logg over søknader sendt til bank (vises på kundekort + under Bank API).
 builder.Services.AddScoped<BankSendingService>();
 
+// Rutingsregler (logikk-matrisen) — driver «Forslag bank» i markedet.
+builder.Services.AddScoped<RutingsregelService>();
+
+// Sikker sendekø: throttlet bakgrunnsarbeider som sender søknader til bank uten å bombardere API-et.
+builder.Services.AddHostedService<BankSendWorker>();
+
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();
 
