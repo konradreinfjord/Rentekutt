@@ -9,6 +9,7 @@
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.InstabankService Instabank
+@inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 
@@ -484,6 +485,32 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                 Test bruker <span class="mono">netbankpp.instabank.no</span>, produksjon <span class="mono">netbank.instabank.no</span>.
             </p>
         </div>
+
+        @* ---- Siste søknader sendt til bank ---- *@
+        <div class="section">
+            <h2>Siste sendte søknader <span class="pill pill-warn">@_sisteSendinger.Count</span></h2>
+            <p class="page-sub" style="margin:-4px 0 14px">Søknader som er sendt til bank (fra kundekortet), nyeste først.</p>
+            <table class="data-table">
+                <thead><tr><th>Tidspunkt</th><th>Kunde</th><th>Bank</th><th>Status</th><th>Referanse</th><th>Sendt av</th></tr></thead>
+                <tbody>
+                    @if (_sisteSendinger.Count == 0)
+                    {
+                        <tr><td colspan="6" class="empty-row">Ingen søknader sendt til bank ennå.</td></tr>
+                    }
+                    @foreach (var s in _sisteSendinger)
+                    {
+                        <tr>
+                            <td class="mono-cell">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@(string.IsNullOrWhiteSpace(s.KundeNavn) ? "—" : s.KundeNavn)</td>
+                            <td>@s.Bank</td>
+                            <td><span class="status @(s.Status == "Feilet" ? "off" : "on")">@s.Status</span></td>
+                            <td class="mono-cell">@(string.IsNullOrWhiteSpace(s.EksternRef) ? "—" : s.EksternRef)</td>
+                            <td>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "—" : s.SendtAv)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
     else if (_apiTab == "LinkMobility")
     {
@@ -951,6 +978,7 @@ else if (_active == "GDPR")
         _ibEnabled = await Instabank.AktivertAsync();
         _ibMiljo = await Instabank.MiljoAsync();
         _ibKonfigurert = await Instabank.ErKonfigurertAsync();
+        _sisteSendinger = await BankSending.SisteAsync(25);
         var bp = await Beregning.HentParametreAsync();
         _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
@@ -1131,8 +1159,10 @@ else if (_active == "GDPR")
     private string _ibMiljo = "test";
     private string? _ibMsg;
 
-    private static bool ErInstabank(string? navn) =>
-        !string.IsNullOrWhiteSpace(navn) && navn.Replace(" ", "").Contains("instabank", StringComparison.OrdinalIgnoreCase);
+    // Siste søknader sendt til bank.
+    private List<BankSending> _sisteSendinger = new();
+
+    private static bool ErInstabank(string? navn) => InstabankService.ErInstabankNavn(navn);
 
     private async Task ToggleInstabank(ChangeEventArgs e)
     {

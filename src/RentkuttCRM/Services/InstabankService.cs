@@ -56,6 +56,10 @@ public class InstabankService
 
     public static string BaseUrl(string env) => env == "prod" ? ProdHost : TestHost;
 
+    /// <summary>True hvis banknavnet er Instabank (uansett formatering).</summary>
+    public static bool ErInstabankNavn(string? navn) =>
+        !string.IsNullOrWhiteSpace(navn) && navn.Replace(" ", "").Contains("instabank", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>True når brukernavn + passord for gjeldende miljø er satt.</summary>
     public async Task<bool> ErKonfigurertAsync()
     {

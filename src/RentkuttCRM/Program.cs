@@ -91,6 +91,9 @@ builder.Services.AddScoped<PartnerService>();
 // Instabank Agent API (delegerte søknader for kunder som skal til Instabank).
 builder.Services.AddScoped<InstabankService>();
 
+// Logg over søknader sendt til bank (vises på kundekort + under Bank API).
+builder.Services.AddScoped<BankSendingService>();
+
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();
 

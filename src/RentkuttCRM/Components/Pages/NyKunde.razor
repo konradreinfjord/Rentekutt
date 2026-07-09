@@ -4,6 +4,9 @@
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.NotatService Notater
+@inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.InstabankService Instabank
+@inject RentkuttCRM.Services.BankSendingService BankSending
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -50,6 +53,47 @@
         @if (!string.IsNullOrEmpty(_bankRenteMsg)) { <span class="form-msg ok">@_bankRenteMsg</span> }
     </div>
     <p class="page-sub rq-hint">Registreres til Markedsinnsikt — gir oss rentenivå per bank over tid.</p>
+</div>
+
+@* Send søknaden til en bankpartner *@
+<div class="form-card send-bank">
+    <h2>Send til bank</h2>
+    <p class="page-sub" style="margin:-4px 0 12px">Send denne søknaden til en bankpartner. Instabank sendes via API; andre banker registreres som manuelt videresendt.</p>
+    <div class="rq-row">
+        <div class="ff" style="min-width:200px">
+            <label>Bank</label>
+            <select @bind="_valgtBank" disabled="@(!_isEdit)">
+                <option value="">— velg bank —</option>
+                @foreach (var b in _banker) { <option value="@b.Navn">@b.Navn@(InstabankService.ErInstabankNavn(b.Navn) ? " (API)" : "")</option> }
+            </select>
+        </div>
+        <button class="btn-primary btn-sm" @onclick="SendTilBank"
+                disabled="@(_sender || !_isEdit || string.IsNullOrWhiteSpace(_valgtBank))"
+                title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_sender ? "Sender…" : "Send til bank")</button>
+        @if (!string.IsNullOrEmpty(_sendMsg)) { <span class="form-msg @(_sendOk ? "ok" : "err")">@_sendMsg</span> }
+    </div>
+
+    @if (_sendinger.Count > 0)
+    {
+        <div class="sendt-logg">
+            <h3 class="ww-h" style="margin:14px 0 8px">Sendt til bank</h3>
+            <table class="data-table">
+                <thead><tr><th>Tidspunkt</th><th>Bank</th><th>Status</th><th>Referanse</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var s in _sendinger)
+                    {
+                        <tr>
+                            <td class="mono-cell">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@s.Bank</td>
+                            <td><span class="status @(s.Status == "Feilet" ? "off" : "on")">@s.Status</span>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "" : $" · {s.SendtAv}")</td>
+                            <td class="mono-cell">@(string.IsNullOrWhiteSpace(s.EksternRef) ? "—" : s.EksternRef)</td>
+                            <td>@if (!string.IsNullOrWhiteSpace(s.SigningUrl)) { <a href="@s.SigningUrl" target="_blank" rel="noopener" class="btn-sm">Signeringslenke</a> }</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 </div>
 
 @* Tidsstemplet notatlogg *@
@@ -493,11 +537,71 @@
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         _berParams = await Beregning.HentParametreAsync();
         _smsMaler = await SmsMaler.ListAsync();
+        _banker = await Partners.ListAsync();
         if (Guid.TryParse(Id, out var caseId))
         {
             var existing = await Svc.GetAsync(caseId);
-            if (existing is not null) { _k = existing; _isEdit = true; _laast = true; _notatLogg = await Notater.ListAsync(_k.Id); }
+            if (existing is not null)
+            {
+                _k = existing; _isEdit = true; _laast = true;
+                _notatLogg = await Notater.ListAsync(_k.Id);
+                _sendinger = await BankSending.ForKundeAsync(_k.Id);
+            }
         }
+    }
+
+    // ---- Send til bank ----
+    private List<Partner> _banker = new();
+    private List<BankSending> _sendinger = new();
+    private string _valgtBank = "";
+    private bool _sender;
+    private string? _sendMsg;
+    private bool _sendOk;
+
+    private async Task SendTilBank()
+    {
+        if (_k.Id == Guid.Empty || string.IsNullOrWhiteSpace(_valgtBank)) return;
+        _sender = true;
+        _sendMsg = null;
+        var avsender = Session.UserName ?? Session.Email ?? "ukjent";
+
+        var s = new BankSending
+        {
+            KundekortId = _k.Id,
+            KundeNavn = _k.FulltNavn,
+            Bank = _valgtBank,
+            SendtAv = avsender,
+        };
+
+        // Instabank har ekte API — send reelt. Andre banker registreres som manuelt videresendt.
+        if (InstabankService.ErInstabankNavn(_valgtBank))
+        {
+            var r = await Instabank.SendSoknadAsync(_k);
+            s.Status = r.Ok ? "Sendt" : "Feilet";
+            s.EksternRef = r.ExternalReference;
+            s.SigningUrl = r.SigningUrl;
+            s.Detalj = r.Detalj;
+            _sendOk = r.Ok;
+        }
+        else
+        {
+            s.Status = "Registrert manuelt";
+            s.Detalj = "Videresendt manuelt til banken.";
+            _sendOk = true;
+        }
+
+        var lagret = await BankSending.LoggAsync(s);
+        _sendinger.Insert(0, lagret);
+
+        // Speil valget i «Delegert til bank» på kundekortet.
+        if (string.IsNullOrWhiteSpace(_k.DelegertBank))
+        {
+            _k.DelegertBank = _valgtBank;
+            await Svc.SetDelegertBankAsync(_k.Id, _valgtBank);
+        }
+
+        _sendMsg = _sendOk ? $"{_valgtBank}: {s.Status} ✓" : $"{_valgtBank}: {s.Status} — {s.Detalj}";
+        _sender = false;
     }
 
     // Feltene er låst på et eksisterende kundekort — dobbeltklikk for å redigere.
