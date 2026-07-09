@@ -109,6 +109,9 @@ builder.Services.AddScoped<BeregningService>();
 // Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
 builder.Services.AddSingleton<CustomerFieldCatalog>();
 
+// Postnummerregister — beriker søknader med kommune/poststed/fylke fra postnummer.
+builder.Services.AddSingleton<PostnummerService>();
+
 // Styringsrenten hentes live fra Norges Bank (cachet), med referanseliste som fallback.
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<StyringsrenteService>();

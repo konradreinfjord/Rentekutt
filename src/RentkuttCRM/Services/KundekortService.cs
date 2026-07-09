@@ -35,18 +35,29 @@ public class KundekortService
     }
 
     private readonly Supabase.Client _client;
+    private readonly PostnummerService _postnr;
     private readonly ILogger<KundekortService> _log;
     public bool IsConfigured { get; }
 
     private static readonly List<Kundekort> _staging = new();
     private bool _initialized;
 
-    public KundekortService(Supabase.Client client, IConfiguration cfg, ILogger<KundekortService> log)
+    public KundekortService(Supabase.Client client, PostnummerService postnr, IConfiguration cfg, ILogger<KundekortService> log)
     {
         _client = client;
+        _postnr = postnr;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
+    }
+
+    /// <summary>Berik geografifelt (kommune, poststed, fylke) fra postnummer når de mangler.</summary>
+    public void BerikGeografi(Kundekort k)
+    {
+        if (string.IsNullOrWhiteSpace(k.Postnummer)) return;
+        if (string.IsNullOrWhiteSpace(k.Kommune)) k.Kommune = _postnr.Kommune(k.Postnummer) ?? k.Kommune;
+        if (string.IsNullOrWhiteSpace(k.Poststed)) k.Poststed = _postnr.Poststed(k.Postnummer) ?? k.Poststed;
+        if (string.IsNullOrWhiteSpace(k.Fylke)) k.Fylke = _postnr.Fylke(k.Postnummer) ?? k.Fylke;
     }
 
     /// <param name="strict">Når true (manuelt skjema) kreves korrekt fødselsnr/orgnr-lengde.
@@ -54,6 +65,7 @@ public class KundekortService
     public async Task<(bool ok, string? error)> SaveAsync(Kundekort k, bool strict = false)
     {
         k.KundeId = (k.KundeId ?? "").Trim();
+        BerikGeografi(k);   // fyll kommune/poststed/fylke fra postnummer når de mangler
 
         if (strict)
         {
