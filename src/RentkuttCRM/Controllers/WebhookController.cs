@@ -284,7 +284,8 @@ public class WebhookController : ControllerBase
             Laanetype = Get(f, "laanetype", "lanetype", "loantype"),
             Laaneformal = Get(f, "laaneformal", "formaal"),
             LaaneformalKode = Get(f, "laaneformal_kode"),
-            NaavaerendeRente = GetDec(f, "naavaerende_rente"),
+            NaavaerendeRente = GetDec(f, "naavaerende_rente", "nåværende rente på boliglån", "nåværende rente boliglån",
+                "boliglånsrente", "nåværende boliglånsrente", "rentesats", "nominell rente", "rente"),
             NavarendeBank = Get(f, "navarende_bank", "naavaerende_bank", "nåværende_bank", "currentbank", "bank"),
             Kontonummer = Get(f, "kontonummer", "konto", "accountnumber"),
 

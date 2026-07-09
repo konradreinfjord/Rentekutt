@@ -3,6 +3,7 @@
 @using System.Text
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.StyringsrenteService StyringSvc
 @inject NavigationManager Nav
 
 <PageTitle>Markedsinnsikt — Rentekutt</PageTitle>
@@ -34,7 +35,7 @@ else
         else
         {
             <div class="mi-legend">
-                <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente (Norges Bank)</span>
+                <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente — @_styringKilde</span>
                 <span class="mi-leg"><span class="mi-swatch" style="background:#266f32"></span>Snitt kunderente (mnd)</span>
                 <span class="mi-leg"><span class="mi-dot" style="background:#1f5fc4"></span>Registrert kunderente</span>
             </div>
@@ -89,25 +90,9 @@ else
     private record Punkt(DateTime Dato, string Bank, decimal Rente);
     private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, DateTime Siste);
 
-    // Norges Banks styringsrente — referansedata (endringsdatoer). Oppdater ved nye vedtak.
-    private static readonly (DateTime Dato, decimal Rente)[] Styringsrente =
-    {
-        (new DateTime(2021, 9, 24), 0.25m),
-        (new DateTime(2021, 12, 17), 0.50m),
-        (new DateTime(2022, 3, 24), 0.75m),
-        (new DateTime(2022, 6, 23), 1.25m),
-        (new DateTime(2022, 8, 18), 1.75m),
-        (new DateTime(2022, 9, 22), 2.25m),
-        (new DateTime(2022, 11, 3), 2.50m),
-        (new DateTime(2022, 12, 15), 2.75m),
-        (new DateTime(2023, 3, 23), 3.00m),
-        (new DateTime(2023, 5, 4), 3.25m),
-        (new DateTime(2023, 6, 22), 3.75m),
-        (new DateTime(2023, 8, 17), 4.00m),
-        (new DateTime(2023, 9, 21), 4.25m),
-        (new DateTime(2023, 12, 14), 4.50m),
-        (new DateTime(2025, 6, 19), 4.25m),
-    };
+    // Norges Banks styringsrente (endringsdatoer) — hentes live via StyringsrenteService.
+    private IReadOnlyList<(DateTime Dato, decimal Rente)> _styring = Array.Empty<(DateTime, decimal)>();
+    private string _styringKilde = "";
 
     // Chart-geometri
     private const double W = 900, H = 340, PadL = 40, PadR = 16, PadT = 14, PadB = 26;
@@ -120,16 +105,20 @@ else
     private double X(DateTime d) => PadL + (d - _xMin).TotalDays / Math.Max(1, (_xMax - _xMin).TotalDays) * PlotW;
     private double Y(double rente) => PadT + PlotH - rente / _yMax * PlotH;
 
-    private static decimal RentePaa(DateTime dato)
+    private decimal RentePaa(DateTime dato)
     {
-        decimal r = Styringsrente[0].Rente;
-        foreach (var s in Styringsrente) { if (s.Dato <= dato) r = s.Rente; else break; }
+        if (_styring.Count == 0) return 0m;
+        decimal r = _styring[0].Rente;
+        foreach (var s in _styring) { if (s.Dato <= dato) r = s.Rente; else break; }
         return r;
     }
 
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+
+        _styring = await StyringSvc.HentAsync();
+        _styringKilde = StyringSvc.Kilde;
 
         var rows = await Svc.ListAsync();
         _punkter = rows
@@ -194,7 +183,7 @@ else
         var startR = (double)RentePaa(_xMin);
         sb.Append("M ").Append(N(X(_xMin))).Append(' ').Append(N(Y(startR)));
         var prev = startR;
-        foreach (var s in Styringsrente.Where(s => s.Dato > _xMin && s.Dato <= _xMax))
+        foreach (var s in _styring.Where(s => s.Dato > _xMin && s.Dato <= _xMax))
         {
             var x = N(X(s.Dato));
             sb.Append(" L ").Append(x).Append(' ').Append(N(Y(prev)));            // horisontalt

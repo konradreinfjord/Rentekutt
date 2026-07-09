@@ -97,6 +97,10 @@ builder.Services.AddScoped<BeregningService>();
 // Katalog over kundedatafelt for universalfilteret i logikk-matrisen.
 builder.Services.AddSingleton<CustomerFieldCatalog>();
 
+// Styringsrenten hentes live fra Norges Bank (cachet), med referanseliste som fallback.
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<StyringsrenteService>();
+
 // Databasemigrering (kjører SQL-filer i Migrations/ automatisk ved oppstart).
 builder.Services.AddSingleton<DatabaseMigrator>();
 
