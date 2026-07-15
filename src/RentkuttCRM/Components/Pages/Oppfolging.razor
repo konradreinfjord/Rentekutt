@@ -104,7 +104,7 @@
         if (Session.IsAdmin)
         {
             // Admin: last alle eide saker én gang, bygg rådgiverliste, vis egne som standard.
-            _alleEide = (await Svc.ListAsync()).Where(k => !string.IsNullOrWhiteSpace(k.Eier)).ToList();
+            _alleEide = (await Svc.ListLettAsync()).Where(k => !string.IsNullOrWhiteSpace(k.Eier)).ToList();
             _owners = _alleEide
                 .GroupBy(k => k.Eier!)
                 .Select(g => (Eier: g.Key, Navn: g.First().EierNavn ?? g.Key, Antall: g.Count()))

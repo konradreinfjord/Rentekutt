@@ -211,7 +211,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        var rowsTask = Svc.ListAsync();
+        var rowsTask = Svc.ListLettAsync();
         var partnereTask = Partners.ListAsync();
         var reglerTask = Ruting.ListAsync();
         var berTask = Beregning.HentParametreAsync();

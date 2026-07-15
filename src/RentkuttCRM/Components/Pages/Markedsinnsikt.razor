@@ -186,7 +186,7 @@ else
         _styring = await StyringSvc.HentAsync();
         _styringKilde = StyringSvc.Kilde;
 
-        var rows = await Svc.ListAsync();
+        var rows = await Svc.ListLettAsync();
         _punkter = rows
             .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank) && k.NaavaerendeRente is > 0)
             .Select(k => new Punkt(k.CreatedAt, k.NavarendeBank!.Trim(), k.NaavaerendeRente!.Value,

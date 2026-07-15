@@ -121,9 +121,11 @@ public class KundekortService
     // at endringer fra andre brukere/webhooks kommer inn raskt.
     private List<Kundekort>? _listeCache;
     private DateTime _listeCacheTid;
+    private List<Kundekort>? _lettCache;
+    private DateTime _lettCacheTid;
     private static readonly TimeSpan CacheLevetid = TimeSpan.FromSeconds(15);
 
-    private void InvaliderCache() => _listeCache = null;
+    private void InvaliderCache() { _listeCache = null; _lettCache = null; }
 
     private async Task<List<Kundekort>> HentAlleAsync()
     {
@@ -133,6 +135,29 @@ public class KundekortService
         _listeCache = (await _client.From<Kundekort>().Get()).Models;
         _listeCacheTid = DateTime.UtcNow;
         return _listeCache;
+    }
+
+    // Kolonner list-/dashboardsidene (Marked, Oppfølging, CRM, Statistikk,
+    // Markedsinnsikt) faktisk leser. Tunge/ubrukte felt hentes ikke — det store
+    // notater-tekstfeltet, medsøker-blokken, kode-varianter, tjeneste/samtykke og
+    // detaljert husholdning/gjeld — så radene blir ~halvparten så brede.
+    // Database + tredjepart-API bruker fulle rader (notater/Beregn) og går via HentAlleAsync.
+    private const string LetteKolonner =
+        "id,kunde_id,kunde_type,orgnr,fullt_navn,foedselsnummer,mobilnummer,epost," +
+        "adresse,postnummer,poststed,kommune,fylke,laanetype,laaneformal," +
+        "onsket_laanebelop,onsket_lopetid_mnd,aarsinntekt_brutto,sivilstatus," +
+        "arbeidssituasjon,boforhold,naavaerende_rente,navarende_bank,boliggjeld," +
+        "boligverdi,status,eier,eier_navn,eier_tatt_at,delegert_bank,kilde," +
+        "siste_kontakt,neste_oppfolging,created_at,updated_at";
+
+    private async Task<List<Kundekort>> HentAlleLettAsync()
+    {
+        if (_lettCache is not null && DateTime.UtcNow - _lettCacheTid < CacheLevetid)
+            return _lettCache;
+        await EnsureReadyAsync();
+        _lettCache = (await _client.From<Kundekort>().Select(LetteKolonner).Get()).Models;
+        _lettCacheTid = DateTime.UtcNow;
+        return _lettCache;
     }
 
     public async Task<List<Kundekort>> ListAsync()
@@ -149,6 +174,22 @@ public class KundekortService
         }
     }
 
+    /// <summary>Som <see cref="ListAsync"/>, men henter kun kolonnene list-/dashboardsidene
+    /// bruker (uten notater/medsøker/detaljfelt). Bruk der fulle kort ikke trengs.</summary>
+    public async Task<List<Kundekort>> ListLettAsync()
+    {
+        if (!IsConfigured) return _staging.ToList();
+        try
+        {
+            return (await HentAlleLettAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Henting av kundekort (lett) feilet");
+            return new List<Kundekort>();
+        }
+    }
+
     /// <summary>Saker eid av en bruker (Mine oppfølginger).</summary>
     public async Task<List<Kundekort>> ListByEierAsync(string eier)
     {
@@ -156,7 +197,7 @@ public class KundekortService
         if (!IsConfigured) return _staging.Where(k => k.Eier == eier).ToList();
         try
         {
-            return (await HentAlleAsync()).Where(k => k.Eier == eier).ToList();
+            return (await HentAlleLettAsync()).Where(k => k.Eier == eier).ToList();
         }
         catch (Exception ex)
         {

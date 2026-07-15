@@ -276,7 +276,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        _rows = await Svc.ListAsync();
+        _rows = await Svc.ListLettAsync();
 
         var na = DateTime.UtcNow;
         var siste24 = _rows.Where(k => k.CreatedAt > na.AddHours(-24)).ToList();

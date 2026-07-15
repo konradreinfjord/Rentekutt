@@ -501,7 +501,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        var allTask = Kundekort.ListAsync();
+        var allTask = Kundekort.ListLettAsync();
         var partnereTask = Partners.ListAsync();
         var malDagerTask = Settings.GetDecimalAsync(KeyMalDager, 14m);
         var malUkeTask = Settings.GetIntAsync(KeyMalSakerUke, 10);
