@@ -541,25 +541,43 @@ else if (_isEdit)
     private async Task Delete()
     {
         if (!KanEndre) return;
-        await Svc.DeleteAsync(_k.Id);
-        Nav.NavigateTo("/crm/database");
+        var (ok, error) = await Svc.DeleteAsync(_k.Id);
+        if (!ok)
+        {
+            _confirmDelete = false;
+            _ok = false;
+            _msg = error ?? "Kunne ikke slette kundekortet.";
+            return;
+        }
+        // Tilbake til markedet kunden hører til — ikke den skjulte Database-fanen.
+        Nav.NavigateTo(_k.KundeType == "B2B" ? "/crm/marked/bedrift" : "/crm/marked/person");
     }
 
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
-        _berParams = await Beregning.HentParametreAsync();
-        _smsMaler = await SmsMaler.ListAsync();
-        _banker = await Partners.ListAsync();
-        if (Guid.TryParse(Id, out var caseId))
+
+        // Kortuavhengige oppslag + selve kortet hentes i parallell (var 3–6 sekvensielle
+        // rundturer før — hovedårsaken til at kundekort var tregt å åpne).
+        var berTask = Beregning.HentParametreAsync();
+        var smsTask = SmsMaler.ListAsync();
+        var bankerTask = Partners.ListAsync();
+        var kortTask = Guid.TryParse(Id, out var caseId) ? Svc.GetAsync(caseId) : Task.FromResult<Kundekort?>(null);
+
+        await Task.WhenAll(berTask, smsTask, bankerTask, kortTask);
+        _berParams = berTask.Result;
+        _smsMaler = smsTask.Result;
+        _banker = bankerTask.Result;
+
+        if (kortTask.Result is { } existing)
         {
-            var existing = await Svc.GetAsync(caseId);
-            if (existing is not null)
-            {
-                _k = existing; _isEdit = true; _laast = true;
-                _notatLogg = await Notater.ListAsync(_k.Id);
-                _sendinger = await BankSending.ForKundeAsync(_k.Id);
-            }
+            _k = existing; _isEdit = true; _laast = true;
+            // Notater + banksendinger avhenger av kort-id — hentes i parallell.
+            var notatTask = Notater.ListAsync(_k.Id);
+            var sendTask = BankSending.ForKundeAsync(_k.Id);
+            await Task.WhenAll(notatTask, sendTask);
+            _notatLogg = notatTask.Result;
+            _sendinger = sendTask.Result;
         }
     }
 

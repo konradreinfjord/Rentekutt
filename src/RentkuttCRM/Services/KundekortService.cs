@@ -280,15 +280,25 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task<(bool ok, string? error)> DeleteAsync(Guid id)
     {
-        if (!IsConfigured) { _staging.RemoveAll(x => x.Id == id); return; }
+        if (!IsConfigured) { _staging.RemoveAll(x => x.Id == id); return (true, null); }
         try
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Delete();
+            // Verifiser at raden faktisk er borte. Delete kaster ikke om 0 rader ble
+            // truffet (f.eks. stille RLS-filtrering) — uten denne sjekken navigerer
+            // UI-et bort som om det gikk bra, og kortet «dukker opp igjen» i listene.
+            if (await GetAsync(id) is not null)
+                return (false, "Kortet ble ikke slettet — manglende tilgang?");
+            return (true, null);
         }
-        catch (Exception ex) { _log.LogError(ex, "Sletting av kundekort feilet"); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Sletting av kundekort feilet");
+            return (false, "Teknisk feil ved sletting.");
+        }
     }
 
     public async Task SetDelegertBankAsync(Guid id, string? bank)
