@@ -286,7 +286,7 @@ public class WebhookController : ControllerBase
             LaaneformalKode = Get(f, "laaneformal_kode"),
             NaavaerendeRente = GetDec(f, "naavaerende_rente", "nåværende rente på boliglån", "nåværende rente boliglån",
                 "boliglånsrente", "nåværende boliglånsrente", "rentesats", "nominell rente", "rente"),
-            NavarendeBank = Get(f, "navarende_bank", "naavaerende_bank", "nåværende_bank", "currentbank", "bank"),
+            NavarendeBank = Get(f, "naavarende_bank", "navarende_bank", "naavaerende_bank", "nåværende_bank", "currentbank", "bank"),
             Kontonummer = Get(f, "kontonummer", "konto", "accountnumber"),
 
             // Medsøker (sti-prefikset for å unngå kollisjon med søker)
