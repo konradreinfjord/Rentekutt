@@ -102,6 +102,7 @@ public class KundekortService
                 await _client.From<Kundekort>().Insert(k);
             else
                 await _client.From<Kundekort>().Update(k);
+            InvaliderCache();
             return (true, null);
         }
         catch (Exception ex)
@@ -111,13 +112,35 @@ public class KundekortService
         }
     }
 
+    // ---- Kort-levetids cache for hele lista ----
+    // Blazor Server holder circuit-scopet i live på tvers av sidenavigering, så
+    // gjentatte sidelastinger (CRM → Marked → Oppfølging → tilbake) gjenbruker
+    // lista i stedet for å hente hele kundekort-tabellen på nytt hver gang —
+    // hovedårsaken til at portalen føltes treg ved navigering. Cachen invalideres
+    // ved enhver skriving (InvaliderCache), og utløper uansett etter kort tid slik
+    // at endringer fra andre brukere/webhooks kommer inn raskt.
+    private List<Kundekort>? _listeCache;
+    private DateTime _listeCacheTid;
+    private static readonly TimeSpan CacheLevetid = TimeSpan.FromSeconds(15);
+
+    private void InvaliderCache() => _listeCache = null;
+
+    private async Task<List<Kundekort>> HentAlleAsync()
+    {
+        if (_listeCache is not null && DateTime.UtcNow - _listeCacheTid < CacheLevetid)
+            return _listeCache;
+        await EnsureReadyAsync();
+        _listeCache = (await _client.From<Kundekort>().Get()).Models;
+        _listeCacheTid = DateTime.UtcNow;
+        return _listeCache;
+    }
+
     public async Task<List<Kundekort>> ListAsync()
     {
         if (!IsConfigured) return _staging.ToList();
         try
         {
-            await EnsureReadyAsync();
-            return (await _client.From<Kundekort>().Get()).Models;
+            return (await HentAlleAsync()).ToList();
         }
         catch (Exception ex)
         {
@@ -133,8 +156,7 @@ public class KundekortService
         if (!IsConfigured) return _staging.Where(k => k.Eier == eier).ToList();
         try
         {
-            await EnsureReadyAsync();
-            return (await _client.From<Kundekort>().Where(k => k.Eier == eier).Get()).Models;
+            return (await HentAlleAsync()).Where(k => k.Eier == eier).ToList();
         }
         catch (Exception ex)
         {
@@ -164,6 +186,7 @@ public class KundekortService
                 .Set(x => x.EierTattAt!, naa);
             if (nyStatus is not null) q = q.Set(x => x.Status, nyStatus);
             await q.Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
     }
@@ -186,6 +209,7 @@ public class KundekortService
                 .Set(x => x.EierNavn!, (string?)null)
                 .Set(x => x.EierTattAt!, (DateTime?)null)
                 .Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Frigi eierskap feilet"); }
     }
@@ -203,6 +227,7 @@ public class KundekortService
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.SisteKontakt!, naa).Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Registrering av kontakt feilet"); }
     }
@@ -224,6 +249,7 @@ public class KundekortService
                 .Set(x => x.NavarendeBank!, bank)
                 .Set(x => x.NaavaerendeRente!, rente)
                 .Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Lagring av bank/rente feilet"); }
     }
@@ -241,6 +267,7 @@ public class KundekortService
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.NesteOppfolging!, neste).Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Lagring av neste oppfølging feilet"); }
     }
@@ -276,6 +303,7 @@ public class KundekortService
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.Status, status).Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
     }
@@ -287,6 +315,7 @@ public class KundekortService
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Delete();
+            InvaliderCache();
             // Verifiser at raden faktisk er borte. Delete kaster ikke om 0 rader ble
             // truffet (f.eks. stille RLS-filtrering) — uten denne sjekken navigerer
             // UI-et bort som om det gikk bra, og kortet «dukker opp igjen» i listene.
@@ -314,6 +343,7 @@ public class KundekortService
         {
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.DelegertBank!, bank ?? "").Update();
+            InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Delegering til bank feilet"); }
     }
