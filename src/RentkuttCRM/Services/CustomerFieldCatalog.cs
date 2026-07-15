@@ -44,6 +44,7 @@ public class CustomerFieldCatalog
         new("lopetid",    "Løpetid",    "Lån", FieldType.Number, Unit: "mnd", Placeholder: "f.eks. 240"),
         new("formaal",    "Formål",     "Lån", FieldType.Enum,
             Options: new[] { "Kjøp bolig", "Refinansiere gjeld", "Oppussing", "Kjøp bil", "Annet" }),
+        new("naavaerende_bank", "Nåværende bank", "Lån", FieldType.Text, Placeholder: "f.eks. Santander"),
 
         // ---- Økonomi ----
         new("gjeldsgrad",   "Gjeldsgrad",          "Økonomi", FieldType.Number, Unit: "%", Placeholder: "f.eks. 400"),
