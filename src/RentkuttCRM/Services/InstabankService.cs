@@ -216,12 +216,18 @@ public class InstabankService
         var ssn = FoerstGyldigFnr(k.Foedselsnummer);
         var mobil = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
 
+        // Agent-e-post: den rådgiveren som EIER (og sender) saken — lagres på kundekortet
+        // som Eier. Sending skjer i bakgrunnskøen uten innlogget sesjon, så Eier er den
+        // eneste pålitelige kilden. Fall tilbake til den globale Instabank__AgentEmail-
+        // konfigurasjonen for ueide saker.
+        var agentEpost = ErEpost(k.Eier) ? k.Eier!.Trim() : AgentEmail;
+
         var mangler = new List<string>();
         if (orgnr.Length != 9) mangler.Add("organisasjonsnummer");
         if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("signers fødselsnummer");
         if (string.IsNullOrWhiteSpace(mobil)) mangler.Add("mobilnummer");
         if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
-        if (string.IsNullOrWhiteSpace(AgentEmail)) mangler.Add("agent-e-post (Instabank__AgentEmail)");
+        if (string.IsNullOrWhiteSpace(agentEpost)) mangler.Add("agent-e-post (sakseier eller Instabank__AgentEmail)");
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende bedriftslån — mangler: " + string.Join(", ", mangler));
 
@@ -243,7 +249,7 @@ public class InstabankService
                 ["EMail"] = k.Epost,
                 ["MobilePhoneNumber"] = mobil,
             },
-            ["Agent"] = new { Email = AgentEmail },
+            ["Agent"] = new { Email = agentEpost },
             ["PurposeForLoan"] = new[] { BedriftFormaal(k.Laaneformal) },
             ["IsPreOffer"] = preOffer,
             ["Reference"] = k.Id.ToString(),
@@ -313,6 +319,15 @@ public class InstabankService
 
     private static bool ErNorsk(string? statsborgerskap) =>
         (statsborgerskap ?? "").Trim().ToLowerInvariant() is "norsk" or "norge" or "no";
+
+    // Enkel e-post-sjekk: eierfeltet skal inneholde en «@» med tegn på begge sider.
+    private static bool ErEpost(string? s)
+    {
+        s = s?.Trim();
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var at = s.IndexOf('@');
+        return at > 0 && at < s.Length - 1;
+    }
 
     /// <summary>Hent status på en tidligere innsendt sak.</summary>
     public Task<Resultat> HentStatusAsync(string externalReference) =>
