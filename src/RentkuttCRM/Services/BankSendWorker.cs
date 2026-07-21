@@ -73,7 +73,7 @@ public class BankSendWorker : BackgroundService
             await ko.OppdaterAsync(s); return false;
         }
 
-        var r = await instabank.SendSoknadAsync(k);
+        var r = await instabank.SendSoknadAsync(k, s.ProduktKode);
         s.Forsok += 1;
         if (r.Ok)
         {

@@ -88,6 +88,9 @@ builder.Services.AddScoped<EventService>();
 // Bankpartnere.
 builder.Services.AddScoped<PartnerService>();
 
+// Produkter per bankpartner (provisjon per produkt, segment privat/bedrift).
+builder.Services.AddScoped<PartnerProduktService>();
+
 // Instabank Agent API (delegerte søknader for kunder som skal til Instabank).
 builder.Services.AddScoped<InstabankService>();
 

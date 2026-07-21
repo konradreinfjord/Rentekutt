@@ -7,6 +7,7 @@
 @inject RentkuttCRM.Services.SettingsService Settings
 @inject RentkuttCRM.Services.EventService Events
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.PartnerProduktService Produkter
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BankSendingService BankSending
@@ -82,6 +83,76 @@ else if (_active == "Partnere")
                 }
             </tbody>
         </table>
+    </div>
+
+    <div class="section">
+        <h2>Produkter per bank</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Provisjon og engangssum settes per produkt. <strong>Segment</strong> styrer om produktet vises for privat (B2C) eller bedrift (B2B) på kundekortet. Banker uten produkter bruker bank-nivå provisjon over. Instabank-produktene har faste API-koder.</p>
+        @if (_banks.Count == 0)
+        {
+            <p class="page-sub" style="margin:0">Legg til en bankpartner først.</p>
+        }
+        @foreach (var b in _banks)
+        {
+            var prod = ProdukterFor(b.Id);
+            <div style="margin-bottom:20px">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+                    <h3 class="ww-h" style="margin:0">@b.Navn @(InstabankService.ErInstabankNavn(b.Navn) ? "(API)" : "")</h3>
+                    @if (_addProduktForBank != b.Id)
+                    {
+                        <button class="btn-sm" @onclick="() => ApneAddProdukt(b.Id)">+ Produkt</button>
+                    }
+                </div>
+                @if (prod.Count == 0 && _addProduktForBank != b.Id)
+                {
+                    <p class="page-sub" style="margin:0; font-size:12.5px">Ingen produkter — vises uten produktvalg ved sending.</p>
+                }
+                else if (prod.Count > 0)
+                {
+                    <table class="data-table">
+                        <thead><tr><th>Produkt</th><th>Segment</th><th>Kode</th><th>Provisjon %</th><th>Engangssum (kr)</th><th>Aktiv</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var p in prod)
+                            {
+                                <tr>
+                                    <td>@p.Navn</td>
+                                    <td><span class="type-tag">@(p.ErBedrift ? "Bedrift" : "Privat")</span></td>
+                                    <td class="mono-cell">@(p.Kode?.ToString() ?? "—")</td>
+                                    <td @ondblclick="() => _prodCompUnlocked.Add(p.Id)">
+                                        @if (_prodCompUnlocked.Contains(p.Id))
+                                        { <input class="inline-input" style="width:70px" value="@p.Provisjon" @onchange="e => SaveProduktProvisjon(p, e)" /> }
+                                        else
+                                        { <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(p.Provisjon) ? "0" : p.Provisjon) %</span> }
+                                    </td>
+                                    <td @ondblclick="() => _prodCompUnlocked.Add(p.Id)">
+                                        @if (_prodCompUnlocked.Contains(p.Id))
+                                        { <input class="inline-input" style="width:90px" value="@p.Engangssum" @onchange="e => SaveProduktEngangssum(p, e)" /> }
+                                        else
+                                        { <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(p.Engangssum) ? "0" : p.Engangssum) kr</span> }
+                                    </td>
+                                    <td><button class="btn-sm @(p.Aktiv ? "" : "btn-danger")" @onclick="() => ToggleProduktAktiv(p)">@(p.Aktiv ? "På" : "Av")</button></td>
+                                    <td><button class="btn-sm btn-danger" @onclick="() => SlettProdukt(p)">Slett</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                @if (_addProduktForBank == b.Id)
+                {
+                    <div class="rule-builder" style="margin-top:10px">
+                        <div class="rb-field"><label>Produktnavn</label><input class="rb-input" @bind="_npNavn" placeholder="f.eks. Forbrukslån" /></div>
+                        <div class="rb-field rb-op" style="max-width:130px"><label>Segment</label>
+                            <select class="rb-input" @bind="_npSegment"><option value="privat">Privat</option><option value="bedrift">Bedrift</option></select>
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:110px"><label>Kode (API)</label><input class="rb-input" @bind="_npKode" placeholder="valgfri" /></div>
+                        <div class="rb-field rb-op" style="max-width:110px"><label>Provisjon %</label><input class="rb-input" @bind="_npProvisjon" placeholder="0,00" /></div>
+                        <div class="rb-field rb-op" style="max-width:130px"><label>Engangssum</label><input class="rb-input" @bind="_npEngangssum" placeholder="0" /></div>
+                        <button class="btn-primary rb-add" @onclick="() => LagreNyttProdukt(b.Id)">Legg til</button>
+                        <button class="btn-logout rb-add" @onclick="() => _addProduktForBank = null">Avbryt</button>
+                    </div>
+                }
+            </div>
+        }
     </div>
 
     <div class="section">
@@ -660,6 +731,11 @@ else if (_active == "Logikk-matrise")
                                 @foreach (var bank in r.BankerListe)
                                 {
                                     <span class="route-bank">@bank</span>
+                                    var pnavn = RegelProduktNavn(r, bank);
+                                    if (pnavn.Count > 0)
+                                    {
+                                        <span class="page-sub" style="font-size:11.5px; margin:0 6px 0 2px">@string.Join(", ", pnavn)</span>
+                                    }
                                 }
                             </div>
                         </td>
@@ -746,6 +822,29 @@ else if (_active == "Logikk-matrise")
                     }
                 </div>
             </div>
+            @if (_newBanks.Count > 0)
+            {
+                <div class="rb-field rb-banks">
+                    <label>Produkt(er) per bank — valgfritt (tomt = alle produkter)</label>
+                    @foreach (var bankNavn in _newBanks)
+                    {
+                        var bankObj = _banks.FirstOrDefault(x => x.Navn == bankNavn);
+                        var bankProd = bankObj is null ? new List<PartnerProdukt>() : ProdukterFor(bankObj.Id).Where(p => p.Aktiv).ToList();
+                        if (bankProd.Count > 0)
+                        {
+                            <div style="margin-bottom:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+                                <span class="page-sub" style="font-size:12px; margin:0; min-width:90px">@bankNavn:</span>
+                                <div class="bank-chips">
+                                    @foreach (var p in bankProd)
+                                    {
+                                        <button type="button" class="bank-chip @(ErProduktValgt(bankNavn, p.Id) ? "sel" : "")" @onclick="() => ToggleNyttProdukt(bankNavn, p.Id)">@p.Navn@(p.ErBedrift ? " (bedrift)" : "")</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
         </div>
         <button class="btn-primary rb-add-row" @onclick="AddRule">Legg til regel</button>
         @if (!string.IsNullOrEmpty(_regelMsg))
@@ -947,12 +1046,14 @@ else if (_active == "GDPR")
         // Hent uavhengige kilder i parallell.
         var usersTask = Users.ListUsersAsync();
         var banksTask = Partners.ListAsync();
+        var produktTask = Produkter.ListAsync();
         var webhookTask = Webhooks.GetInboundAsync();
         var webhookPrismatchTask = Webhooks.GetByNameAsync(WebhookService.PrismatchName);
         var eventsTask = Events.ListAsync(100);
-        await Task.WhenAll(usersTask, banksTask, webhookTask, webhookPrismatchTask, eventsTask);
+        await Task.WhenAll(usersTask, banksTask, produktTask, webhookTask, webhookPrismatchTask, eventsTask);
         _userRows = usersTask.Result;
         _banks = banksTask.Result;
+        _produkter = produktTask.Result;
         _webhook = webhookTask.Result;
         _webhookPrismatch = webhookPrismatchTask.Result;
         _inboundWebhooks = new[] { _webhook, _webhookPrismatch }.Where(w => w is not null).Select(w => w!).ToList();
@@ -1386,9 +1487,32 @@ else if (_active == "GDPR")
         _newFra = _newTil = "";
     }
 
+    // Produktvalg per bank i regelbyggeren: banknavn → valgte produkt-Id-er.
+    private readonly Dictionary<string, HashSet<string>> _newProdukter = new();
+
+    private bool ErProduktValgt(string bankNavn, Guid produktId) =>
+        _newProdukter.TryGetValue(bankNavn, out var set) && set.Contains(produktId.ToString());
+
+    private void ToggleNyttProdukt(string bankNavn, Guid produktId)
+    {
+        if (!_newProdukter.TryGetValue(bankNavn, out var set)) { set = new(); _newProdukter[bankNavn] = set; }
+        if (!set.Remove(produktId.ToString())) set.Add(produktId.ToString());
+    }
+
+    // Produktnavn valgt for en bank i en lagret regel (for visning i regel-tabellen).
+    private List<string> RegelProduktNavn(Rutingsregel r, string bankNavn)
+    {
+        if (!r.ProdukterMap.TryGetValue(bankNavn, out var ids) || ids.Count == 0) return new();
+        return ids
+            .Select(id => _produkter.FirstOrDefault(p => p.Id.ToString() == id)?.Navn)
+            .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!)
+            .ToList();
+    }
+
     private void ToggleNewBank(string bank)
     {
         if (!_newBanks.Remove(bank)) _newBanks.Add(bank);
+        else _newProdukter.Remove(bank);   // fjernet bank ⇒ dropp dens produktvalg
     }
 
     private async Task AddRule()
@@ -1401,14 +1525,21 @@ else if (_active == "GDPR")
         if (_newOp == "mellom" ? (string.IsNullOrWhiteSpace(_newFra) || string.IsNullOrWhiteSpace(_newTil)) : string.IsNullOrWhiteSpace(verdi))
         { _regelMsg = "Fyll inn verdi (Fra/Til for intervall)."; _regelOk = false; return; }
 
+        // Serialiser produktvalg (kun for valgte banker med minst ett produkt).
+        var produkterMap = _newProdukter
+            .Where(kv => _newBanks.Contains(kv.Key) && kv.Value.Count > 0)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.ToList());
+        string? produkterJson = produkterMap.Count > 0 ? Newtonsoft.Json.JsonConvert.SerializeObject(produkterMap) : null;
+
         var prioritet = _rules.Count == 0 ? 1 : _rules.Max(r => r.Prioritet) + 1;
-        var (lagret, feil) = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, verdi, _newBanks.OrderBy(b => b));
+        var (lagret, feil) = await Ruting.AddAsync(prioritet, _newFieldKey, _newOp, verdi, _newBanks.OrderBy(b => b), produkterJson);
         if (lagret is not null)
         {
             _rules = await Ruting.ListAsync();   // hent frisk liste fra DB (bekrefter lagring)
             _regelMsg = $"Regel lagret: {LabelFor(_newFieldKey)} {_newOp} {verdi} → {string.Join(", ", _newBanks.OrderBy(b => b))}";
             _regelOk = true;
             _newFra = _newTil = "";
+            _newProdukter.Clear();
         }
         else { _regelMsg = "Kunne ikke lagre regelen: " + (feil ?? "ukjent databasefeil"); _regelOk = false; }
     }
@@ -1449,6 +1580,56 @@ else if (_active == "GDPR")
     private string? _nbMsg;
 
     private readonly HashSet<Guid> _compUnlocked = new();
+
+    // ---- Produkter per bank ----
+    private List<PartnerProdukt> _produkter = new();
+    private readonly HashSet<Guid> _prodCompUnlocked = new();
+    private Guid? _addProduktForBank;
+    private string _npNavn = "", _npSegment = "privat", _npKode = "", _npProvisjon = "", _npEngangssum = "";
+
+    private List<PartnerProdukt> ProdukterFor(Guid bankId) =>
+        _produkter.Where(p => p.PartnerId == bankId).OrderBy(p => p.Sortering).ThenBy(p => p.Navn).ToList();
+
+    private void ApneAddProdukt(Guid bankId)
+    {
+        _addProduktForBank = bankId;
+        _npNavn = ""; _npSegment = "privat"; _npKode = ""; _npProvisjon = ""; _npEngangssum = "";
+    }
+
+    private async Task LagreNyttProdukt(Guid bankId)
+    {
+        if (string.IsNullOrWhiteSpace(_npNavn)) return;
+        int? kode = int.TryParse((_npKode ?? "").Trim(), out var kk) ? kk : null;
+        await Produkter.AddAsync(bankId, _npNavn, _npSegment, kode,
+            string.IsNullOrWhiteSpace(_npProvisjon) ? null : _npProvisjon.Trim(),
+            string.IsNullOrWhiteSpace(_npEngangssum) ? null : _npEngangssum.Trim());
+        _produkter = await Produkter.ListAsync();
+        _addProduktForBank = null;
+    }
+
+    private async Task SaveProduktProvisjon(PartnerProdukt p, ChangeEventArgs e)
+    {
+        p.Provisjon = e.Value?.ToString();
+        await Produkter.UpdateCompAsync(p.Id, p.Provisjon, p.Engangssum);
+    }
+
+    private async Task SaveProduktEngangssum(PartnerProdukt p, ChangeEventArgs e)
+    {
+        p.Engangssum = e.Value?.ToString();
+        await Produkter.UpdateCompAsync(p.Id, p.Provisjon, p.Engangssum);
+    }
+
+    private async Task ToggleProduktAktiv(PartnerProdukt p)
+    {
+        p.Aktiv = !p.Aktiv;
+        await Produkter.SetAktivAsync(p.Id, p.Aktiv);
+    }
+
+    private async Task SlettProdukt(PartnerProdukt p)
+    {
+        await Produkter.DeleteAsync(p.Id);
+        _produkter = await Produkter.ListAsync();
+    }
 
     private async Task AddBank()
     {

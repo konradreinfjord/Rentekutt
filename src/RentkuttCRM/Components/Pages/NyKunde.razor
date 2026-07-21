@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.NotatService Notater
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.PartnerProduktService Produkter
 @inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject NavigationManager Nav
@@ -62,13 +63,27 @@
     <div class="rq-row">
         <div class="ff" style="min-width:200px">
             <label>Bank</label>
-            <select @bind="_valgtBank" disabled="@(!_isEdit || !KanEndre)">
+            <select value="@_valgtBank" @onchange="OnBankValgt" disabled="@(!_isEdit || !KanEndre)">
                 <option value="">— velg bank —</option>
                 @foreach (var b in _banker) { <option value="@b.Navn">@b.Navn@(InstabankService.ErInstabankNavn(b.Navn) ? " (API)" : "")</option> }
             </select>
         </div>
+        @{ var valgteProdukter = ProdukterForValgtBank(); }
+        @if (valgteProdukter.Count > 0)
+        {
+            <div class="ff" style="min-width:200px">
+                <label>Produkt (@(_k.KundeType == "B2B" ? "bedrift" : "privat"))</label>
+                <select @bind="_valgtProduktId" disabled="@(!_isEdit || !KanEndre)">
+                    <option value="">— velg produkt —</option>
+                    @foreach (var p in valgteProdukter)
+                    {
+                        <option value="@p.Id">@p.Navn@(p.Kode is int kode ? $" ({kode})" : "")</option>
+                    }
+                </select>
+            </div>
+        }
         <button class="btn-primary btn-sm" @onclick="SendTilBank"
-                disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank))"
+                disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank) || (valgteProdukter.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)))"
                 title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_sender ? "Sender…" : "Send til bank")</button>
         @if (!string.IsNullOrEmpty(_sendMsg)) { <span class="form-msg @(_sendOk ? "ok" : "err")">@_sendMsg</span> }
     </div>
@@ -78,13 +93,14 @@
         <div class="sendt-logg">
             <h3 class="ww-h" style="margin:14px 0 8px">Sendt til bank</h3>
             <table class="data-table">
-                <thead><tr><th>Tidspunkt</th><th>Bank</th><th>Status</th><th>Referanse</th><th></th></tr></thead>
+                <thead><tr><th>Tidspunkt</th><th>Bank</th><th>Produkt</th><th>Status</th><th>Referanse</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var s in _sendinger)
                     {
                         <tr>
                             <td class="mono-cell">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
                             <td>@s.Bank</td>
+                            <td>@(string.IsNullOrWhiteSpace(s.Produkt) ? "—" : s.Produkt)</td>
                             <td><span class="status @SendtKlasse(s.Status)">@s.Status</span>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "" : $" · {s.SendtAv}")</td>
                             <td class="mono-cell">@(string.IsNullOrWhiteSpace(s.EksternRef) ? "—" : s.EksternRef)</td>
                             <td>@if (!string.IsNullOrWhiteSpace(s.SigningUrl)) { <a href="@s.SigningUrl" target="_blank" rel="noopener" class="btn-sm">Signeringslenke</a> }</td>
@@ -562,12 +578,14 @@ else if (_isEdit)
         var berTask = Beregning.HentParametreAsync();
         var smsTask = SmsMaler.ListAsync();
         var bankerTask = Partners.ListAsync();
+        var produktTask = Produkter.ListAsync();
         var kortTask = Guid.TryParse(Id, out var caseId) ? Svc.GetAsync(caseId) : Task.FromResult<Kundekort?>(null);
 
-        await Task.WhenAll(berTask, smsTask, bankerTask, kortTask);
+        await Task.WhenAll(berTask, smsTask, bankerTask, produktTask, kortTask);
         _berParams = berTask.Result;
         _smsMaler = smsTask.Result;
         _banker = bankerTask.Result;
+        _produkter = produktTask.Result;
 
         if (kortTask.Result is { } existing)
         {
@@ -583,16 +601,42 @@ else if (_isEdit)
 
     // ---- Send til bank ----
     private List<Partner> _banker = new();
+    private List<PartnerProdukt> _produkter = new();
     private List<BankSending> _sendinger = new();
     private string _valgtBank = "";
+    private string _valgtProduktId = "";
     private bool _sender;
     private string? _sendMsg;
     private bool _sendOk;
+
+    // Aktive produkter for valgt bank som matcher kundens segment (B2B→bedrift, ellers privat).
+    private List<PartnerProdukt> ProdukterForValgtBank()
+    {
+        if (string.IsNullOrWhiteSpace(_valgtBank)) return new();
+        var bank = _banker.FirstOrDefault(b => b.Navn == _valgtBank);
+        if (bank is null) return new();
+        var segment = PartnerProdukt.SegmentFor(_k.KundeType);
+        return _produkter
+            .Where(p => p.PartnerId == bank.Id && p.Aktiv && string.Equals(p.Segment, segment, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(p => p.Sortering).ThenBy(p => p.Navn)
+            .ToList();
+    }
+
+    private void OnBankValgt(ChangeEventArgs e)
+    {
+        _valgtBank = e.Value?.ToString() ?? "";
+        _valgtProduktId = "";   // nullstill produktvalg når bank byttes
+    }
 
     private async Task SendTilBank()
     {
         if (!KanEndre) return;
         if (_k.Id == Guid.Empty || string.IsNullOrWhiteSpace(_valgtBank)) return;
+        // Har banken produkter for kundens segment, må ett være valgt.
+        var valgbare = ProdukterForValgtBank();
+        if (valgbare.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)) return;
+        var valgtProdukt = valgbare.FirstOrDefault(p => p.Id.ToString() == _valgtProduktId);
+
         _sender = true;
         _sendMsg = null;
         var avsender = Session.UserName ?? Session.Email ?? "ukjent";
@@ -604,6 +648,8 @@ else if (_isEdit)
             KundekortId = _k.Id,
             KundeNavn = _k.FulltNavn,
             Bank = _valgtBank,
+            Produkt = valgtProdukt?.Navn,
+            ProduktKode = valgtProdukt?.Kode,
             SendtAv = avsender,
             Status = SendStatus.IKo,
             Detalj = "Lagt i sendekø.",
@@ -619,7 +665,8 @@ else if (_isEdit)
         }
 
         _sendOk = true;
-        _sendMsg = $"{_valgtBank}: lagt i kø — sendes automatisk ✓";
+        _sendMsg = $"{_valgtBank}{(valgtProdukt is null ? "" : $" · {valgtProdukt.Navn}")}: lagt i kø — sendes automatisk ✓";
+        _valgtProduktId = "";
         _sender = false;
     }
 

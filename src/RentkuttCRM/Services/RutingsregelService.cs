@@ -15,6 +15,9 @@ public class Rutingsregel : BaseModel
     [Column("operator")] public string Operator { get; set; } = "=";
     [Column("verdi")] public string Verdi { get; set; } = "";
     [Column("banker")] public string Banker { get; set; } = "";
+    // Produktvalg per bank: JSON banknavn → liste av produkt-Id-er, f.eks.
+    // {"Instabank":["<guid>","<guid>"]}. Tom/utelatt = regelen gjelder alle produkter.
+    [Column("produkter")] public string? Produkter { get; set; }
     [Column("aktiv")] public bool Aktiv { get; set; } = true;
     [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)] public DateTime CreatedAt { get; set; }
 
@@ -22,6 +25,13 @@ public class Rutingsregel : BaseModel
     [JsonIgnore]
     public List<string> BankerListe =>
         (Banker ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    /// <summary>Produktvalg per bank (banknavn → produkt-Id-er). Ikke en DB-kolonne.</summary>
+    [JsonIgnore]
+    public Dictionary<string, List<string>> ProdukterMap =>
+        string.IsNullOrWhiteSpace(Produkter)
+            ? new()
+            : (JsonConvert.DeserializeObject<Dictionary<string, List<string>>>(Produkter) ?? new());
 }
 
 public class RutingsregelService
@@ -53,7 +63,7 @@ public class RutingsregelService
         catch (Exception ex) { _log.LogError(ex, "Henting av rutingsregler feilet"); return new(); }
     }
 
-    public async Task<(Rutingsregel? Regel, string? Feil)> AddAsync(int prioritet, string feltNokkel, string @operator, string verdi, IEnumerable<string> banker)
+    public async Task<(Rutingsregel? Regel, string? Feil)> AddAsync(int prioritet, string feltNokkel, string @operator, string verdi, IEnumerable<string> banker, string? produkter = null)
     {
         var regel = new Rutingsregel
         {
@@ -62,6 +72,7 @@ public class RutingsregelService
             Operator = @operator,
             Verdi = verdi,
             Banker = string.Join(", ", banker),
+            Produkter = produkter,
             Aktiv = true,
         };
         if (!IsConfigured) { regel.Id = Guid.NewGuid(); _staging.Add(regel); return (regel, null); }

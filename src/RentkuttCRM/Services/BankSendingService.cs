@@ -11,6 +11,8 @@ public class BankSending : BaseModel
     [Column("kundekort_id")] public Guid? KundekortId { get; set; }
     [Column("kunde_navn")] public string? KundeNavn { get; set; }
     [Column("bank")] public string Bank { get; set; } = "";
+    [Column("produkt")] public string? Produkt { get; set; }
+    [Column("produkt_kode")] public int? ProduktKode { get; set; }
     [Column("status")] public string? Status { get; set; }
     [Column("ekstern_ref")] public string? EksternRef { get; set; }
     [Column("signing_url")] public string? SigningUrl { get; set; }

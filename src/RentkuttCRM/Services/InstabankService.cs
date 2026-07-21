@@ -139,17 +139,45 @@ public class InstabankService
     /// bedrift → bedriftslån (2001), privat boliglån → gates (matrikkel via Eiendomsverdi),
     /// ellers privat forbrukslån (151). Alle felt følger det verifiserte Agent API-skjemaet.
     /// </summary>
-    public async Task<Resultat> SendSoknadAsync(Kundekort k, bool preOffer = false)
+    public async Task<Resultat> SendSoknadAsync(Kundekort k, int? produktKode = null, bool preOffer = false)
     {
-        if (k.KundeType == "B2B") return await SendBedriftAsync(k, preOffer);
+        // Eksplisitt produktvalg (fra kundekortet/regelen) styrer rutingen når satt.
+        switch (produktKode)
+        {
+            case ProduktForbrukslaan:                                   // 151
+                if (ErBoliglaan(k.Laanetype))
+                    return new(false, null, null, null, "Boliglån krever eiendomsdata (matrikkel) — kommer når Eiendomsverdi-integrasjonen er implementert.");
+                return await SendPrivatAsync(k, preOffer);
+            case ProduktBedriftslaan:                                   // 2001
+                return await SendBedriftAsync(k, preOffer);
+            case ProduktKredittlinje:                                   // 251
+            case ProduktKredittkort:                                    // 600
+            case ProduktBedriftKreditt:                                 // 2000
+                return new(false, null, null, null,
+                    $"Produktet «{ProduktNavn(produktKode.Value)}» ({produktKode}) støttes ikke for automatisk sending ennå — verifisert Agent API-payload mangler.");
+        }
 
-        // Boliglån (180) krever matrikkel (kommune-/gårds-/bruksnr) — tilgjengelig først når
-        // Eiendomsverdi-integrasjonen er på plass. Gates til da.
+        // Ingen eksplisitt produktkode: behold tidligere auto-ruting på kundetype.
+        if (k.KundeType == "B2B") return await SendBedriftAsync(k, preOffer);
         if (ErBoliglaan(k.Laanetype))
             return new(false, null, null, null, "Boliglån krever eiendomsdata (matrikkel) — kommer når Eiendomsverdi-integrasjonen er implementert.");
-
         return await SendPrivatAsync(k, preOffer);
     }
+
+    /// <summary>Navn på et Instabank-produkt ut fra API-koden.</summary>
+    public static string ProduktNavn(int kode) => kode switch
+    {
+        ProduktForbrukslaan => "Forbrukslån",
+        ProduktKredittlinje => "Kredittlinje",
+        ProduktKredittkort => "Kredittkort",
+        ProduktBedriftslaan => "Bedriftslån",
+        ProduktBedriftKreditt => "Bedriftskreditt",
+        _ => $"Produkt {kode}",
+    };
+
+    /// <summary>Produktkoder som faktisk kan sendes til Instabank i dag (verifisert payload).
+    /// null = auto-ruting (bakoverkompatibelt). 151/2001 støttes; 251/600/2000 gjør ikke ennå.</summary>
+    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBedriftslaan;
 
     private static bool ErBoliglaan(string? laanetype) =>
         (laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase);
