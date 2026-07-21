@@ -72,6 +72,18 @@ public class DatabaseMigrator
                     throw;
                 }
             }
+
+            // Be PostgREST laste skjema-cachen på nytt. Tabeller/kolonner lagt til via
+            // denne direkte DB-tilkoblingen er ellers ikke synlige for REST-laget som
+            // Supabase-klienten bruker (PGRST205/PGRST204), og insert feiler stille.
+            // Kjøres hver oppstart (idempotent) — mer robust enn en engangs-migrasjon.
+            try
+            {
+                await using var reload = new NpgsqlCommand("notify pgrst, 'reload schema';", conn);
+                await reload.ExecuteNonQueryAsync();
+                _log.LogInformation("Ba PostgREST laste skjema-cachen på nytt");
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Klarte ikke be PostgREST laste skjema på nytt"); }
         }
         catch (Exception ex)
         {
