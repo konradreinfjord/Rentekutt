@@ -94,7 +94,7 @@ public class PartnerProduktService
             var lagret = (await _client.From<PartnerProdukt>().Insert(p)).Models.FirstOrDefault();
             return (lagret, null);
         }
-        catch (Exception ex) { _log.LogError(ex, "Oppretting av produkt feilet"); return (null, "Teknisk feil ved lagring."); }
+        catch (Exception ex) { _log.LogError(ex, "Oppretting av produkt feilet"); return (null, ex.Message); }
     }
 
     public async Task UpdateCompAsync(Guid id, string? provisjon, string? engangssum)

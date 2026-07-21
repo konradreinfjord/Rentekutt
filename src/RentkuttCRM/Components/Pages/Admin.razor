@@ -88,6 +88,10 @@ else if (_active == "Partnere")
     <div class="section">
         <h2>Produkter per bank</h2>
         <p class="page-sub" style="margin:-4px 0 14px">Provisjon og engangssum settes per produkt. <strong>Segment</strong> styrer om produktet vises for privat (B2C) eller bedrift (B2B) på kundekortet. Banker uten produkter bruker bank-nivå provisjon over. Instabank-produktene har faste API-koder.</p>
+        @if (!string.IsNullOrEmpty(_prodMsg))
+        {
+            <p class="page-sub" style="margin:-6px 0 14px; font-size:12.5px; color:@(_prodOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_prodMsg</p>
+        }
         @if (_banks.Count == 0)
         {
             <p class="page-sub" style="margin:0">Legg til en bankpartner først.</p>
@@ -1605,15 +1609,27 @@ else if (_active == "GDPR")
         _npNavn = ""; _npSegment = "privat"; _npKode = ""; _npProvisjon = ""; _npEngangssum = ""; _npLaanetyper = "";
     }
 
+    private string? _prodMsg;
+    private bool _prodOk;
+
     private async Task LagreNyttProdukt(Guid bankId)
     {
-        if (string.IsNullOrWhiteSpace(_npNavn)) return;
+        _prodMsg = null;
+        if (string.IsNullOrWhiteSpace(_npNavn)) { _prodMsg = "Produktnavn er påkrevd."; _prodOk = false; return; }
         int? kode = int.TryParse((_npKode ?? "").Trim(), out var kk) ? kk : null;
-        await Produkter.AddAsync(bankId, _npNavn, _npSegment, kode,
+        var (p, feil) = await Produkter.AddAsync(bankId, _npNavn, _npSegment, kode,
             string.IsNullOrWhiteSpace(_npProvisjon) ? null : _npProvisjon.Trim(),
             string.IsNullOrWhiteSpace(_npEngangssum) ? null : _npEngangssum.Trim(),
             string.IsNullOrWhiteSpace(_npLaanetyper) ? null : _npLaanetyper.Trim());
+        if (p is null)
+        {
+            _prodMsg = "Kunne ikke lagre produktet: " + (feil ?? "ukjent feil");
+            _prodOk = false;
+            return;
+        }
         _produkter = await Produkter.ListAsync();
+        _prodMsg = $"Produkt «{p.Navn}» lagt til ✓";
+        _prodOk = true;
         _addProduktForBank = null;
     }
 
