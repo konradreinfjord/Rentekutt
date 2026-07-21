@@ -110,7 +110,7 @@ else if (_active == "Partnere")
                 else if (prod.Count > 0)
                 {
                     <table class="data-table">
-                        <thead><tr><th>Produkt</th><th>Segment</th><th>Kode</th><th>Provisjon %</th><th>Engangssum (kr)</th><th>Aktiv</th><th></th></tr></thead>
+                        <thead><tr><th>Produkt</th><th>Segment</th><th>Kode</th><th>Lånetyper (auto-valg)</th><th>Provisjon %</th><th>Engangssum (kr)</th><th>Aktiv</th><th></th></tr></thead>
                         <tbody>
                             @foreach (var p in prod)
                             {
@@ -118,6 +118,7 @@ else if (_active == "Partnere")
                                     <td>@p.Navn</td>
                                     <td><span class="type-tag">@(p.ErBedrift ? "Bedrift" : "Privat")</span></td>
                                     <td class="mono-cell">@(p.Kode?.ToString() ?? "—")</td>
+                                    <td><input class="inline-input" style="width:160px" value="@p.Laanetyper" @onchange="e => SaveProduktLaanetyper(p, e)" placeholder="alle (ingen auto)" title="Komma-separerte lånetyper produktet auto-velges for" /></td>
                                     <td @ondblclick="() => _prodCompUnlocked.Add(p.Id)">
                                         @if (_prodCompUnlocked.Contains(p.Id))
                                         { <input class="inline-input" style="width:70px" value="@p.Provisjon" @onchange="e => SaveProduktProvisjon(p, e)" /> }
@@ -145,6 +146,7 @@ else if (_active == "Partnere")
                             <select class="rb-input" @bind="_npSegment"><option value="privat">Privat</option><option value="bedrift">Bedrift</option></select>
                         </div>
                         <div class="rb-field rb-op" style="max-width:110px"><label>Kode (API)</label><input class="rb-input" @bind="_npKode" placeholder="valgfri" /></div>
+                        <div class="rb-field" style="max-width:180px"><label>Lånetyper (auto-valg)</label><input class="rb-input" @bind="_npLaanetyper" placeholder="f.eks. Forbrukslån,Refinansiering" /></div>
                         <div class="rb-field rb-op" style="max-width:110px"><label>Provisjon %</label><input class="rb-input" @bind="_npProvisjon" placeholder="0,00" /></div>
                         <div class="rb-field rb-op" style="max-width:130px"><label>Engangssum</label><input class="rb-input" @bind="_npEngangssum" placeholder="0" /></div>
                         <button class="btn-primary rb-add" @onclick="() => LagreNyttProdukt(b.Id)">Legg til</button>
@@ -1054,6 +1056,13 @@ else if (_active == "GDPR")
         _userRows = usersTask.Result;
         _banks = banksTask.Result;
         _produkter = produktTask.Result;
+
+        // Selvhelbredende: garanter at alle Instabank-partnere har standardproduktene
+        // (uavhengig av om seed-migrasjonen rakk partneren). Idempotent — legger kun til det som mangler.
+        var lagtTil = 0;
+        foreach (var ib in _banks.Where(b => InstabankService.ErInstabankNavn(b.Navn)))
+            lagtTil += await Produkter.EnsureInstabankStandardAsync(ib.Id, _produkter);
+        if (lagtTil > 0) _produkter = await Produkter.ListAsync();
         _webhook = webhookTask.Result;
         _webhookPrismatch = webhookPrismatchTask.Result;
         _inboundWebhooks = new[] { _webhook, _webhookPrismatch }.Where(w => w is not null).Select(w => w!).ToList();
@@ -1585,7 +1594,7 @@ else if (_active == "GDPR")
     private List<PartnerProdukt> _produkter = new();
     private readonly HashSet<Guid> _prodCompUnlocked = new();
     private Guid? _addProduktForBank;
-    private string _npNavn = "", _npSegment = "privat", _npKode = "", _npProvisjon = "", _npEngangssum = "";
+    private string _npNavn = "", _npSegment = "privat", _npKode = "", _npProvisjon = "", _npEngangssum = "", _npLaanetyper = "";
 
     private List<PartnerProdukt> ProdukterFor(Guid bankId) =>
         _produkter.Where(p => p.PartnerId == bankId).OrderBy(p => p.Sortering).ThenBy(p => p.Navn).ToList();
@@ -1593,7 +1602,7 @@ else if (_active == "GDPR")
     private void ApneAddProdukt(Guid bankId)
     {
         _addProduktForBank = bankId;
-        _npNavn = ""; _npSegment = "privat"; _npKode = ""; _npProvisjon = ""; _npEngangssum = "";
+        _npNavn = ""; _npSegment = "privat"; _npKode = ""; _npProvisjon = ""; _npEngangssum = ""; _npLaanetyper = "";
     }
 
     private async Task LagreNyttProdukt(Guid bankId)
@@ -1602,9 +1611,16 @@ else if (_active == "GDPR")
         int? kode = int.TryParse((_npKode ?? "").Trim(), out var kk) ? kk : null;
         await Produkter.AddAsync(bankId, _npNavn, _npSegment, kode,
             string.IsNullOrWhiteSpace(_npProvisjon) ? null : _npProvisjon.Trim(),
-            string.IsNullOrWhiteSpace(_npEngangssum) ? null : _npEngangssum.Trim());
+            string.IsNullOrWhiteSpace(_npEngangssum) ? null : _npEngangssum.Trim(),
+            string.IsNullOrWhiteSpace(_npLaanetyper) ? null : _npLaanetyper.Trim());
         _produkter = await Produkter.ListAsync();
         _addProduktForBank = null;
+    }
+
+    private async Task SaveProduktLaanetyper(PartnerProdukt p, ChangeEventArgs e)
+    {
+        p.Laanetyper = e.Value?.ToString();
+        await Produkter.UpdateLaanetyperAsync(p.Id, p.Laanetyper);
     }
 
     private async Task SaveProduktProvisjon(PartnerProdukt p, ChangeEventArgs e)

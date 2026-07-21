@@ -80,6 +80,10 @@
                         <option value="@p.Id">@p.Navn@(p.Kode is int kode ? $" ({kode})" : "")</option>
                     }
                 </select>
+                @if (ErAutoValgt)
+                {
+                    <span class="page-sub" style="margin:2px 0 0; font-size:11.5px; color:var(--green-dark)">Auto-valgt fra lånetype «@_k.Laanetype»</span>
+                }
             </div>
         }
         <button class="btn-primary btn-sm" @onclick="SendTilBank"
@@ -625,8 +629,18 @@ else if (_isEdit)
     private void OnBankValgt(ChangeEventArgs e)
     {
         _valgtBank = e.Value?.ToString() ?? "";
-        _valgtProduktId = "";   // nullstill produktvalg når bank byttes
+        _valgtProduktId = AutoValgtProduktId();   // forhåndsvelg produkt ut fra lånetype
     }
+
+    // Auto-valg: hvis nøyaktig ett produkt (i valgt bank + kundens segment) er eksplisitt
+    // knyttet til kundens lånetype, forhåndsvelges det. Ellers lar vi rådgiver velge selv.
+    private string AutoValgtProduktId()
+    {
+        var treff = ProdukterForValgtBank().Where(p => p.GjelderLaanetype(_k.Laanetype)).ToList();
+        return treff.Count == 1 ? treff[0].Id.ToString() : "";
+    }
+
+    private bool ErAutoValgt => !string.IsNullOrWhiteSpace(_valgtProduktId) && _valgtProduktId == AutoValgtProduktId();
 
     private async Task SendTilBank()
     {

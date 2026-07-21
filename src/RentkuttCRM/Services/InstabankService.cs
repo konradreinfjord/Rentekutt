@@ -25,6 +25,18 @@ public class InstabankService
     public const int ProduktBedriftslaan = 2001;
     public const int ProduktBedriftKreditt = 2000;
 
+    /// <summary>Instabank sine faste produkter — én kilde til sannhet for både seed,
+    /// selvhelbredende «ensure» og standard lånetype-kobling for auto-valg av produkt.</summary>
+    public record StandardProdukt(string Navn, int Kode, string Segment, string Laanetyper);
+    public static readonly StandardProdukt[] StandardProdukter =
+    {
+        new("Forbrukslån",     ProduktForbrukslaan,   "privat",  "Forbrukslån,Refinansiering"),
+        new("Kredittlinje",    ProduktKredittlinje,   "privat",  ""),
+        new("Kredittkort",     ProduktKredittkort,    "privat",  ""),
+        new("Bedriftslån",     ProduktBedriftslaan,   "bedrift", ""),
+        new("Bedriftskreditt", ProduktBedriftKreditt, "bedrift", ""),
+    };
+
     private const string ProdHost = "https://netbank.instabank.no";
     private const string TestHost = "https://netbankpp.instabank.no";
     private const string EnvKey = "instabank_env";        // "test" | "prod"
