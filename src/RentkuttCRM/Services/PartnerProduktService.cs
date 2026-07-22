@@ -98,17 +98,28 @@ public class PartnerProduktService
     }
 
     /// <summary>Oppdater kjernefeltene (navn, segment, kode) på et produkt.</summary>
-    public async Task UpdateAsync(PartnerProdukt p)
+    public async Task<(bool ok, string? error)> UpdateAsync(Guid id, string navn, string segment, int? kode)
     {
-        p.Navn = (p.Navn ?? "").Trim();
-        p.Segment = string.Equals(p.Segment, "bedrift", StringComparison.OrdinalIgnoreCase) ? "bedrift" : "privat";
-        if (!IsConfigured) return;   // staging holder allerede referansen
+        navn = (navn ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(navn)) return (false, "Produktnavn er påkrevd.");
+        segment = string.Equals(segment, "bedrift", StringComparison.OrdinalIgnoreCase) ? "bedrift" : "privat";
+        if (!IsConfigured)
+        {
+            var s = _staging.FirstOrDefault(x => x.Id == id);
+            if (s is not null) { s.Navn = navn; s.Segment = segment; s.Kode = kode; }
+            return (true, null);
+        }
         try
         {
             await EnsureInitAsync();
-            await _client.From<PartnerProdukt>().Update(p);
+            await _client.From<PartnerProdukt>().Where(x => x.Id == id)
+                .Set(x => x.Navn, navn)
+                .Set(x => x.Segment, segment)
+                .Set(x => x.Kode!, kode)
+                .Update();
+            return (true, null);
         }
-        catch (Exception ex) { _log.LogError(ex, "Oppdatering av produkt feilet"); }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av produkt feilet"); return (false, ex.Message); }
     }
 
     public async Task UpdateCompAsync(Guid id, string? provisjon, string? engangssum)

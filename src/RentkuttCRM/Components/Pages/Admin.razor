@@ -1707,13 +1707,17 @@ else if (_active == "GDPR")
     private async Task LagreEndretProdukt(PartnerProdukt p)
     {
         if (string.IsNullOrWhiteSpace(_epNavn)) { _prodMsg = "Produktnavn er påkrevd."; _prodOk = false; return; }
-        p.Navn = _epNavn.Trim();
-        p.Segment = _epSegment;
-        p.Kode = int.TryParse((_epKode ?? "").Trim(), out var kk) ? kk : null;
-        await Produkter.UpdateAsync(p);
+        int? kode = int.TryParse((_epKode ?? "").Trim(), out var kk) ? kk : null;
+        var (ok, feil) = await Produkter.UpdateAsync(p.Id, _epNavn, _epSegment, kode);
+        if (!ok)
+        {
+            _prodMsg = "Kunne ikke oppdatere produktet: " + (feil ?? "ukjent feil");
+            _prodOk = false;
+            return;
+        }
         _produkter = await Produkter.ListAsync();
         _editProduktId = null;
-        _prodMsg = $"Produkt «{p.Navn}» oppdatert ✓";
+        _prodMsg = $"Produkt «{_epNavn.Trim()}» oppdatert ✓";
         _prodOk = true;
     }
 
