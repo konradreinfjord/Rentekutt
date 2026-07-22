@@ -119,9 +119,26 @@ else if (_active == "Partnere")
                             @foreach (var p in prod)
                             {
                                 <tr>
-                                    <td>@p.Navn</td>
-                                    <td><span class="type-tag">@(p.ErBedrift ? "Bedrift" : "Privat")</span></td>
-                                    <td class="mono-cell">@(p.Kode?.ToString() ?? "—")</td>
+                                    <td>
+                                        @if (_editProduktId == p.Id)
+                                        { <input class="inline-input" style="width:130px" @bind="_epNavn" /> }
+                                        else
+                                        { @p.Navn }
+                                    </td>
+                                    <td>
+                                        @if (_editProduktId == p.Id)
+                                        {
+                                            <select class="inline-input" @bind="_epSegment"><option value="privat">Privat</option><option value="bedrift">Bedrift</option></select>
+                                        }
+                                        else
+                                        { <span class="type-tag">@(p.ErBedrift ? "Bedrift" : "Privat")</span> }
+                                    </td>
+                                    <td class="mono-cell">
+                                        @if (_editProduktId == p.Id)
+                                        { <input class="inline-input" style="width:60px" @bind="_epKode" placeholder="—" /> }
+                                        else
+                                        { @(p.Kode?.ToString() ?? "—") }
+                                    </td>
                                     <td><input class="inline-input" style="width:160px" value="@p.Laanetyper" @onchange="e => SaveProduktLaanetyper(p, e)" placeholder="alle (ingen auto)" title="Komma-separerte lånetyper produktet auto-velges for" /></td>
                                     <td @ondblclick="() => _prodCompUnlocked.Add(p.Id)">
                                         @if (_prodCompUnlocked.Contains(p.Id))
@@ -136,7 +153,18 @@ else if (_active == "Partnere")
                                         { <span class="locked-comp" title="Dobbeltklikk for å endre">🔒 @(string.IsNullOrWhiteSpace(p.Engangssum) ? "0" : p.Engangssum) kr</span> }
                                     </td>
                                     <td><button class="btn-sm @(p.Aktiv ? "" : "btn-danger")" @onclick="() => ToggleProduktAktiv(p)">@(p.Aktiv ? "På" : "Av")</button></td>
-                                    <td><button class="btn-sm btn-danger" @onclick="() => SlettProdukt(p)">Slett</button></td>
+                                    <td>
+                                        @if (_editProduktId == p.Id)
+                                        {
+                                            <button class="btn-sm btn-primary" @onclick="() => LagreEndretProdukt(p)">Lagre</button>
+                                            <button class="btn-sm" @onclick="() => _editProduktId = null">Avbryt</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn-sm" @onclick="() => StartEndreProdukt(p)">Endre</button>
+                                            <button class="btn-sm btn-danger" @onclick="() => SlettProdukt(p)">Slett</button>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -1661,6 +1689,32 @@ else if (_active == "GDPR")
     {
         await Produkter.DeleteAsync(p.Id);
         _produkter = await Produkter.ListAsync();
+    }
+
+    // ---- Endre kjernefelt på et produkt (navn, segment, kode) ----
+    private Guid? _editProduktId;
+    private string _epNavn = "", _epSegment = "privat", _epKode = "";
+
+    private void StartEndreProdukt(PartnerProdukt p)
+    {
+        _editProduktId = p.Id;
+        _epNavn = p.Navn;
+        _epSegment = p.Segment;
+        _epKode = p.Kode?.ToString() ?? "";
+        _prodMsg = null;
+    }
+
+    private async Task LagreEndretProdukt(PartnerProdukt p)
+    {
+        if (string.IsNullOrWhiteSpace(_epNavn)) { _prodMsg = "Produktnavn er påkrevd."; _prodOk = false; return; }
+        p.Navn = _epNavn.Trim();
+        p.Segment = _epSegment;
+        p.Kode = int.TryParse((_epKode ?? "").Trim(), out var kk) ? kk : null;
+        await Produkter.UpdateAsync(p);
+        _produkter = await Produkter.ListAsync();
+        _editProduktId = null;
+        _prodMsg = $"Produkt «{p.Navn}» oppdatert ✓";
+        _prodOk = true;
     }
 
     private async Task AddBank()

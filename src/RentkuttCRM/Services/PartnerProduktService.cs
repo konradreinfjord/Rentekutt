@@ -97,6 +97,20 @@ public class PartnerProduktService
         catch (Exception ex) { _log.LogError(ex, "Oppretting av produkt feilet"); return (null, ex.Message); }
     }
 
+    /// <summary>Oppdater kjernefeltene (navn, segment, kode) på et produkt.</summary>
+    public async Task UpdateAsync(PartnerProdukt p)
+    {
+        p.Navn = (p.Navn ?? "").Trim();
+        p.Segment = string.Equals(p.Segment, "bedrift", StringComparison.OrdinalIgnoreCase) ? "bedrift" : "privat";
+        if (!IsConfigured) return;   // staging holder allerede referansen
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<PartnerProdukt>().Update(p);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av produkt feilet"); }
+    }
+
     public async Task UpdateCompAsync(Guid id, string? provisjon, string? engangssum)
     {
         if (!IsConfigured)
