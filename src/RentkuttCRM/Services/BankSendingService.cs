@@ -119,6 +119,28 @@ public class BankSendingService
         catch (Exception ex) { _log.LogError(ex, "Henting av banksendinger for kunde feilet"); return new(); }
     }
 
+    /// <summary>Siste sending per kundekort (for status-kolonne i lister). Nyeste vinner.</summary>
+    public async Task<Dictionary<Guid, BankSending>> SisteePerKundekortAsync(int limit = 5000)
+    {
+        List<BankSending> models;
+        if (!IsConfigured) models = _staging.ToList();
+        else
+        {
+            try
+            {
+                await EnsureInitAsync();
+                models = (await _client.From<BankSending>()
+                    .Order(x => x.SendtAt, Constants.Ordering.Descending, Constants.NullPosition.Last)
+                    .Limit(limit).Get()).Models;
+            }
+            catch (Exception ex) { _log.LogError(ex, "Henting av sendinger per kundekort feilet"); return new(); }
+        }
+        return models
+            .Where(s => s.KundekortId is not null)
+            .GroupBy(s => s.KundekortId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SendtAt).First());
+    }
+
     public async Task<List<BankSending>> SisteAsync(int limit = 25)
     {
         if (!IsConfigured) return _staging.Take(limit).ToList();

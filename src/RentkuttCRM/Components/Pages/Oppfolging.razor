@@ -1,6 +1,10 @@
 @page "/crm/oppfolging"
+@using RentkuttCRM.Services
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.RutingsregelService Ruting
+@inject RentkuttCRM.Services.BankSendingService BankSending
 @inject NavigationManager Nav
 
 <PageTitle>Mine søknader — Rentekutt</PageTitle>
@@ -52,12 +56,13 @@
                 <tr>
                     <th>Status</th><th>Opprettet</th><th>Neste oppfølging</th>
                     <th>Navn</th>@if (VisEier) { <th>Rådgiver</th> }<th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th>
+                    <th>Forslag til bank</th><th>Sendt til bank</th>
                 </tr>
             </thead>
             <tbody>
                 @if (Vist.Count == 0)
                 {
-                    <tr><td colspan="@(VisEier ? 9 : 8)" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak i Personmarked eller Bedriftsmarked." : "Ingen saker på valgt rådgiver.")</td></tr>
+                    <tr><td colspan="@(VisEier ? 11 : 10)" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak i Personmarked eller Bedriftsmarked." : "Ingen saker på valgt rådgiver.")</td></tr>
                 }
                 @foreach (var k in Vist.OrderBy(SortNokkel))
                 {
@@ -73,6 +78,20 @@
                         <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
                         <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
                         <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+                        <td>
+                            @{ var forslag = ForslagBank(k); }
+                            @if (forslag.Count == 0) { <span class="muted">—</span> }
+                            else { <span>@string.Join(", ", forslag)</span> }
+                        </td>
+                        <td>
+                            @{ var sendt = SendtFor(k); }
+                            @if (sendt is null) { <span class="muted">—</span> }
+                            else
+                            {
+                                <span class="status @SendtStatusKlasse(sendt.Status)">@sendt.Status</span>
+                                <span> @sendt.Bank</span>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -116,8 +135,28 @@
         {
             _rows = await Svc.ListByEierAsync(MittEier);
         }
+
+        // For «Forslag til bank» (rutingsregler) og «Sendt til bank» (sendestatus).
+        _partnere = await Partners.ListAsync();
+        _regler = await Ruting.ListAsync();
+        _sendtPerKort = await BankSending.SisteePerKundekortAsync();
+
         _loading = false;
     }
+
+    private List<Partner> _partnere = new();
+    private List<Rutingsregel> _regler = new();
+    private Dictionary<Guid, BankSending> _sendtPerKort = new();
+
+    private List<string> ForslagBank(Kundekort k) => RutingEval.ForeslaBanker(_regler, k, _partnere);
+    private BankSending? SendtFor(Kundekort k) => _sendtPerKort.TryGetValue(k.Id, out var s) ? s : null;
+
+    private static string SendtStatusKlasse(string? status) => status switch
+    {
+        SendStatus.Feilet => "err",
+        SendStatus.IKo => "pending",
+        _ => "on",
+    };
 
     // Filtrer admin-visningen etter valgt rådgiver (kun admin bruker denne).
     private void ApplyFilter()
