@@ -13,6 +13,7 @@
 
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
 
+<div class="kk">
 <div class="kort-topp">
     @if (_isEdit)
     {
@@ -229,7 +230,7 @@
 </div>
 
 @* Send SMS til kunde *@
-<div class="form-card">
+<div class="form-card sms-card">
     <h2>Send SMS til kunde</h2>
     <p class="page-sub" style="margin:-4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
     <div class="form-grid">
@@ -476,6 +477,7 @@ else if (_isEdit)
         }
     </div>
 }
+</div>@* /kk *@
 
 @code {
     [SupplyParameterFromQuery] public string? Id { get; set; }

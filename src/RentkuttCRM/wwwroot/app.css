@@ -768,3 +768,63 @@ a { color: var(--accent); text-decoration: none; }
 .notat-forfatter { font-size: 11.5px; font-weight: 600; color: var(--green-dark); }
 .notat-tekst { font-size: 13px; color: var(--text); white-space: pre-wrap; }
 .notat-empty { font-size: 12.5px; color: var(--text-muted); padding: 8px 0; }
+
+/* ============================================================
+   Kundekort — minimalistisk redesign (scopet til .kk)
+   Flatere kort, mindre grått, nøytrale nøkkeltall, luftigere,
+   og logisk rekkefølge via flex-order (ingen markup flyttet).
+   ============================================================ */
+.kk { display: flex; flex-direction: column; max-width: 1080px; }
+
+/* Logisk rekkefølge: tittel → oversikt → (lås) → kundedata → lagre →
+   behov → beregning → bank/rente → send bank → notater → SMS */
+.kk > .kort-topp     { order: 0; }
+.kk > .kunde-header  { order: 1; }
+.kk > .las-bar       { order: 2; }
+.kk > .kort-felter   { order: 3; }
+.kk > .form-actions  { order: 4; margin: 4px 0 22px; }
+.kk > .summary-top   { order: 5; }
+.kk > .beregn-card   { order: 6; }
+.kk > .rente-quick   { order: 7; }
+.kk > .send-bank     { order: 8; }
+.kk > .note-card     { order: 9; }
+.kk > .sms-card      { order: 10; }
+
+/* Flate, luftige kort — ingen skygge, subtil kant, mer luft */
+.kk .form-card,
+.kk .kunde-header {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: none;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+}
+.kk .form-card h2,
+.kk .kunde-header h2,
+.kk .form-card > div > h2 {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); font-weight: 600; margin: 0 0 16px;
+}
+
+/* Oversikt øverst — rolig, god luft, ingen grønn stripe */
+.kk .kunde-header-top { margin-bottom: 14px; }
+.kk .kunde-facts { gap: 14px 40px; }
+
+/* Skjema — mer luft mellom felt */
+.kk .form-grid { gap: 14px 18px; }
+.kk .kort-felter .form-card { margin-bottom: 12px; }
+
+/* Nøkkeltall (beregning) — nøytrale, ingen fargeaksenter, ingen hover-effekt */
+.kk .db-stats { max-width: none; gap: 10px; margin: 4px 0 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.kk .db-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-top: 1px solid var(--border) !important;
+    box-shadow: none;
+    padding: 13px 15px;
+}
+.kk .db-box:hover { transform: none; box-shadow: none; border-color: var(--border); }
+.kk .db-box .db-box-num { color: var(--ink) !important; font-size: 20px; }
+@media (max-width: 760px) { .kk .db-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
