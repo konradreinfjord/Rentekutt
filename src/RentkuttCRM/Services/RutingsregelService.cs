@@ -125,6 +125,18 @@ public static class RutingEval
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    /// <summary>Innholdsbasert versjon (fingeravtrykk) av regelsettet — endres når en regel
+    /// legges til/endres/deaktiveres/slettes. Brukes til å dokumentere hvilken versjon av
+    /// logikk-matrisen som lå til grunn for en automatisk bankforslag-avgjørelse (art. 22/30).</summary>
+    public static string RegelsettVersjon(IEnumerable<Rutingsregel> regler)
+    {
+        var kanonisk = string.Join("|", regler
+            .OrderBy(r => r.Prioritet).ThenBy(r => r.Id)
+            .Select(r => $"{r.Prioritet};{r.FeltNokkel};{r.Operator};{r.Verdi};{r.Banker};{r.Produkter};{r.Aktiv}"));
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(kanonisk));
+        return Convert.ToHexString(hash)[..8].ToLowerInvariant();
+    }
+
     /// <summary>Banker foreslått for kunden: fra matchende aktive regler, der banken IKKE auto-sendes.</summary>
     public static List<string> ForeslaBanker(IEnumerable<Rutingsregel> regler, Kundekort k, IEnumerable<Partner> partnere)
     {

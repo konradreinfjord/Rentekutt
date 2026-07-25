@@ -48,6 +48,12 @@ public class SettingsService
     public async Task<int> GetIntAsync(string key, int fallback)
         => int.TryParse(await GetAsync(key), out var v) ? v : fallback;
 
+    public async Task<bool> GetBoolAsync(string key, bool fallback)
+    {
+        var s = await GetAsync(key);
+        return string.IsNullOrWhiteSpace(s) ? fallback : s.Trim().ToLowerInvariant() is "true" or "1" or "on" or "ja";
+    }
+
     public async Task<decimal> GetDecimalAsync(string key, decimal fallback)
     {
         var s = (await GetAsync(key))?.Replace(",", ".");

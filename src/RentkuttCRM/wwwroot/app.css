@@ -919,6 +919,7 @@ a { color: var(--accent); text-decoration: none; }
 .logg-item.logg-innsyn { border-left-color: #b0b0b0; }
 .logg-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 999px; }
 .logg-tag.innsyn { background: #eef2f6; color: #5b6b7b; }
+.logg-tag.avgjorelse { background: #eef6ee; color: #40663f; }
 .auto-lagret { font-size: 12px; font-weight: 600; margin-left: auto; }
 .auto-lagret.ok { color: var(--green-dark); }
 .auto-lagret.err { color: var(--danger, #b42318); }

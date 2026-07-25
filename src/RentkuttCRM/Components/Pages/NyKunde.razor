@@ -187,6 +187,7 @@
                     <div class="logg-meta">
                         <span class="logg-tid">@l.Opprettet.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
                         @if (l.Kategori == "innsyn") { <span class="logg-tag innsyn">Innsyn</span> }
+                        @if (l.Kategori == "avgjørelse") { <span class="logg-tag avgjorelse">Avgjørelse</span> }
                         @if (!string.IsNullOrWhiteSpace(l.Aktor)) { <span class="logg-aktor">@l.Aktor</span> }
                     </div>
                     <div class="logg-tekst">@l.Tekst</div>
@@ -388,6 +389,12 @@
         <div class="ff"><label>Nåværende bank</label><input @bind="_k.NavarendeBank" /></div>
         <div class="ff"><label>Nåværende rente (%)</label><input type="number" step="0.01" @bind="_k.NaavaerendeRente" /></div>
         <div class="ff"><label>Boligverdi (kr) — for belåningsgrad</label><input type="number" @bind="_k.Boligverdi" /></div>
+        <div class="ff">
+            <label>Behandlingsgrunnlag (GDPR)</label>
+            <select @bind="_k.Behandlingsgrunnlag">
+                @foreach (var g in KundekortService.Behandlingsgrunnlag) { <option value="@g">@g</option> }
+            </select>
+        </div>
     </div>
 </div>
 
@@ -850,6 +857,15 @@
         }
         _sendinger.Insert(0, lagret);
         await Logg.LoggAsync(_k.Id, avsender, $"Sendt til sendekø: {_valgtBank}{(valgtProdukt is null ? "" : $" · {valgtProdukt.Navn}")}");
+
+        // Avgjørelseslogg (art. 22/30): dokumenter hvilken versjon av logikk-matrisen som var
+        // gjeldende og hva den foreslo, sett opp mot bankvalget mennesket faktisk gjorde.
+        var forslag = RutingEval.ForeslaBanker(_regler, _k, _banker);
+        var matriseVersjon = RutingEval.RegelsettVersjon(_regler);
+        await Logg.LoggAsync(_k.Id, avsender,
+            $"Bankvalg: {_valgtBank}. Logikk-matrisen (v{matriseVersjon}) foreslo: {(forslag.Count == 0 ? "ingen" : string.Join(", ", forslag))}.",
+            kategori: "avgjørelse",
+            begrunnelse: forslag.Contains(_valgtBank) ? "I tråd med matriseforslag" : "Manuelt valg utenom matriseforslag");
 
         // Speil valget i «Delegert til bank» på kundekortet.
         if (string.IsNullOrWhiteSpace(_k.DelegertBank))

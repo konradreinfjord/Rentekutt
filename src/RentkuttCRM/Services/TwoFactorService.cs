@@ -16,6 +16,12 @@ public class TwoFactorService
     public const int DefaultMaxPerHour = 3;
     public const int DefaultMaxPer24h = 5;
 
+    /// <summary>Global innstilling: krev 2FA for ALLE ansattkontoer (uavhengig av per-bruker-flagget).</summary>
+    public const string KeyRequireAll = "require_2fa_all";
+
+    /// <summary>Er SMS-leveringskanalen (LinkMobility) i det hele tatt konfigurert?</summary>
+    public bool SmsKonfigurert => _sms.ErKonfigurert;
+
     private static readonly TimeSpan Levetid = TimeSpan.FromMinutes(5);
 
     private readonly LinkMobilityService _sms;

@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.TwoFactorService TwoFactor
+@inject RentkuttCRM.Services.SettingsService Settings
 @inject NavigationManager Nav
 @inject ILogger<Login> Logger
 @inject ProtectedLocalStorage LocalStorage
@@ -35,6 +36,26 @@
                 </button>
             </EditForm>
         }
+        else if (_step == 3)
+        {
+            <div>
+                <p class="page-sub" style="margin:0 0 14px">
+                    Tofaktor-autentisering er påkrevd. Registrer mobilnummeret ditt for å motta engangskoder på SMS.
+                </p>
+                <div class="form-field">
+                    <label>Mobilnummer</label>
+                    <input @bind="_mobil" placeholder="+47 …" autocomplete="tel" inputmode="tel" />
+                </div>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="login-error">@_error</div>
+                }
+                <button class="btn-primary full" @onclick="RegistrerMobil" disabled="@_busy">
+                    @(_busy ? "Sender kode…" : "Registrer og send kode")
+                </button>
+                <p class="login-note"><a href="/login" @onclick:preventDefault @onclick="Reset">Start på nytt</a></p>
+            </div>
+        }
         else
         {
             <div>
@@ -64,8 +85,11 @@
 @code {
     private readonly LoginModel model = new();
     private string _code = "";
+    private string _mobil = "";
     private int _step = 1;
     private UserRow? _pending;
+    // Brukeren må aktivere 2FA nå (global påkrevd, men ennå ikke satt opp) — settes true i selvbetjent oppsett.
+    private bool _maaAktivere2fa;
     private string? _error;
     private bool _busy;
 
@@ -89,19 +113,37 @@
             }
 
             var user = result.User;
-            // 2FA er fail-closed: er den PÅ men vi ikke kan levere kode (mangler mobil / SMS
-            // ikke konfigurert), nekter vi innlogging i stedet for å slippe forbi uten andrefaktor.
-            if (user.TwoFactorEnabled)
+
+            // Krever kontoen 2FA? Enten globalt påkrevd (alle ansatte) eller per-bruker-flagget.
+            // I staging (uten Supabase/SMS) hoppes 2FA over slik at man kommer inn.
+            var globaltPaakrevd = await Settings.GetBoolAsync(TwoFactorService.KeyRequireAll, true);
+            var kreverTofaktor = Users.IsConfigured && (globaltPaakrevd || user.TwoFactorEnabled);
+
+            if (kreverTofaktor)
             {
-                if (!TwoFactor.KanSende(user))
+                // Fail-closed: uten SMS-kanal (LinkMobility) kan vi ikke levere andrefaktor.
+                if (!TwoFactor.SmsKonfigurert)
                 {
-                    _error = "Tofaktor er påkrevd for kontoen din, men ingen leveringskanal (mobilnummer/SMS) er satt opp. Kontakt administrator.";
+                    _error = "Tofaktor er påkrevd, men SMS-tjenesten er ikke konfigurert. Kontakt administrator.";
                     _busy = false;
                     return;
                 }
+
+                _pending = user;
+
+                // Selvbetjent oppsett: mangler brukeren mobilnummer, la hen registrere det nå
+                // (i stedet for å bli utestengt).
+                if (string.IsNullOrWhiteSpace(user.Mobilnummer))
+                {
+                    _maaAktivere2fa = true;
+                    _step = 3;
+                    _busy = false;
+                    return;
+                }
+
                 var (sent, error) = await TwoFactor.SendKodeAsync(user);
                 if (!sent) { _error = error; _busy = false; return; }
-                _pending = user;
+                _maaAktivere2fa = globaltPaakrevd && !user.TwoFactorEnabled;
                 _step = 2;
                 _busy = false;
                 return;
@@ -117,6 +159,38 @@
         }
     }
 
+    // Selvbetjent 2FA-oppsett: lagre mobilnummer og send første engangskode.
+    private async Task RegistrerMobil()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (_pending is null) { Reset(); return; }
+            var mobil = (_mobil ?? "").Trim();
+            if (new string(mobil.Where(char.IsDigit).ToArray()).Length < 8)
+            {
+                _error = "Skriv inn et gyldig mobilnummer.";
+                _busy = false;
+                return;
+            }
+
+            await Users.SetMobilAsync(_pending.Id, mobil);
+            _pending = _pending with { Mobilnummer = mobil };
+
+            var (sent, error) = await TwoFactor.SendKodeAsync(_pending);
+            if (!sent) { _error = error; _busy = false; return; }
+            _step = 2;
+            _busy = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Registrering av mobil (2FA-oppsett) feilet");
+            _error = "Teknisk feil. Prøv igjen senere.";
+            _busy = false;
+        }
+    }
+
     private async Task HandleVerify()
     {
         _busy = true;
@@ -125,6 +199,12 @@
         {
             if (_pending is not null && TwoFactor.Verifiser(_pending.Email, _code))
             {
+                // Marker 2FA som aktivert på kontoen når brukeren nettopp satte det opp.
+                if (_maaAktivere2fa && !_pending.TwoFactorEnabled)
+                {
+                    try { await Users.SetTwoFactorAsync(_pending.Id, true); }
+                    catch (Exception ex) { Logger.LogWarning(ex, "Kunne ikke sette 2FA=på (fortsetter)"); }
+                }
                 await FullforInnlogging(_pending);
                 return;
             }
@@ -153,6 +233,8 @@
         _step = 1;
         _pending = null;
         _code = "";
+        _mobil = "";
+        _maaAktivere2fa = false;
         _error = null;
     }
 

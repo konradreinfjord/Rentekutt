@@ -1,0 +1,41 @@
+name: Sikkerhetsskanning av avhengigheter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Ukentlig (mandag 06:00 UTC) — fanger opp nye CVE-er i eksisterende pakker.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  vulnerable-packages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: Restore
+        run: dotnet restore src/RentkuttCRM/RentkuttCRM.csproj
+
+      - name: Scan for vulnerable packages
+        run: |
+          echo "Skanner etter sårbare NuGet-pakker (inkl. transitive)..."
+          dotnet list src/RentkuttCRM/RentkuttCRM.csproj package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          if grep -q "has the following vulnerable" vuln.txt; then
+            echo "::error::Sårbare avhengigheter funnet — se loggen over."
+            exit 1
+          fi
+          echo "✓ Ingen sårbare avhengigheter funnet."
+
+      - name: Report deprecated packages (uten å feile)
+        if: always()
+        run: dotnet list src/RentkuttCRM/RentkuttCRM.csproj package --deprecated 2>&1 || true

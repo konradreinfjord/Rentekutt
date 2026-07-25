@@ -21,6 +21,11 @@ public class KundekortService
         _ => ("apen", "Åpen", false),
     };
 
+    /// <summary>Rettslig grunnlag (GDPR art. 6). «Samtykke» er standard for innkommende leads.</summary>
+    public static readonly string[] Behandlingsgrunnlag =
+        { "Samtykke", "Avtale", "Rettslig forpliktelse", "Berettiget interesse" };
+    public const string BehandlingsgrunnlagStandard = "Samtykke";
+
     public static readonly string[] Laanetyper = { "Forbrukslån", "Refinansiering", "Boliglån" };
     public static readonly string[] Sivilstatuser = { "Singel", "Samboer", "Gift", "Skilt", "Separert", "Enke(mann)" };
     public static readonly string[] Boforhold = { "Selveier/enebolig", "Andel/borettslag", "Leier", "Hos foreldre" };
@@ -124,6 +129,7 @@ public class KundekortService
         C("boliggjeld", kr(a.Boliggjeld), kr(b.Boliggjeld));
         C("forbruksgjeld", kr(a.Forbruksgjeld), kr(b.Forbruksgjeld));
         C("delegert bank", t(a.DelegertBank), t(b.DelegertBank));
+        C("behandlingsgrunnlag", t(a.Behandlingsgrunnlag), t(b.Behandlingsgrunnlag));
         return d;
     }
 
@@ -142,6 +148,7 @@ public class KundekortService
     {
         k.KundeId = (k.KundeId ?? "").Trim();
         BerikGeografi(k);   // fyll kommune/poststed/fylke fra postnummer når de mangler
+        if (string.IsNullOrWhiteSpace(k.Behandlingsgrunnlag)) k.Behandlingsgrunnlag = BehandlingsgrunnlagStandard;
 
         if (strict)
         {

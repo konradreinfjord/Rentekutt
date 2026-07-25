@@ -115,6 +115,9 @@ public class Kundekort : BaseModel
 
     [Column("notater")] public string? Notater { get; set; }
     [Column("kilde")] public string? Kilde { get; set; }
+
+    /// <summary>Rettslig grunnlag for behandlingen (GDPR art. 6) — f.eks. «Samtykke» eller «Avtale».</summary>
+    [Column("behandlingsgrunnlag")] public string? Behandlingsgrunnlag { get; set; }
     [Column("delegert_bank")] public string? DelegertBank { get; set; }
 
     [Column("status")] public string Status { get; set; } = "Åpen";
