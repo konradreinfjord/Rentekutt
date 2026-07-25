@@ -918,3 +918,30 @@ a { color: var(--accent); text-decoration: none; }
 .auto-lagret { font-size: 12px; font-weight: 600; margin-left: auto; }
 .auto-lagret.ok { color: var(--green-dark); }
 .auto-lagret.err { color: var(--danger, #b42318); }
+
+/* ---- Interne faner på kundekort ---- */
+.kk-tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.kk-tabs button {
+    background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    padding: 9px 16px; font-size: 13.5px; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; font-family: inherit;
+}
+.kk-tabs button:hover { color: var(--text); }
+.kk-tabs button.active { color: var(--green-dark); border-bottom-color: var(--green); }
+
+/* ---- Prosessflyt (Oversikt-fanen) ---- */
+.flyt { display: flex; align-items: flex-start; flex-wrap: wrap; padding: 6px 0 2px; }
+.flyt-steg { display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; min-width: 64px; }
+.flyt-dot {
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 13px; font-weight: 700; background: var(--surface-2); color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+}
+.flyt-steg.gjort .flyt-dot { background: var(--green); color: #fff; border-color: var(--green); }
+.flyt-steg.aktiv .flyt-dot { box-shadow: 0 0 0 4px var(--green-soft); }
+.flyt-lbl { font-size: 11px; color: var(--text-2); font-weight: 500; line-height: 1.25; }
+.flyt-steg.aktiv .flyt-lbl { color: var(--green-dark); font-weight: 700; }
+.flyt-strek { flex: 1 1 18px; height: 2px; min-width: 18px; background: var(--border-strong); margin-top: 15px; }
+.flyt-strek.gjort { background: var(--green); }
+.flyt.flyt-terminal { opacity: .55; }
+.flyt-terminal-tekst { margin: 14px 0 0; font-size: 13px; color: var(--danger, #b42318); font-weight: 600; }

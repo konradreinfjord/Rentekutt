@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.NotatService Notater
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.PartnerProduktService Produkter
 @inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BankSendingService BankSending
@@ -219,12 +220,86 @@
 
 <div class="kk-main">
 
-@* Beregningsmodell (hovedområdet) *@
 @{
     var (ber, linjer) = BeregningService.Detaljert(_k, _berParams);
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
+    var forslagBanker = RutingEval.ForeslaBanker(_regler, _k, _banker);
+    var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
+    var terminalStatus = _k.Status is "Avslått" or "Feilet i sending";
 }
+
+<div class="kk-tabs">
+    <button class="@(_fane == "oversikt" ? "active" : "")" @onclick='() => _fane = "oversikt"'>Oversikt</button>
+    <button class="@(_fane == "detaljer" ? "active" : "")" @onclick='() => _fane = "detaljer"'>Søknadsdetaljer</button>
+    <button class="@(_fane == "beregning" ? "active" : "")" @onclick='() => _fane = "beregning"'>Beregninger</button>
+</div>
+
+@if (_fane == "oversikt")
+{
+    <div class="form-card">
+        <h2>Hvor er søknaden i prosessen</h2>
+        <div class="flyt @(terminalStatus ? "flyt-terminal" : "")">
+            @for (var i = 0; i < FlytSteg.Length; i++)
+            {
+                var gjort = flytIdx >= 0 && i <= flytIdx;
+                var aktiv = i == flytIdx;
+                <div class="flyt-steg @(gjort ? "gjort" : "") @(aktiv ? "aktiv" : "")">
+                    <span class="flyt-dot">@(gjort && !aktiv ? "✓" : (i + 1).ToString())</span>
+                    <span class="flyt-lbl">@FlytSteg[i]</span>
+                </div>
+                @if (i < FlytSteg.Length - 1)
+                {
+                    <span class="flyt-strek @(gjort && i < flytIdx ? "gjort" : "")"></span>
+                }
+            }
+        </div>
+        @if (terminalStatus)
+        {
+            <p class="flyt-terminal-tekst">Søknaden er avsluttet med status <strong>@_k.Status</strong>.</p>
+        }
+    </div>
+
+    <div class="form-card">
+        <h2>Bankmatch (fra logikk-matrisen)</h2>
+        @if (forslagBanker.Count == 0)
+        {
+            <p class="notat-empty">Ingen banker matcher reglene for denne søknaden ennå.</p>
+        }
+        else
+        {
+            <div class="bank-chips">
+                @foreach (var b in forslagBanker) { <span class="route-bank">@b</span> }
+            </div>
+        }
+    </div>
+
+    <div class="form-card">
+        <h2>Sendt til bank</h2>
+        @if (_sendinger.Count == 0)
+        {
+            <p class="notat-empty">Ikke sendt til noen bank ennå.</p>
+        }
+        else
+        {
+            <div class="logg-liste">
+                @foreach (var s in _sendinger)
+                {
+                    <div class="logg-item">
+                        <div class="logg-meta">
+                            <span class="logg-tid">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
+                            <span class="status @SendtKlasse(s.Status)">@s.Status</span>
+                        </div>
+                        <div class="logg-tekst">@s.Bank@(string.IsNullOrWhiteSpace(s.Produkt) ? "" : $" · {s.Produkt}")@(string.IsNullOrWhiteSpace(s.Detalj) ? "" : $" — {s.Detalj}")</div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (_fane == "beregning")
+{
 <div class="form-card beregn-card">
     <div style="display:flex; justify-content:space-between; align-items:center">
         <h2 style="margin:0">Beregningsmodell</h2>
@@ -276,7 +351,10 @@
         </div>
     }
 </div>
+}@* /fane beregning *@
 
+@if (_fane == "detaljer")
+{
 @if (_isEdit && !KanEndre)
 {
     <div class="las-bar laast">
@@ -482,6 +560,7 @@
         }
     </div>
 }
+}@* /fane detaljer *@
 </div>@* /kk-main *@
 </div>@* /kk-grid *@
 </div>@* /kk *@
@@ -639,6 +718,7 @@
         _smsMaler = smsTask.Result;
         _banker = bankerTask.Result;
         _produkter = produktTask.Result;
+        _regler = await Ruting.ListAsync();
 
         if (kortTask.Result is { } existing)
         {
@@ -670,6 +750,11 @@
         StateHasChanged();
         if (ok) { await Task.Delay(1600); _autoMsg = null; StateHasChanged(); }
     }
+
+    // ---- Interne faner ----
+    private string _fane = "oversikt";
+    private List<Rutingsregel> _regler = new();
+    private static readonly string[] FlytSteg = { "Åpen", "Pågår", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt" };
 
     // ---- Send til bank ----
     private List<Partner> _banker = new();
