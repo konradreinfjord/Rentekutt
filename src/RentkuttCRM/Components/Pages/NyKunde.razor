@@ -97,15 +97,17 @@
         <div class="sendt-logg">
             <h3 class="ww-h" style="margin:14px 0 8px">Sendt til bank</h3>
             <table class="data-table">
-                <thead><tr><th>Tidspunkt</th><th>Bank</th><th>Produkt</th><th>Status</th><th>Referanse</th><th></th></tr></thead>
+                <thead><tr><th>Tidspunkt</th><th>Bank</th><th>Produkt</th><th>Status</th><th>Årsak / detalj</th><th>Referanse</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var s in _sendinger)
                     {
+                        var feilet = s.Status == SendStatus.Feilet;
                         <tr>
                             <td class="mono-cell">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
                             <td>@s.Bank</td>
                             <td>@(string.IsNullOrWhiteSpace(s.Produkt) ? "—" : s.Produkt)</td>
                             <td><span class="status @SendtKlasse(s.Status)">@s.Status</span>@(string.IsNullOrWhiteSpace(s.SendtAv) ? "" : $" · {s.SendtAv}")</td>
+                            <td style="@(feilet ? "color:var(--danger, #b42318); font-weight:600" : "")">@(string.IsNullOrWhiteSpace(s.Detalj) ? "—" : s.Detalj)</td>
                             <td class="mono-cell">@(string.IsNullOrWhiteSpace(s.EksternRef) ? "—" : s.EksternRef)</td>
                             <td>@if (!string.IsNullOrWhiteSpace(s.SigningUrl)) { <a href="@s.SigningUrl" target="_blank" rel="noopener" class="btn-sm">Signeringslenke</a> }</td>
                         </tr>
