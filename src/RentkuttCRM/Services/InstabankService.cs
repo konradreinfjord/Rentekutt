@@ -207,6 +207,11 @@ public class InstabankService
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende — mangler: " + string.Join(", ", mangler));
 
+        // Valider fødselsnummeret lokalt (modulus-11) før vi kaller Instabank — unngår
+        // 500-feil «Invalid socialSecurityNumber» og beskytter bank-API-et mot ugyldige data.
+        if (!ErGyldigFnr(ssn))
+            return new(false, null, null, null, "Ugyldig fødselsnummer — ikke et gyldig norsk fødselsnummer (11 siffer, feil kontrollsiffer). Prismatch-leads mangler fnr; fyll inn et gyldig fødselsnummer på kundekortet før sending.");
+
         // Applicant — kun felt med reell verdi (utelat null/0/false).
         var applicant = new Dictionary<string, object?>
         {
@@ -320,6 +325,24 @@ public class InstabankService
     private static string? FoerstGyldigFnr(params string?[] kandidater) =>
         kandidater.Select(x => new string((x ?? "").Where(char.IsDigit).ToArray()))
                   .FirstOrDefault(x => x.Length == 11);
+
+    // Modulus-11-validering av norsk fødselsnummer (håndterer også D-nummer, der
+    // første siffer er +4). Sjekker begge kontrollsifrene — samme regler som bankene.
+    private static bool ErGyldigFnr(string? fnr)
+    {
+        var s = new string((fnr ?? "").Where(char.IsDigit).ToArray());
+        if (s.Length != 11) return false;
+        var d = s.Select(c => c - '0').ToArray();
+        int[] v1 = { 3, 7, 6, 1, 8, 9, 4, 5, 2 };
+        int[] v2 = { 5, 4, 3, 2, 7, 6, 5, 4, 3, 2 };
+        var sum1 = 0; for (var i = 0; i < 9; i++) sum1 += v1[i] * d[i];
+        var k1 = 11 - (sum1 % 11); if (k1 == 11) k1 = 0;
+        if (k1 == 10 || k1 != d[9]) return false;
+        var sum2 = 0; for (var i = 0; i < 10; i++) sum2 += v2[i] * d[i];
+        var k2 = 11 - (sum2 % 11); if (k2 == 11) k2 = 0;
+        if (k2 == 10 || k2 != d[10]) return false;
+        return true;
+    }
 
     // MaritalStatus: 1 Married, 2 Cohabiting, 3 Divorced, 4 Single.
     private static int? MapSivilstatus(string? s) => (s ?? "").ToLowerInvariant() switch
