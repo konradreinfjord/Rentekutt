@@ -13,12 +13,30 @@ namespace RentkuttCRM.Services;
 /// Trenger en Postgres-connection string (ConnectionStrings:Postgres). Er den ikke
 /// satt, hoppes migrering over (appen kjører videre i staging-modus).
 /// </summary>
+/// <summary>Diagnostikk fra siste migrator-kjøring — vises i Admin så vi ser om
+/// migrasjonene faktisk når prod (uten å måtte lese Azure-logger).</summary>
+public class MigrasjonStatus
+{
+    public bool Konfigurert { get; set; }
+    public bool Kjort { get; set; }
+    public int AnvendtTotalt { get; set; }
+    public List<string> AnvendtNaa { get; } = new();
+    public List<string> Utestaende { get; } = new();
+    public List<string> Feilet { get; } = new();
+    public bool SkjemaReloadOk { get; set; }
+    public string? SisteFeil { get; set; }
+    public DateTime? KjortAt { get; set; }
+}
+
 public class DatabaseMigrator
 {
     private readonly string? _connectionString;
     private readonly ILogger<DatabaseMigrator> _log;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
+
+    /// <summary>Status fra siste kjøring (til Admin-diagnostikk).</summary>
+    public MigrasjonStatus Status { get; private set; } = new();
 
     public DatabaseMigrator(IConfiguration cfg, ILogger<DatabaseMigrator> log)
     {
@@ -29,9 +47,13 @@ public class DatabaseMigrator
 
     public async Task MigrateAsync()
     {
+        var status = new MigrasjonStatus { Konfigurert = IsConfigured, KjortAt = DateTime.UtcNow };
+        Status = status;
+
         if (!IsConfigured)
         {
-            _log.LogInformation("Ingen Postgres-connection string — hopper over migrering (staging-modus).");
+            _log.LogWarning("Ingen Postgres-connection string (ConnectionStrings:Postgres) — migrering hoppes over. Nye tabeller/kolonner når ikke prod automatisk.");
+            status.SisteFeil = "ConnectionStrings:Postgres er ikke satt — migrering kjøres ikke.";
             return;
         }
 
@@ -39,15 +61,15 @@ public class DatabaseMigrator
         {
             await using var conn = new NpgsqlConnection(_connectionString);
             // Kort timeout så oppstart ikke henger om DB er uroutbar (f.eks. IPv6).
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            await conn.OpenAsync(cts.Token);
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                await conn.OpenAsync(cts.Token);
 
             await EnsureMigrationsTableAsync(conn);
             var applied = await GetAppliedAsync(conn);
 
             foreach (var (name, sql) in GetEmbeddedMigrations())
             {
-                if (applied.Contains(name)) continue;
+                if (applied.Contains(name)) { status.AnvendtTotalt++; continue; }
 
                 _log.LogInformation("Kjører migrasjon {Name}", name);
                 await using var tx = await conn.BeginTransactionAsync();
@@ -64,30 +86,46 @@ public class DatabaseMigrator
                     }
 
                     await tx.CommitAsync();
+                    status.AnvendtNaa.Add(name);
+                    status.AnvendtTotalt++;
                     _log.LogInformation("Migrasjon {Name} fullført", name);
                 }
-                catch
+                catch (Exception mx)
                 {
+                    // VIKTIG: ikke stopp hele køen om én migrasjon feiler — logg, marker
+                    // som utestående, og fortsett til neste. En enkelt feil skal ikke
+                    // blokkere alle senere migrasjoner (det var den gamle bugen).
                     await tx.RollbackAsync();
-                    throw;
+                    status.Feilet.Add($"{name}: {mx.Message}");
+                    status.SisteFeil = $"{name}: {mx.Message}";
+                    _log.LogError(mx, "Migrasjon {Name} feilet — fortsetter til neste", name);
                 }
             }
+
+            // Utestående = migrasjoner som fortsatt ikke er registrert (feilet eller nye).
+            var appliedEtter = await GetAppliedAsync(conn);
+            foreach (var (name, _) in GetEmbeddedMigrations())
+                if (!appliedEtter.Contains(name)) status.Utestaende.Add(name);
 
             // Be PostgREST laste skjema-cachen på nytt. Tabeller/kolonner lagt til via
             // denne direkte DB-tilkoblingen er ellers ikke synlige for REST-laget som
             // Supabase-klienten bruker (PGRST205/PGRST204), og insert feiler stille.
-            // Kjøres hver oppstart (idempotent) — mer robust enn en engangs-migrasjon.
+            // Kjøres hver oppstart (idempotent) — selv om noen migrasjoner feilet.
             try
             {
                 await using var reload = new NpgsqlCommand("notify pgrst, 'reload schema';", conn);
                 await reload.ExecuteNonQueryAsync();
+                status.SkjemaReloadOk = true;
                 _log.LogInformation("Ba PostgREST laste skjema-cachen på nytt");
             }
             catch (Exception ex) { _log.LogWarning(ex, "Klarte ikke be PostgREST laste skjema på nytt"); }
+
+            status.Kjort = true;
         }
         catch (Exception ex)
         {
             // Ikke krasj appen — logg tydelig. Innlogging vil da feile til DB er på plass.
+            status.SisteFeil = ex.Message;
             _log.LogError(ex, "Databasemigrering feilet");
         }
     }

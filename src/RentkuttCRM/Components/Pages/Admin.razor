@@ -13,6 +13,7 @@
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.BeregningService Beregning
+@inject RentkuttCRM.Services.DatabaseMigrator Migrator
 @inject NavigationManager Nav
 
 <PageTitle>Admin — Rentekutt</PageTitle>
@@ -413,6 +414,47 @@ ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
             <p class="page-sub" style="margin:12px 0 0; font-size:12px">
                 🔒 Nøkler leses kun fra server-config (Azure), aldri fra klienten. Migrasjoner kjøres automatisk ved oppstart.
             </p>
+        </div>
+
+        var ms = Migrator.Status;
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Databasemigrasjoner</h2>
+                <span class="status @(ms.Konfigurert && ms.Utestaende.Count == 0 && ms.Feilet.Count == 0 ? "on" : "off")">
+                    @(!ms.Konfigurert ? "Ikke konfigurert" : ms.Feilet.Count > 0 ? "Feil" : ms.Utestaende.Count > 0 ? "Utestående" : "À jour")
+                </span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 12px">Viser om migrasjonene faktisk når prod. Oppdateres ved hver oppstart (siste: @(ms.KjortAt?.TilOslo().ToString("dd.MM.yyyy HH:mm") ?? "—")).</p>
+            @if (!ms.Konfigurert)
+            {
+                <p class="page-sub" style="color:var(--danger, #b42318); font-weight:600">
+                    ⚠ <code>ConnectionStrings__Postgres</code> er ikke satt i Azure — migrasjoner kjøres ikke, og nye tabeller/kolonner må legges inn manuelt.
+                    Sett den i Azure App Settings (se konfig over) og restart appen.
+                </p>
+            }
+            else
+            {
+                <ul class="bullet-list">
+                    <li>Anvendt totalt: <strong>@ms.AnvendtTotalt</strong>@(ms.AnvendtNaa.Count > 0 ? $" (nye denne oppstarten: {string.Join(", ", ms.AnvendtNaa)})" : "")</li>
+                    <li>Skjema-reload (PostgREST): <strong>@(ms.SkjemaReloadOk ? "OK ✓" : "ikke bekreftet")</strong></li>
+                    @if (ms.Utestaende.Count > 0)
+                    {
+                        <li style="color:var(--danger, #b42318)">Utestående: <strong>@string.Join(", ", ms.Utestaende)</strong></li>
+                    }
+                    @if (ms.Feilet.Count > 0)
+                    {
+                        <li style="color:var(--danger, #b42318)">Feilet: @string.Join(" · ", ms.Feilet)</li>
+                    }
+                    @if (ms.Utestaende.Count == 0 && ms.Feilet.Count == 0)
+                    {
+                        <li style="color:var(--green-dark)">Alle migrasjoner er à jour ✓</li>
+                    }
+                </ul>
+            }
+            @if (!string.IsNullOrEmpty(ms.SisteFeil))
+            {
+                <p class="page-sub" style="font-size:12px; color:var(--danger, #b42318)">Siste feil: @ms.SisteFeil</p>
+            }
         </div>
 
         <div class="section">

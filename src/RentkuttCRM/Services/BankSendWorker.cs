@@ -13,6 +13,17 @@ public class BankSendWorker : BackgroundService
     private static readonly TimeSpan Idle = TimeSpan.FromSeconds(15);
     private const int MaxForsok = 4;
 
+    // Sikkerhetsbryter (circuit breaker): stopper sending når banken gjentatte ganger
+    // svarer med forbigående feil (nett/timeout/429/5xx) — så vi ikke hamrer løs på et
+    // API som allerede sliter. Åpnes etter N sammenhengende forbigående feil, og holder
+    // en pause før nye forsøk. Lukkes ved første vellykkede sending.
+    private const int BryterTerskel = 5;
+    private static readonly TimeSpan BryterPause = TimeSpan.FromMinutes(5);
+    private int _sammenhengendeFeil;
+    private DateTime _pauseTil = DateTime.MinValue;
+
+    private enum Utfall { IngenApiKall, Ok, Forbigaaende, Varig }
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BankSendWorker> _log;
 
@@ -29,7 +40,14 @@ public class BankSendWorker : BackgroundService
 
         while (!ct.IsCancellationRequested)
         {
-            var apiKall = false;
+            // Sikkerhetsbryter åpen ⇒ ikke rør API-et før pausen er over.
+            if (DateTime.UtcNow < _pauseTil)
+            {
+                try { await Task.Delay(Idle, ct); } catch { break; }
+                continue;
+            }
+
+            var utfall = Utfall.IngenApiKall;
             try
             {
                 using var scope = _scopeFactory.CreateScope();
@@ -39,18 +57,43 @@ public class BankSendWorker : BackgroundService
                 {
                     var kunder = scope.ServiceProvider.GetRequiredService<KundekortService>();
                     var instabank = scope.ServiceProvider.GetRequiredService<InstabankService>();
-                    apiKall = await BehandleAsync(neste, ko, kunder, instabank);
+                    utfall = await BehandleAsync(neste, ko, kunder, instabank);
                 }
             }
             catch (Exception ex) { _log.LogError(ex, "Sendekø-syklus feilet"); }
 
-            try { await Task.Delay(apiKall ? Throttle : Idle, ct); }
+            OppdaterBryter(utfall);
+
+            var gjordeKall = utfall != Utfall.IngenApiKall;
+            try { await Task.Delay(gjordeKall ? Throttle : Idle, ct); }
             catch { break; }
         }
     }
 
-    /// <returns>True hvis det ble gjort et API-kall (⇒ throttle før neste).</returns>
-    private async Task<bool> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank)
+    // Sikkerhetsbryter: tell sammenhengende forbigående feil; åpne pausen ved terskel.
+    private void OppdaterBryter(Utfall utfall)
+    {
+        switch (utfall)
+        {
+            case Utfall.Ok:
+                if (_sammenhengendeFeil > 0) _log.LogInformation("Bank-sending OK igjen — nullstiller sikkerhetsbryter");
+                _sammenhengendeFeil = 0;
+                break;
+            case Utfall.Forbigaaende:
+                _sammenhengendeFeil++;
+                if (_sammenhengendeFeil >= BryterTerskel)
+                {
+                    _pauseTil = DateTime.UtcNow + BryterPause;
+                    _sammenhengendeFeil = 0;
+                    _log.LogWarning("Sikkerhetsbryter utløst: {N}+ sammenhengende forbigående feil mot bank — pauser sending i {Min} min",
+                        BryterTerskel, BryterPause.TotalMinutes);
+                }
+                break;
+            // Varig/IngenApiKall påvirker ikke bryteren (vår-side/config-feil, ikke at banken er nede).
+        }
+    }
+
+    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank)
     {
         // Banker uten hardkodet API-sending registreres som manuelt videresendt (ingen API-kall).
         if (!InstabankService.ErInstabankNavn(s.Bank))
@@ -58,42 +101,47 @@ public class BankSendWorker : BackgroundService
             s.Status = SendStatus.Manuelt;
             s.Detalj = "Videresendt manuelt til banken.";
             await ko.OppdaterAsync(s);
-            return false;
+            return Utfall.IngenApiKall;
         }
 
         if (s.KundekortId is not { } id)
         {
             s.Status = SendStatus.Feilet; s.Detalj = "Mangler kundekort.";
-            await ko.OppdaterAsync(s); return false;
+            await ko.OppdaterAsync(s); return Utfall.IngenApiKall;
         }
         var k = await kunder.GetAsync(id);
         if (k is null)
         {
             s.Status = SendStatus.Feilet; s.Detalj = "Fant ikke kundekortet.";
-            await ko.OppdaterAsync(s); return false;
+            await ko.OppdaterAsync(s); return Utfall.IngenApiKall;
         }
 
         var r = await instabank.SendSoknadAsync(k, s.ProduktKode);
         s.Forsok += 1;
+        Utfall utfall;
         if (r.Ok)
         {
             s.Status = SendStatus.Sendt;
             s.EksternRef = r.ExternalReference;
             s.SigningUrl = r.SigningUrl;
             s.Detalj = r.Detalj;
+            utfall = Utfall.Ok;
         }
         else if (ErForbigaaende(r.Detalj) && s.Forsok < MaxForsok)
         {
             s.Status = SendStatus.IKo;   // prøv igjen senere
             s.Detalj = $"Forsøk {s.Forsok} utsatt: {r.Detalj}";
+            utfall = Utfall.Forbigaaende;
         }
         else
         {
             s.Status = SendStatus.Feilet;
             s.Detalj = r.Detalj;
+            // Nådde vi maks forsøk på en forbigående feil, teller det fortsatt som at banken sliter.
+            utfall = ErForbigaaende(r.Detalj) ? Utfall.Forbigaaende : Utfall.Varig;
         }
         await ko.OppdaterAsync(s);
-        return true;
+        return utfall;
     }
 
     // Forbigående feil vi kan prøve på nytt (rate limit / nettverk) — ikke varige valideringsfeil.
