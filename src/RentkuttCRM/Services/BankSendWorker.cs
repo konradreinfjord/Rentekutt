@@ -26,17 +26,42 @@ public class BankSendWorker : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BankSendWorker> _log;
+    private readonly DatabaseMigrator _migrator;
 
-    public BankSendWorker(IServiceScopeFactory scopeFactory, ILogger<BankSendWorker> log)
+    public BankSendWorker(IServiceScopeFactory scopeFactory, ILogger<BankSendWorker> log, DatabaseMigrator migrator)
     {
         _scopeFactory = scopeFactory;
         _log = log;
+        _migrator = migrator;
+    }
+
+    // Reis en alarm i egen scope (alarmering skal aldri kunne velte workeren).
+    private async Task AlarmAsync(string type, string tittel, string? detalj, string alvorlighet, string? noekkel)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var alarm = scope.ServiceProvider.GetRequiredService<AlarmService>();
+            await alarm.RaiseAsync(type, tittel, detalj, alvorlighet, "Sendekø", noekkel);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Alarm ({Type}) feilet", type); }
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         // La oppstart (migrasjoner m.m.) fullføre først.
         try { await Task.Delay(TimeSpan.FromSeconds(10), ct); } catch { return; }
+
+        // Alarm hvis migrasjonene ikke når prod (vanligste driftsstopp for nye funksjoner).
+        var st = _migrator.Status;
+        if (!st.Konfigurert)
+            await AlarmAsync("Migrasjon", "Databasemigrering er ikke konfigurert",
+                "ConnectionStrings:Postgres mangler i Azure — nye tabeller/kolonner når ikke prod.",
+                AlarmService.Alvorlighet.Kritisk, "migrasjon-ikke-konfigurert");
+        else if (st.Feilet.Count > 0 || st.Utestaende.Count > 0)
+            await AlarmAsync("Migrasjon", "Databasemigrasjoner utestående/feilet",
+                $"Utestående: {(st.Utestaende.Count > 0 ? string.Join(", ", st.Utestaende) : "—")}. Feilet: {(st.Feilet.Count > 0 ? string.Join("; ", st.Feilet) : "—")}",
+                AlarmService.Alvorlighet.Kritisk, "migrasjon-feil");
 
         while (!ct.IsCancellationRequested)
         {
@@ -62,7 +87,7 @@ public class BankSendWorker : BackgroundService
             }
             catch (Exception ex) { _log.LogError(ex, "Sendekø-syklus feilet"); }
 
-            OppdaterBryter(utfall);
+            await OppdaterBryterAsync(utfall);
 
             var gjordeKall = utfall != Utfall.IngenApiKall;
             try { await Task.Delay(gjordeKall ? Throttle : Idle, ct); }
@@ -71,7 +96,7 @@ public class BankSendWorker : BackgroundService
     }
 
     // Sikkerhetsbryter: tell sammenhengende forbigående feil; åpne pausen ved terskel.
-    private void OppdaterBryter(Utfall utfall)
+    private async Task OppdaterBryterAsync(Utfall utfall)
     {
         switch (utfall)
         {
@@ -87,6 +112,9 @@ public class BankSendWorker : BackgroundService
                     _sammenhengendeFeil = 0;
                     _log.LogWarning("Sikkerhetsbryter utløst: {N}+ sammenhengende forbigående feil mot bank — pauser sending i {Min} min",
                         BryterTerskel, BryterPause.TotalMinutes);
+                    await AlarmAsync("Sikkerhetsbryter", "Sending til bank er pauset",
+                        $"{BryterTerskel}+ sammenhengende forbigående feil mot bank-API-et. Sending pauset i {BryterPause.TotalMinutes:N0} min for ikke å overbelaste banken.",
+                        AlarmService.Alvorlighet.Kritisk, "sikkerhetsbryter");
                 }
                 break;
             // Varig/IngenApiKall påvirker ikke bryteren (vår-side/config-feil, ikke at banken er nede).
@@ -139,6 +167,9 @@ public class BankSendWorker : BackgroundService
             s.Detalj = r.Detalj;
             // Nådde vi maks forsøk på en forbigående feil, teller det fortsatt som at banken sliter.
             utfall = ErForbigaaende(r.Detalj) ? Utfall.Forbigaaende : Utfall.Varig;
+            await AlarmAsync("Banksending", $"Sending til {s.Bank} feilet",
+                $"{s.KundeNavn ?? "Kunde"}{(string.IsNullOrWhiteSpace(s.Produkt) ? "" : $" · {s.Produkt}")}: {r.Detalj}",
+                AlarmService.Alvorlighet.Advarsel, $"banksending-feilet-{s.KundekortId}");
         }
         await ko.OppdaterAsync(s);
         return utfall;

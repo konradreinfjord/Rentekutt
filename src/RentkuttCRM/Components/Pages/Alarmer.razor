@@ -1,0 +1,114 @@
+@page "/crm/alarmer"
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.AlarmService AlarmSvc
+@inject NavigationManager Nav
+@using RentkuttCRM.Services
+
+<PageTitle>Alarmer — Rentekutt</PageTitle>
+
+<h1 class="page-title">Alarmer</h1>
+<p class="page-sub">Stopp og feil i drift (migrasjoner, banksending, sikkerhetsbryter). Kvitter ut når du har sett/håndtert dem.</p>
+
+<div class="db-stats" style="margin:14px 0">
+    <div class="db-box accent-amber"><span class="db-box-num">@_alarmer.Count(a => !a.Kvittert)</span><span class="db-box-lbl">Åpne alarmer</span></div>
+    <div class="db-box"><span class="db-box-num">@_alarmer.Count(a => !a.Kvittert && a.Alvorlighet == AlarmService.Alvorlighet.Kritisk)</span><span class="db-box-lbl">Kritiske</span></div>
+</div>
+
+<div class="section">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+        <h2 style="margin:0">@(_visKvitterte ? "Alle alarmer" : "Åpne alarmer")</h2>
+        <label style="font-size:13px; display:flex; gap:6px; align-items:center">
+            <input type="checkbox" checked="@_visKvitterte" @onchange="ToggleKvitterte" /> Vis kvitterte
+        </label>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr><th>Alvorlighet</th><th>Type</th><th>Alarm</th><th>Antall</th><th>Sist sett</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            @if (_alarmer.Count == 0)
+            {
+                <tr><td colspan="7" class="empty-row">@(_laster ? "Laster…" : "Ingen alarmer 🎉")</td></tr>
+            }
+            @foreach (var a in _alarmer)
+            {
+                <tr class="@(a.Kvittert ? "" : "")">
+                    <td><span class="status @AlvorKlasse(a.Alvorlighet)">@Alvor(a.Alvorlighet)</span></td>
+                    <td>@a.Type</td>
+                    <td>
+                        <strong>@a.Tittel</strong>
+                        @if (!string.IsNullOrWhiteSpace(a.Detalj))
+                        {
+                            <div class="page-sub" style="margin:2px 0 0; font-size:12px">@a.Detalj</div>
+                        }
+                    </td>
+                    <td class="num">@(a.Antall > 1 ? a.Antall.ToString() : "—")</td>
+                    <td class="mono-cell">@a.SistSett.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td>
+                        @if (a.Kvittert)
+                        {
+                            <span class="status on" title="@(a.KvittertAv) @(a.KvittertAt?.TilOslo().ToString("dd.MM HH:mm"))">Kvittert</span>
+                        }
+                        else
+                        {
+                            <span class="status @AlvorKlasse(a.Alvorlighet)">Åpen</span>
+                        }
+                    </td>
+                    <td>
+                        @if (!a.Kvittert)
+                        {
+                            <button class="btn-sm btn-primary" @onclick="() => Kvitter(a)">Kvitter ut</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<Alarm> _alarmer = new();
+    private bool _visKvitterte;
+    private bool _laster = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!Session.IsAdmin) { Nav.NavigateTo("/crm"); return; }
+        await LastAsync();
+    }
+
+    private async Task LastAsync()
+    {
+        _laster = true;
+        _alarmer = await AlarmSvc.ListAsync(_visKvitterte);
+        _laster = false;
+    }
+
+    private async Task ToggleKvitterte(ChangeEventArgs e)
+    {
+        _visKvitterte = (bool)(e.Value ?? false);
+        await LastAsync();
+    }
+
+    private async Task Kvitter(Alarm a)
+    {
+        await AlarmSvc.KvitterAsync(a.Id, Session.UserName ?? Session.Email ?? "ukjent");
+        await LastAsync();
+    }
+
+    private static string Alvor(string? a) => a switch
+    {
+        AlarmService.Alvorlighet.Kritisk => "Kritisk",
+        AlarmService.Alvorlighet.Info => "Info",
+        _ => "Advarsel",
+    };
+
+    private static string AlvorKlasse(string? a) => a switch
+    {
+        AlarmService.Alvorlighet.Kritisk => "off",
+        AlarmService.Alvorlighet.Info => "on",
+        _ => "pending",
+    };
+}

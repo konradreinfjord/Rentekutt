@@ -97,6 +97,9 @@ builder.Services.AddScoped<InstabankService>();
 // Logg over søknader sendt til bank (vises på kundekort + under Bank API).
 builder.Services.AddScoped<BankSendingService>();
 
+// Alarmer for stopp/feil (migrasjoner, banksending, sikkerhetsbryter) — vises og kvitteres i portalen.
+builder.Services.AddScoped<AlarmService>();
+
 // Rutingsregler (logikk-matrisen) — driver «Forslag bank» i markedet.
 builder.Services.AddScoped<RutingsregelService>();
 
