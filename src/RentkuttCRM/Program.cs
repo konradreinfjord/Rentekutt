@@ -100,6 +100,9 @@ builder.Services.AddScoped<BankSendingService>();
 // Alarmer for stopp/feil (migrasjoner, banksending, sikkerhetsbryter) — vises og kvitteres i portalen.
 builder.Services.AddScoped<AlarmService>();
 
+// Endringslogg per kundekort (audit trail).
+builder.Services.AddScoped<LoggService>();
+
 // Rutingsregler (logikk-matrisen) — driver «Forslag bank» i markedet.
 builder.Services.AddScoped<RutingsregelService>();
 

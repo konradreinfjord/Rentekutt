@@ -38,19 +38,53 @@ public class KundekortService
 
     private readonly Supabase.Client _client;
     private readonly PostnummerService _postnr;
+    private readonly LoggService _logg;
     private readonly ILogger<KundekortService> _log;
     public bool IsConfigured { get; }
 
     private static readonly List<Kundekort> _staging = new();
     private bool _initialized;
 
-    public KundekortService(Supabase.Client client, PostnummerService postnr, IConfiguration cfg, ILogger<KundekortService> log)
+    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, IConfiguration cfg, ILogger<KundekortService> log)
     {
         _client = client;
         _postnr = postnr;
+        _logg = logg;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
+    }
+
+    // Menneskelesbare endringer mellom to versjoner av et kundekort (til logg).
+    private static IEnumerable<string> Endringer(Kundekort a, Kundekort b)
+    {
+        string kr(decimal? v) => v.HasValue ? $"{v:N0} kr" : "—";
+        string t(string? v) => string.IsNullOrWhiteSpace(v) ? "—" : v;
+        string i(int? v) => v.HasValue ? v.Value.ToString() : "—";
+        var d = new List<string>();
+        void C(string felt, string fra, string til) { if (fra != til) d.Add($"Endret {felt}: {fra} → {til}"); }
+        C("kundetype", a.KundeType == "B2B" ? "Bedrift" : "Privat", b.KundeType == "B2B" ? "Bedrift" : "Privat");
+        C("status", t(a.Status), t(b.Status));
+        C("fullt navn", t(a.FulltNavn), t(b.FulltNavn));
+        C("fødselsnummer", t(a.Foedselsnummer), t(b.Foedselsnummer));
+        C("orgnr", t(a.Orgnr), t(b.Orgnr));
+        C("mobilnummer", t(a.Mobilnummer), t(b.Mobilnummer));
+        C("e-post", t(a.Epost), t(b.Epost));
+        C("adresse", t(a.Adresse), t(b.Adresse));
+        C("postnummer", t(a.Postnummer), t(b.Postnummer));
+        C("poststed", t(a.Poststed), t(b.Poststed));
+        C("lånetype", t(a.Laanetype), t(b.Laanetype));
+        C("ønsket lånebeløp", kr(a.OnsketLaanebelop), kr(b.OnsketLaanebelop));
+        C("løpetid (mnd)", i(a.OnsketLopetidMnd), i(b.OnsketLopetidMnd));
+        C("låneformål", t(a.Laaneformal), t(b.Laaneformal));
+        C("nåværende bank", t(a.NavarendeBank), t(b.NavarendeBank));
+        C("nåværende rente", a.NaavaerendeRente?.ToString() ?? "—", b.NaavaerendeRente?.ToString() ?? "—");
+        C("boligverdi", kr(a.Boligverdi), kr(b.Boligverdi));
+        C("årsinntekt", kr(a.AarsinntektBrutto), kr(b.AarsinntektBrutto));
+        C("boliggjeld", kr(a.Boliggjeld), kr(b.Boliggjeld));
+        C("forbruksgjeld", kr(a.Forbruksgjeld), kr(b.Forbruksgjeld));
+        C("delegert bank", t(a.DelegertBank), t(b.DelegertBank));
+        return d;
     }
 
     /// <summary>Berik geografifelt (kommune, poststed, fylke) fra postnummer når de mangler.</summary>
@@ -64,7 +98,7 @@ public class KundekortService
 
     /// <param name="strict">Når true (manuelt skjema) kreves korrekt fødselsnr/orgnr-lengde.
     /// Når false (API/webhook) opprettes saken uansett — id = fødselsnr → mobil → fallback.</param>
-    public async Task<(bool ok, string? error)> SaveAsync(Kundekort k, bool strict = false)
+    public async Task<(bool ok, string? error)> SaveAsync(Kundekort k, bool strict = false, string? aktor = null)
     {
         k.KundeId = (k.KundeId ?? "").Trim();
         BerikGeografi(k);   // fyll kommune/poststed/fylke fra postnummer når de mangler
@@ -102,17 +136,28 @@ public class KundekortService
             // Tom Id = ny sak (DB genererer id). Ellers oppdater eksisterende sak.
             if (k.Id == Guid.Empty)
             {
-                await _client.From<Kundekort>().Insert(k);
+                var resp = await _client.From<Kundekort>().Insert(k);
+                InvaliderCache();
+                var nyId = resp.Models.FirstOrDefault()?.Id ?? Guid.Empty;
+                if (nyId != Guid.Empty)
+                    await _logg.LoggAsync(nyId, aktor ?? k.Kilde,
+                        $"Registrert kundekort{(string.IsNullOrWhiteSpace(k.Kilde) ? "" : $" ({k.Kilde})")}");
             }
             else
             {
+                var gammel = await GetAsync(k.Id);
                 var resp = await _client.From<Kundekort>().Update(k);
                 // Avslør stille feil: en oppdatering som treffer 0 rader (RLS/ukjent id)
                 // returnerer ingen modeller — ikke meld suksess da.
                 if (resp.Models.Count == 0)
                     return (false, "Ingen rader oppdatert (mangler tilgang eller ukjent id?).");
+                InvaliderCache();
+                if (gammel is not null)
+                {
+                    var endr = Endringer(gammel, k).ToList();
+                    if (endr.Count > 0) await _logg.LoggFlereAsync(k.Id, aktor, endr);
+                }
             }
-            InvaliderCache();
             return (true, null);
         }
         catch (Exception ex)
@@ -238,6 +283,7 @@ public class KundekortService
             if (nyStatus is not null) q = q.Set(x => x.Status, nyStatus);
             await q.Update();
             InvaliderCache();
+            await _logg.LoggAsync(id, eierNavn, "Tok eierskap" + (nyStatus is not null ? $" · status → {nyStatus}" : ""));
         }
         catch (Exception ex) { _log.LogError(ex, "Sette eier feilet"); }
     }
@@ -342,7 +388,7 @@ public class KundekortService
             .FirstOrDefault();
     }
 
-    public async Task SetStatusAsync(Guid id, string status)
+    public async Task SetStatusAsync(Guid id, string status, string? aktor = null)
     {
         if (!IsConfigured)
         {
@@ -355,6 +401,7 @@ public class KundekortService
             await EnsureReadyAsync();
             await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.Status, status).Update();
             InvaliderCache();
+            await _logg.LoggAsync(id, aktor, $"Endret status til {status}");
         }
         catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
     }

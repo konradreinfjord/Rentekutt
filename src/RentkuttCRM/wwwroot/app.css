@@ -793,11 +793,6 @@ a { color: var(--accent); text-decoration: none; }
 }
 .kk-back:hover { background: var(--surface-2); color: var(--text); }
 
-/* Kundens behov flettet inn nederst i topp-kortet */
-.kk-head-behov { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
-.kk-head-behov span { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600; margin-bottom: 5px; }
-.kk-head-behov p { margin: 0; font-size: 14px; color: var(--text); line-height: 1.5; }
-
 .kk-head-top { display: flex; align-items: center; gap: 16px; }
 .kk-avatar {
     width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
@@ -806,13 +801,16 @@ a { color: var(--accent); text-decoration: none; }
 }
 .kk-head-id { min-width: 0; }
 .kk-head-name { font-size: 23px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; line-height: 1.15; }
-.kk-head-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 13px; color: var(--text-2); font-weight: 500; }
-.kk-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.kk-sep { color: var(--border-strong); }
-.kk-head-contact { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 9px; font-size: 13px; color: var(--text-2); }
 
-/* Kundens behov — integrert undertekst (ikke egen widget) */
-.kk-head-behov { margin-top: 9px; font-size: 13.5px; color: var(--text-2); line-height: 1.45; }
+/* Fargede status-/type-/kilde-chips — tydelig avskilt */
+.kk-head-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+.kk-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; letter-spacing: .01em; white-space: nowrap;
+}
+.kk-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.kk-head-contact { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 11px; font-size: 13px; color: var(--text-2); }
 
 /* Nøkkelfakta — symmetrisk 3-kolonners rutenett uten bokser, skilt med linje */
 .kk-head-facts {
@@ -888,3 +886,35 @@ a { color: var(--accent); text-decoration: none; }
 .kk .db-box:hover { transform: none; box-shadow: none; border-color: var(--border); }
 .kk .db-box .db-box-num { color: var(--ink) !important; font-size: 20px; }
 @media (max-width: 760px) { .kk .db-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---- Felt-nivå låsing på kundekortet ---- */
+.felt-laas-hint {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--text-2);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 14px; margin-bottom: 16px;
+}
+/* Låste felt: ingen interaksjon + tonet, til de er «aapen» (dobbeltklikket) */
+.kort-felter.felt-laas .ff:not(.aapen) input,
+.kort-felter.felt-laas .ff:not(.aapen) select,
+.kort-felter.felt-laas .ff:not(.aapen) textarea,
+.kort-felter.felt-laas .ff-check:not(.aapen) input {
+    pointer-events: none; background: var(--surface-2); color: var(--text-2); cursor: default;
+}
+.kort-felter.felt-laas .ff { cursor: pointer; }
+.kort-felter.felt-laas .ff.aapen input,
+.kort-felter.felt-laas .ff.aapen select,
+.kort-felter.felt-laas .ff.aapen textarea {
+    background: #fff; color: var(--text); box-shadow: 0 0 0 3px var(--green-soft); border-color: var(--green);
+}
+
+/* ---- Endringslogg (sidepanel) + auto-lagret ---- */
+.logg-liste { display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; }
+.logg-item { border-left: 2px solid var(--border-strong); padding: 2px 0 2px 10px; }
+.logg-meta { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.logg-tid { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+.logg-aktor { font-size: 11px; color: var(--green-dark); font-weight: 600; }
+.logg-tekst { font-size: 12.5px; color: var(--text); margin-top: 1px; }
+.auto-lagret { font-size: 12px; font-weight: 600; margin-left: auto; }
+.auto-lagret.ok { color: var(--green-dark); }
+.auto-lagret.err { color: var(--danger, #b42318); }

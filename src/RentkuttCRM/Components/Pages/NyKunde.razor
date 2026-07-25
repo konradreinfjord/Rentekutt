@@ -8,6 +8,7 @@
 @inject RentkuttCRM.Services.PartnerProduktService Produkter
 @inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BankSendingService BankSending
+@inject RentkuttCRM.Services.LoggService Logg
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -25,18 +26,15 @@
         <div class="kk-avatar">@Forbokstaver(_k.FulltNavn)</div>
         <div class="kk-head-id">
             <div class="kk-head-name">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</div>
-            <div class="kk-head-meta">
+            <div class="kk-head-chips">
                 @if (_isEdit)
                 {
-                    <span class="kk-dot" style="background:@StatusFarge(_k.Status)"></span>
-                    <span>@_k.Status</span>
-                    <span class="kk-sep">·</span>
+                    <span class="kk-chip" style="@ChipStyle(StatusFarge(_k.Status))"><span class="kk-chip-dot" style="background:@StatusFarge(_k.Status)"></span>@_k.Status</span>
                 }
-                <span>@(_k.KundeType == "B2C" ? "Privat" : "Bedrift")</span>
+                <span class="kk-chip" style="@ChipStyle(TypeFarge(_k.KundeType))">@(_k.KundeType == "B2B" ? "Bedrift" : "Privat")</span>
                 @if (!string.IsNullOrWhiteSpace(_k.Kilde))
                 {
-                    <span class="kk-sep">·</span>
-                    <span>@_k.Kilde</span>
+                    <span class="kk-chip" style="@ChipStyle(KildeFarge(_k.Kilde))">@_k.Kilde</span>
                 }
             </div>
             <div class="kk-head-contact">
@@ -44,7 +42,6 @@
                 <span>✉ @Vis(_k.Epost)</span>
                 @if (_k.KundeType == "B2B" && !string.IsNullOrWhiteSpace(_k.Orgnr)) { <span>Orgnr @_k.Orgnr</span> }
             </div>
-            <div class="kk-head-behov">@Behovssammendrag</div>
         </div>
     </div>
     <div class="kk-head-facts">
@@ -60,18 +57,6 @@
 <div class="kk-grid">
 <div class="kk-side">
 <div class="kk-side-title">Handlinger</div>
-
-@* Hurtigregistrering: kundens bank + nåværende rente (mates til Markedsinnsikt) *@
-<div class="form-card rente-quick">
-    <div class="rq-row">
-        <div class="ff"><label>Kundens bank</label><input @bind="_k.NavarendeBank" placeholder="f.eks. DNB" /></div>
-        <div class="ff"><label>Nåværende rente (%)</label><input type="number" step="0.01" @bind="_k.NaavaerendeRente" placeholder="f.eks. 6,25" /></div>
-        <button class="btn-primary btn-sm" @onclick="LagreBankRente" disabled="@(_bankRenteLagrer || !_isEdit || !KanEndre)"
-                title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_bankRenteLagrer ? "Lagrer…" : "Lagre bank & rente")</button>
-        @if (!string.IsNullOrEmpty(_bankRenteMsg)) { <span class="form-msg ok">@_bankRenteMsg</span> }
-    </div>
-    <p class="page-sub rq-hint">Registreres til Markedsinnsikt — gir oss rentenivå per bank over tid.</p>
-</div>
 
 @* Send søknaden til en bankpartner *@
 <div class="form-card send-bank">
@@ -202,6 +187,30 @@
         @if (!string.IsNullOrEmpty(_smsMsg)) { <span class="form-msg @(_smsOk ? "ok" : "err")">@_smsMsg</span> }
     </div>
 </div>
+
+@* Endringslogg — hvem har gjort hva, når *@
+<div class="form-card">
+    <h2>Logg</h2>
+    @if (_endringslogg.Count == 0)
+    {
+        <p class="notat-empty">Ingen registrerte endringer ennå.</p>
+    }
+    else
+    {
+        <div class="logg-liste">
+            @foreach (var l in _endringslogg)
+            {
+                <div class="logg-item">
+                    <div class="logg-meta">
+                        <span class="logg-tid">@l.Opprettet.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
+                        @if (!string.IsNullOrWhiteSpace(l.Aktor)) { <span class="logg-aktor">@l.Aktor</span> }
+                    </div>
+                    <div class="logg-tekst">@l.Tekst</div>
+                </div>
+            }
+        </div>
+    }
+</div>
 </div>@* /kk-side *@
 
 <div class="kk-main">
@@ -267,60 +276,32 @@
 @if (_isEdit && !KanEndre)
 {
     <div class="las-bar laast">
-        <span>🔒 Skrivebeskyttet — saken eies av <strong>@(_k.EierNavn ?? _k.Eier)</strong>. Kun eier eller admin kan endre. Du kan lese, men må eie saken for å redigere.</span>
+        <span>🔒 Skrivebeskyttet — saken eies av <strong>@(_k.EierNavn ?? _k.Eier)</strong>. Kun eier eller admin kan endre.</span>
     </div>
 }
-else if (_isEdit)
+
+<div class="kort-felter @(_isEdit && !KanEndre ? "laast" : "") @(_isEdit && KanEndre ? "felt-laas" : "")" @onchange="AutoLagre">
+@if (_isEdit && KanEndre)
 {
-    <div class="las-bar @(_laast ? "laast" : "aapen")" @ondblclick="LaasOpp">
-        @if (_laast)
+    <div class="felt-laas-hint">
+        <span>🔒 Feltene er låst — <strong>dobbeltklikk</strong> et felt for å redigere. Endringer <strong>lagres automatisk</strong>.</span>
+        @if (!string.IsNullOrEmpty(_autoMsg))
         {
-            <span>🔒 Feltene er låst — <strong>dobbeltklikk</strong> for å redigere</span>
-        }
-        else
-        {
-            <span>🔓 Redigering aktiv</span>
-            <button class="btn-sm" @onclick="LagreOgLaas" @onclick:stopPropagation="true" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre og lås")</button>
+            <span class="auto-lagret @(_autoOk ? "ok" : "err")">@_autoMsg</span>
         }
     </div>
 }
-
-<div class="kort-felter @(_isEdit && (_laast || !KanEndre) ? "laast" : "")" @ondblclick="LaasOpp">
-@* Kundetype *@
-<div class="form-card">
-    <h2>Kundetype</h2>
-    <div class="seg">
-        <button class="@(_k.KundeType == "B2C" ? "active" : "")" @onclick='() => _k.KundeType = "B2C"'>B2C — privatperson</button>
-        <button class="@(_k.KundeType == "B2B" ? "active" : "")" @onclick='() => _k.KundeType = "B2B"'>B2B — bedrift</button>
-    </div>
-    <div class="form-grid" style="margin-top:16px">
-        <div class="ff">
-            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(valgfritt — blank for Prismatch-leads)</span></label>
-            @if (_k.KundeType == "B2B")
-            {
-                <input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" />
-            }
-            else
-            {
-                <input @bind="_k.Foedselsnummer" placeholder="11 siffer" />
-            }
-        </div>
-    </div>
-</div>
-
-@* Tjeneste & samtykke *@
-<div class="form-card">
-    <h2>Tjeneste & samtykke</h2>
-    <div class="form-grid">
-        <div class="ff"><label>Tjeneste</label><input @bind="_k.Tjeneste" /></div>
-        <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.SamtykkeGjeldsregisterKredittsjekk" /> Samtykke til Gjeldsregister & kredittsjekk</label></div>
-    </div>
-</div>
-
-@* G. Lånedetaljer (ofte først) *@
+@* G. Lånedetaljer *@
 <div class="form-card">
     <h2>Lånedetaljer</h2>
     <div class="form-grid">
+        <div class="ff">
+            <label>Kundetype</label>
+            <select @bind="_k.KundeType" disabled="@_isEdit">
+                <option value="B2C">Privatperson</option>
+                <option value="B2B">Bedrift</option>
+            </select>
+        </div>
         <div class="ff">
             <label>Lånetype / formål</label>
             <select @bind="_k.Laanetype">
@@ -342,6 +323,17 @@ else if (_isEdit)
     <h2>A · Søker</h2>
     <div class="form-grid">
         <div class="ff wide"><label>Fullt navn</label><input @bind="_k.FulltNavn" placeholder="Hentes ev. fra Vipps" /></div>
+        <div class="ff">
+            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(blank for Prismatch-leads)</span></label>
+            @if (_k.KundeType == "B2B")
+            {
+                <input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" />
+            }
+            else
+            {
+                <input @bind="_k.Foedselsnummer" placeholder="11 siffer" />
+            }
+        </div>
         <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
         <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
         <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>
@@ -530,7 +522,7 @@ else if (_isEdit)
         return (deler[0][..1] + deler[^1][..1]).ToUpper();
     }
 
-    // Farge på status-prikken i topp-kortet.
+    // Farge på status-chip i topp-kortet.
     private static string StatusFarge(string? s) => s switch
     {
         "Fullført og utbetalt" => "#2f8a3e",
@@ -542,6 +534,21 @@ else if (_isEdit)
         "Feilet i sending" => "#b42318",
         _ => "#767b84",
     };
+
+    // Farge på kundetype-chip: bedrift lilla, privat blågrønn.
+    private static string TypeFarge(string? t) => t == "B2B" ? "#6b3fc4" : "#0e7490";
+
+    // Farge på kilde-chip: Prismatch grønn, Rentekutt amber.
+    private static string KildeFarge(string? kilde)
+    {
+        var k = (kilde ?? "").ToLowerInvariant();
+        if (k.Contains("prismatch")) return "#2f8a3e";
+        if (k.Contains("rentekutt")) return "#b45309";
+        return "#767b84";
+    }
+
+    // Myk «pill»-stil for chip: tonet bakgrunn + farget tekst.
+    private static string ChipStyle(string c) => $"background:{c}1a;color:{c}";
 
     private static string StatusKlasse(string s) => s switch
     {
@@ -637,14 +644,33 @@ else if (_isEdit)
 
         if (kortTask.Result is { } existing)
         {
-            _k = existing; _isEdit = true; _laast = true;
-            // Notater + banksendinger avhenger av kort-id — hentes i parallell.
+            _k = existing; _isEdit = true;
+            // Notater + banksendinger + endringslogg avhenger av kort-id — hentes i parallell.
             var notatTask = Notater.ListAsync(_k.Id);
             var sendTask = BankSending.ForKundeAsync(_k.Id);
-            await Task.WhenAll(notatTask, sendTask);
+            var loggTask = Logg.ForKundeAsync(_k.Id);
+            await Task.WhenAll(notatTask, sendTask, loggTask);
             _notatLogg = notatTask.Result;
             _sendinger = sendTask.Result;
+            _endringslogg = loggTask.Result;
         }
+    }
+
+    // ---- Endringslogg + auto-lagring ----
+    private List<KundekortLogg> _endringslogg = new();
+    private string? _autoMsg;
+    private bool _autoOk;
+
+    // Auto-lagring: kalles når et felt endres (onchange bobler opp fra feltene).
+    private async Task AutoLagre()
+    {
+        if (!_isEdit || !KanEndre) return;
+        var (ok, error) = await Svc.SaveAsync(_k, strict: false, aktor: Session.UserName ?? Session.Email);
+        _autoOk = ok;
+        _autoMsg = ok ? "Lagret ✓" : ("Kunne ikke lagre: " + (error ?? "ukjent feil"));
+        if (ok) _endringslogg = await Logg.ForKundeAsync(_k.Id);
+        StateHasChanged();
+        if (ok) { await Task.Delay(1600); _autoMsg = null; StateHasChanged(); }
     }
 
     // ---- Send til bank ----
@@ -721,6 +747,7 @@ else if (_isEdit)
             return;
         }
         _sendinger.Insert(0, lagret);
+        await Logg.LoggAsync(_k.Id, avsender, $"Sendt til sendekø: {_valgtBank}{(valgtProdukt is null ? "" : $" · {valgtProdukt.Navn}")}");
 
         // Speil valget i «Delegert til bank» på kundekortet.
         if (string.IsNullOrWhiteSpace(_k.DelegertBank))
@@ -742,8 +769,9 @@ else if (_isEdit)
         }
         else
         {
-            await Svc.SetStatusAsync(_k.Id, KundekortService.StatusSendtBank);
+            await Svc.SetStatusAsync(_k.Id, KundekortService.StatusSendtBank, avsender);
         }
+        _endringslogg = await Logg.ForKundeAsync(_k.Id);
 
         _sendOk = true;
         _sendMsg = $"{_valgtBank}{(valgtProdukt is null ? "" : $" · {valgtProdukt.Navn}")}: lagt i kø — sendes automatisk ✓";
@@ -759,16 +787,6 @@ else if (_isEdit)
     };
 
     // Feltene er låst på et eksisterende kundekort — dobbeltklikk for å redigere.
-    private bool _laast;
-    private void LaasOpp() { if (KanEndre) _laast = false; }
-
-    // Lagre endringene og lås igjen. Låser kun hvis lagringen gikk bra
-    // (ellers blir feltene stående åpne med feilmelding).
-    private async Task LagreOgLaas()
-    {
-        await Save();
-        if (_ok) _laast = true;
-    }
 
     // Endringsrett: admin kan alltid; ellers må saken være uten eier eller eid av deg.
     // Eies saken av en annen, er den skrivebeskyttet (kun lesing).
@@ -824,7 +842,7 @@ else if (_isEdit)
             return;
         }
         if (_k.Id == Guid.Empty && string.IsNullOrWhiteSpace(_k.Kilde)) _k.Kilde = "Manuell";
-        var (ok, error) = await Svc.SaveAsync(_k, strict: false);
+        var (ok, error) = await Svc.SaveAsync(_k, strict: false, aktor: Session.UserName ?? Session.Email);
         _ok = ok;
         if (ok)
         {
