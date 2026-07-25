@@ -264,7 +264,7 @@ else if (_isEdit)
         else
         {
             <span>🔓 Redigering aktiv</span>
-            <button class="btn-sm" @onclick="() => _laast = true" @onclick:stopPropagation="true">Lås igjen</button>
+            <button class="btn-sm" @onclick="LagreOgLaas" @onclick:stopPropagation="true" disabled="@_saving">@(_saving ? "Lagrer…" : "Lagre og lås")</button>
         }
     </div>
 }
@@ -687,6 +687,22 @@ else if (_isEdit)
             await Svc.SetDelegertBankAsync(_k.Id, _valgtBank);
         }
 
+        // Manuell sending: sett status «Sendt bank», og gi agenten eierskap automatisk
+        // (tar saken hvis den er ueid; ellers beholdes eksisterende eier).
+        _k.Status = KundekortService.StatusSendtBank;
+        var eier = Session.Email ?? Session.UserName ?? "ukjent";
+        if (string.IsNullOrWhiteSpace(_k.Eier))
+        {
+            _k.Eier = eier;
+            _k.EierNavn = Session.UserName ?? eier;
+            _k.EierTattAt = DateTime.UtcNow;
+            await Svc.SetEierAsync(_k.Id, eier, _k.EierNavn, KundekortService.StatusSendtBank);
+        }
+        else
+        {
+            await Svc.SetStatusAsync(_k.Id, KundekortService.StatusSendtBank);
+        }
+
         _sendOk = true;
         _sendMsg = $"{_valgtBank}{(valgtProdukt is null ? "" : $" · {valgtProdukt.Navn}")}: lagt i kø — sendes automatisk ✓";
         _valgtProduktId = "";
@@ -703,6 +719,14 @@ else if (_isEdit)
     // Feltene er låst på et eksisterende kundekort — dobbeltklikk for å redigere.
     private bool _laast;
     private void LaasOpp() { if (KanEndre) _laast = false; }
+
+    // Lagre endringene og lås igjen. Låser kun hvis lagringen gikk bra
+    // (ellers blir feltene stående åpne med feilmelding).
+    private async Task LagreOgLaas()
+    {
+        await Save();
+        if (_ok) _laast = true;
+    }
 
     // Endringsrett: admin kan alltid; ellers må saken være uten eier eller eid av deg.
     // Eies saken av en annen, er den skrivebeskyttet (kun lesing).

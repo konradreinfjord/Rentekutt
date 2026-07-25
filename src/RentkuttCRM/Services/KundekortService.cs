@@ -10,6 +10,7 @@ public class KundekortService
         { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
     public const string StatusFullfort = "Fullført og utbetalt";
     public const string StatusAvslatt = "Avslått";
+    public const string StatusSendtBank = "Sendt bank";
 
     /// <summary>Forenklet status for tredjeparter: åpen / utbetalt / avslått + om saken er ferdigbehandlet.</summary>
     public static (string kode, string tekst, bool ferdig) TredjepartStatus(string? status) => status switch
@@ -99,16 +100,24 @@ public class KundekortService
             await EnsureReadyAsync();
             // Tom Id = ny sak (DB genererer id). Ellers oppdater eksisterende sak.
             if (k.Id == Guid.Empty)
+            {
                 await _client.From<Kundekort>().Insert(k);
+            }
             else
-                await _client.From<Kundekort>().Update(k);
+            {
+                var resp = await _client.From<Kundekort>().Update(k);
+                // Avslør stille feil: en oppdatering som treffer 0 rader (RLS/ukjent id)
+                // returnerer ingen modeller — ikke meld suksess da.
+                if (resp.Models.Count == 0)
+                    return (false, "Ingen rader oppdatert (mangler tilgang eller ukjent id?).");
+            }
             InvaliderCache();
             return (true, null);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Lagring av kundekort feilet");
-            return (false, "Teknisk feil ved lagring.");
+            return (false, "Teknisk feil ved lagring: " + ex.Message);
         }
     }
 
