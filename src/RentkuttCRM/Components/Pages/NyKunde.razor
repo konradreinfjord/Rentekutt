@@ -35,7 +35,7 @@
     <div class="kunde-facts">
         <div class="kunde-fact"><span class="kf-lbl">Telefon</span><span class="kf-val mono">@Vis(_k.Mobilnummer)</span></div>
         <div class="kunde-fact"><span class="kf-lbl">E-post</span><span class="kf-val">@Vis(_k.Epost)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">@(_k.KundeType == "B2B" ? "Orgnr" : "Personnr")</span><span class="kf-val mono">@Vis(_k.KundeType == "B2B" ? _k.Orgnr : (string.IsNullOrWhiteSpace(_k.Foedselsnummer) ? _k.KundeId : _k.Foedselsnummer))</span></div>
+        <div class="kunde-fact"><span class="kf-lbl">@(_k.KundeType == "B2B" ? "Orgnr" : "Personnr")</span><span class="kf-val mono">@Vis(_k.KundeType == "B2B" ? _k.Orgnr : _k.Foedselsnummer)</span></div>
         <div class="kunde-fact"><span class="kf-lbl">Adresse</span><span class="kf-val">@Vis(_k.Adresse)</span></div>
         <div class="kunde-fact"><span class="kf-lbl">Poststed</span><span class="kf-val">@Vis($"{_k.Postnummer} {_k.Poststed}".Trim())</span></div>
         <div class="kunde-fact"><span class="kf-lbl">Kommune</span><span class="kf-val">@Vis(_k.Kommune)</span></div>
@@ -279,14 +279,14 @@ else if (_isEdit)
     </div>
     <div class="form-grid" style="margin-top:16px">
         <div class="ff">
-            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(valgfritt hvis mobil oppgis)</span></label>
+            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(valgfritt — blank for Prismatch-leads)</span></label>
             @if (_k.KundeType == "B2B")
             {
                 <input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" />
             }
             else
             {
-                <input @bind="_k.KundeId" disabled="@_isEdit" placeholder="11 siffer" />
+                <input @bind="_k.Foedselsnummer" placeholder="11 siffer" />
             }
         </div>
     </div>
@@ -744,6 +744,9 @@ else if (_isEdit)
             _k.Orgnr = new string(_k.Orgnr.Where(char.IsDigit).ToArray());
             if (string.IsNullOrWhiteSpace(_k.KundeId)) _k.KundeId = _k.Orgnr;
         }
+        // B2C: bruk fødselsnummer som gruppe-id når det er oppgitt (ellers faller vi tilbake på mobil).
+        if (_k.KundeType == "B2C" && string.IsNullOrWhiteSpace(_k.KundeId) && !string.IsNullOrWhiteSpace(_k.Foedselsnummer))
+            _k.KundeId = new string(_k.Foedselsnummer.Where(char.IsDigit).ToArray());
         // Tillat enten fødselsnr/orgnr eller mobilnummer som identifikator.
         if (string.IsNullOrWhiteSpace(_k.KundeId) && !string.IsNullOrWhiteSpace(_k.Mobilnummer))
             _k.KundeId = new string(_k.Mobilnummer.Where(char.IsDigit).ToArray());
