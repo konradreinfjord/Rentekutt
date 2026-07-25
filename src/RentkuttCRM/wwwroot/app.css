@@ -774,47 +774,107 @@ a { color: var(--accent); text-decoration: none; }
    Flatere kort, mindre grått, nøytrale nøkkeltall, luftigere,
    og logisk rekkefølge via flex-order (ingen markup flyttet).
    ============================================================ */
-.kk { display: flex; flex-direction: column; max-width: 1080px; }
+.kk { max-width: 1200px; }
 
-/* Logisk rekkefølge: tittel → oversikt → (lås) → kundedata → lagre →
-   behov → beregning → bank/rente → send bank → notater → SMS */
-.kk > .kort-topp     { order: 0; }
-.kk > .kunde-header  { order: 1; }
-.kk > .las-bar       { order: 2; }
-.kk > .kort-felter   { order: 3; }
-.kk > .form-actions  { order: 4; margin: 4px 0 22px; }
-.kk > .summary-top   { order: 5; }
-.kk > .beregn-card   { order: 6; }
-.kk > .rente-quick   { order: 7; }
-.kk > .send-bank     { order: 8; }
-.kk > .note-card     { order: 9; }
-.kk > .sms-card      { order: 10; }
-
-/* Flate, luftige kort — ingen skygge, subtil kant, mer luft */
-.kk .form-card,
-.kk .kunde-header {
+/* ---- Topp-kort: hvem kunden er (ett sammenhengende, proft kort) ---- */
+.kk-head {
+    position: relative;
     background: #fff;
-    border: 1px solid var(--border);
-    border-left: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: none;
-    padding: 18px 22px;
-    margin-bottom: 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(10, 11, 13, .05), 0 6px 18px rgba(10, 11, 13, .06);
+    padding: 22px 24px;
+    margin-bottom: 20px;
 }
-.kk .form-card h2,
-.kk .kunde-header h2,
-.kk .form-card > div > h2 {
-    font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em;
-    color: var(--text-muted); font-weight: 600; margin: 0 0 16px;
+.kk-back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
+    background: #fff; border: 1px solid var(--border-strong); color: var(--text-2);
+    padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer;
+}
+.kk-back:hover { background: var(--surface-2); color: var(--text); }
+
+/* Kundens behov flettet inn nederst i topp-kortet */
+.kk-head-behov { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.kk-head-behov span { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600; margin-bottom: 5px; }
+.kk-head-behov p { margin: 0; font-size: 14px; color: var(--text); line-height: 1.5; }
+
+.kk-head-top { display: flex; align-items: center; gap: 16px; }
+.kk-avatar {
+    width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent-soft); color: var(--green-dark);
+    display: grid; place-items: center; font-size: 18px; font-weight: 700; letter-spacing: .01em;
+}
+.kk-head-id { min-width: 0; }
+.kk-head-name { font-size: 23px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; line-height: 1.15; }
+.kk-head-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 13px; color: var(--text-2); font-weight: 500; }
+.kk-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.kk-sep { color: var(--border-strong); }
+.kk-head-contact { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 9px; font-size: 13px; color: var(--text-2); }
+
+/* Kundens behov — integrert undertekst (ikke egen widget) */
+.kk-head-behov { margin-top: 9px; font-size: 13.5px; color: var(--text-2); line-height: 1.45; }
+
+/* Nøkkelfakta — symmetrisk 3-kolonners rutenett uten bokser, skilt med linje */
+.kk-head-facts {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px 28px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+.kk-head-facts > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.kk-head-facts span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600; }
+.kk-head-facts strong { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 620px) { .kk-head-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---- Todelt layout: kundedata (venstre) | handlinger (høyre) ---- */
+.kk-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+.kk-main { grid-column: 1; grid-row: 1; min-width: 0; }
+
+/* Sidepanel — tydelig avskilt fra hovedområdet: egen tonet flate, ramme, sticky */
+.kk-side {
+    grid-column: 2; grid-row: 1; min-width: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    padding: 16px;
+    position: sticky; top: 16px; align-self: start;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.kk-side-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--text-muted); font-weight: 700; padding: 2px 2px 0;
+}
+.kk-side .form-card { margin-bottom: 0; overflow-x: auto; box-shadow: var(--shadow-sm); }
+.kk-side .db-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+@media (max-width: 1040px) {
+    .kk-grid { grid-template-columns: 1fr; }
+    .kk-main, .kk-side { grid-column: 1; grid-row: auto; }
+    .kk-side { position: static; }
 }
 
-/* Oversikt øverst — rolig, god luft, ingen grønn stripe */
-.kk .kunde-header-top { margin-bottom: 14px; }
-.kk .kunde-facts { gap: 14px 40px; }
+/* Distinkte kort — tydelig kant + subtil skygge løfter dem fra bakgrunnen,
+   god luft mellom, så det ikke ser ut som én sammenhengende grå flate. */
+.kk .form-card {
+    background: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(10, 11, 13, .05), 0 6px 18px rgba(10, 11, 13, .06);
+    padding: 20px 22px;
+    margin-bottom: 20px;
+}
+/* Seksjonstittel — markert, med skillelinje mot innholdet */
+.kk .form-card > h2 {
+    font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text); font-weight: 700; margin: 0 0 16px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+/* Kort med tittel + knapp på samme rad (beregning, notater) */
+.kk .form-card > div > h2 {
+    font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text); font-weight: 700; margin: 0;
+}
 
 /* Skjema — mer luft mellom felt */
 .kk .form-grid { gap: 14px 18px; }
-.kk .kort-felter .form-card { margin-bottom: 12px; }
 
 /* Nøkkeltall (beregning) — nøytrale, ingen fargeaksenter, ingen hover-effekt */
 .kk .db-stats { max-width: none; gap: 10px; margin: 4px 0 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); }

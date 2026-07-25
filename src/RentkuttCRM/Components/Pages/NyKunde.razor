@@ -14,36 +14,52 @@
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
 
 <div class="kk">
-<div class="kort-topp">
-    @if (_isEdit)
-    {
-        <button class="btn-back" @onclick="Tilbake" title="Lukk sak og gå tilbake til oversikten">← Tilbake</button>
-    }
-    <div>
-        <h1 class="page-title">@(_isEdit ? "Kundekort" : "Ny kunde")</h1>
-        <p class="page-sub">Lånesøknad med kunde- og lånedata.</p>
+
+@* ---- Topp-kort: hvem kunden er ---- *@
+@if (_isEdit)
+{
+    <button class="kk-back" @onclick="Tilbake" title="Lukk sak og gå tilbake">← Tilbake til oversikten</button>
+}
+<div class="kk-head">
+    <div class="kk-head-top">
+        <div class="kk-avatar">@Forbokstaver(_k.FulltNavn)</div>
+        <div class="kk-head-id">
+            <div class="kk-head-name">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</div>
+            <div class="kk-head-meta">
+                @if (_isEdit)
+                {
+                    <span class="kk-dot" style="background:@StatusFarge(_k.Status)"></span>
+                    <span>@_k.Status</span>
+                    <span class="kk-sep">·</span>
+                }
+                <span>@(_k.KundeType == "B2C" ? "Privat" : "Bedrift")</span>
+                @if (!string.IsNullOrWhiteSpace(_k.Kilde))
+                {
+                    <span class="kk-sep">·</span>
+                    <span>@_k.Kilde</span>
+                }
+            </div>
+            <div class="kk-head-contact">
+                <span>📞 @Vis(_k.Mobilnummer)</span>
+                <span>✉ @Vis(_k.Epost)</span>
+                @if (_k.KundeType == "B2B" && !string.IsNullOrWhiteSpace(_k.Orgnr)) { <span>Orgnr @_k.Orgnr</span> }
+            </div>
+            <div class="kk-head-behov">@Behovssammendrag</div>
+        </div>
+    </div>
+    <div class="kk-head-facts">
+        <div><span>Ønsket beløp</span><strong>@(_k.OnsketLaanebelop.HasValue ? $"{_k.OnsketLaanebelop:N0} kr" : "—")</strong></div>
+        <div><span>Lånetype</span><strong>@Vis(_k.Laanetype)</strong></div>
+        <div><span>Nåværende bank</span><strong>@Vis(_k.NavarendeBank)</strong></div>
+        <div><span>Adresse</span><strong>@Vis(_k.Adresse)</strong></div>
+        <div><span>Poststed</span><strong>@Vis($"{_k.Postnummer} {_k.Poststed}".Trim())</strong></div>
+        <div><span>Kommune</span><strong>@Vis(_k.Kommune)</strong></div>
     </div>
 </div>
 
-@* Samlet kundeinfo øverst — se hvem kunden er med én gang *@
-<div class="kunde-header">
-    <div class="kunde-header-top">
-        <span class="kunde-navn">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</span>
-        <span class="type-tag @(_k.KundeType == "B2C" ? "lead" : "bank")">@(_k.KundeType == "B2C" ? "Privat" : "Bedrift")</span>
-        @if (_isEdit) { <span class="status-pill @StatusKlasse(_k.Status)">@_k.Status</span> }
-        @if (!string.IsNullOrWhiteSpace(_k.Kilde)) { <span class="kilde-badge @KundekortService.KildeBadgeKlasse(_k.Kilde)">@_k.Kilde</span> }
-    </div>
-    <div class="kunde-facts">
-        <div class="kunde-fact"><span class="kf-lbl">Telefon</span><span class="kf-val mono">@Vis(_k.Mobilnummer)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">E-post</span><span class="kf-val">@Vis(_k.Epost)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">@(_k.KundeType == "B2B" ? "Orgnr" : "Personnr")</span><span class="kf-val mono">@Vis(_k.KundeType == "B2B" ? _k.Orgnr : _k.Foedselsnummer)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">Adresse</span><span class="kf-val">@Vis(_k.Adresse)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">Poststed</span><span class="kf-val">@Vis($"{_k.Postnummer} {_k.Poststed}".Trim())</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">Kommune</span><span class="kf-val">@Vis(_k.Kommune)</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">Ønsket beløp</span><span class="kf-val">@(_k.OnsketLaanebelop.HasValue ? $"{_k.OnsketLaanebelop:N0} kr" : "—")</span></div>
-        <div class="kunde-fact"><span class="kf-lbl">Nåværende bank</span><span class="kf-val">@Vis(_k.NavarendeBank)</span></div>
-    </div>
-</div>
+<div class="kk-grid">
+<div class="kk-side">
+<div class="kk-side-title">Handlinger</div>
 
 @* Hurtigregistrering: kundens bank + nåværende rente (mates til Markedsinnsikt) *@
 <div class="form-card rente-quick">
@@ -167,11 +183,30 @@
     </div>
 </div>
 
-<div class="form-card summary-top">
-    <h2>Kundens behov</h2>
-    <p style="margin:0; color:var(--text-2)">@Behovssammendrag</p>
+@* Send SMS til kunde *@
+<div class="form-card sms-card">
+    <h2>Send SMS til kunde</h2>
+    <p class="page-sub" style="margin:-4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
+    <div class="form-grid">
+        <div class="ff">
+            <label>Velg mal (valgfritt)</label>
+            <select @onchange="VelgMal">
+                <option value="">— fri tekst —</option>
+                @foreach (var m in _smsMaler) { <option value="@m.Navn">@m.Navn</option> }
+            </select>
+        </div>
+    </div>
+    <textarea class="note-area" style="margin-top:12px; min-height:80px" @bind="_smsTekst" placeholder="Skriv meldingen her, eller velg en mal over…"></textarea>
+    <div style="display:flex; align-items:center; gap:12px; margin-top:12px">
+        <button class="btn-primary" @onclick="SendSms" disabled="@(_smsSending || !KanEndre || string.IsNullOrWhiteSpace(_k.Mobilnummer))">@(_smsSending ? "Sender…" : "Send SMS")</button>
+        @if (!string.IsNullOrEmpty(_smsMsg)) { <span class="form-msg @(_smsOk ? "ok" : "err")">@_smsMsg</span> }
+    </div>
 </div>
+</div>@* /kk-side *@
 
+<div class="kk-main">
+
+@* Beregningsmodell (hovedområdet) *@
 @{
     var (ber, linjer) = BeregningService.Detaljert(_k, _berParams);
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
@@ -227,26 +262,6 @@
             <span class="k">= Fri likviditet</span><span class="v"><strong>@($"{ber.Likviditet:N0}") kr</strong></span>
         </div>
     }
-</div>
-
-@* Send SMS til kunde *@
-<div class="form-card sms-card">
-    <h2>Send SMS til kunde</h2>
-    <p class="page-sub" style="margin:-4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
-    <div class="form-grid">
-        <div class="ff">
-            <label>Velg mal (valgfritt)</label>
-            <select @onchange="VelgMal">
-                <option value="">— fri tekst —</option>
-                @foreach (var m in _smsMaler) { <option value="@m.Navn">@m.Navn</option> }
-            </select>
-        </div>
-    </div>
-    <textarea class="note-area" style="margin-top:12px; min-height:80px" @bind="_smsTekst" placeholder="Skriv meldingen her, eller velg en mal over…"></textarea>
-    <div style="display:flex; align-items:center; gap:12px; margin-top:12px">
-        <button class="btn-primary" @onclick="SendSms" disabled="@(_smsSending || !KanEndre || string.IsNullOrWhiteSpace(_k.Mobilnummer))">@(_smsSending ? "Sender…" : "Send SMS")</button>
-        @if (!string.IsNullOrEmpty(_smsMsg)) { <span class="form-msg @(_smsOk ? "ok" : "err")">@_smsMsg</span> }
-    </div>
 </div>
 
 @if (_isEdit && !KanEndre)
@@ -477,6 +492,8 @@ else if (_isEdit)
         }
     </div>
 }
+</div>@* /kk-main *@
+</div>@* /kk-grid *@
 </div>@* /kk *@
 
 @code {
@@ -504,10 +521,33 @@ else if (_isEdit)
 
     private static string Vis(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
 
+    // Initialer til avatar i topp-kortet (maks 2 bokstaver).
+    private static string Forbokstaver(string? navn)
+    {
+        if (string.IsNullOrWhiteSpace(navn)) return "—";
+        var deler = navn.Trim().Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        if (deler.Length == 1) return deler[0][..1].ToUpper();
+        return (deler[0][..1] + deler[^1][..1]).ToUpper();
+    }
+
+    // Farge på status-prikken i topp-kortet.
+    private static string StatusFarge(string? s) => s switch
+    {
+        "Fullført og utbetalt" => "#2f8a3e",
+        "Sendt bank" => "#2f8a3e",
+        "Tilbud utsendt" => "#1f5fc4",
+        "Pågår" => "#1f5fc4",
+        "Manuell behandling" => "#c2740a",
+        "Avslått" => "#b42318",
+        "Feilet i sending" => "#b42318",
+        _ => "#767b84",
+    };
+
     private static string StatusKlasse(string s) => s switch
     {
         "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
         "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
+        "Feilet i sending" => "st-avslatt",
         "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
     };
 

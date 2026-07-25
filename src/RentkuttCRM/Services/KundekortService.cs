@@ -7,10 +7,11 @@ namespace RentkuttCRM.Services;
 public class KundekortService
 {
     public static readonly string[] Statuser =
-        { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+        { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
     public const string StatusFullfort = "Fullført og utbetalt";
     public const string StatusAvslatt = "Avslått";
     public const string StatusSendtBank = "Sendt bank";
+    public const string StatusFeiletSending = "Feilet i sending";
 
     /// <summary>Forenklet status for tredjeparter: åpen / utbetalt / avslått + om saken er ferdigbehandlet.</summary>
     public static (string kode, string tekst, bool ferdig) TredjepartStatus(string? status) => status switch

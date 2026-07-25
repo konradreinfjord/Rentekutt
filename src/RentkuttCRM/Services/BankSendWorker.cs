@@ -167,6 +167,8 @@ public class BankSendWorker : BackgroundService
             s.Detalj = r.Detalj;
             // Nådde vi maks forsøk på en forbigående feil, teller det fortsatt som at banken sliter.
             utfall = ErForbigaaende(r.Detalj) ? Utfall.Forbigaaende : Utfall.Varig;
+            // API-sending til bank feilet endelig → sett kundekort-status «Feilet i sending».
+            await kunder.SetStatusAsync(id, KundekortService.StatusFeiletSending);
             await AlarmAsync("Banksending", $"Sending til {s.Bank} feilet",
                 $"{s.KundeNavn ?? "Kunde"}{(string.IsNullOrWhiteSpace(s.Produkt) ? "" : $" · {s.Produkt}")}: {r.Detalj}",
                 AlarmService.Alvorlighet.Advarsel, $"banksending-feilet-{s.KundekortId}");
