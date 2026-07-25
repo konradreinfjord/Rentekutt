@@ -389,9 +389,10 @@ a { color: var(--accent); text-decoration: none; }
 .las-bar.laast { background: var(--surface-2); border: 1px dashed var(--border-strong); color: var(--text-2); }
 .las-bar.aapen { background: var(--green-soft); border: 1px solid var(--green); color: var(--green-dark); cursor: default; }
 .las-bar .btn-sm {
-    font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
-    background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 4px 10px;
+    font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: var(--surface); color: var(--green-dark); border: 1px solid var(--green); border-radius: var(--r-sm); padding: 4px 10px;
 }
+.las-bar .btn-sm:hover { background: var(--green); color: #fff; }
 /* Når låst: barn er klikk-transparente, wrapperen fanger dobbeltklikket for å låse opp */
 .kort-felter.laast { position: relative; }
 .kort-felter.laast * { pointer-events: none; }
