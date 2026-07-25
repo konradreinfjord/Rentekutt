@@ -48,22 +48,22 @@ public class BankSendingService
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"]) && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
     }
 
-    public async Task<BankSending> LoggAsync(BankSending s)
+    public async Task<(BankSending Sending, string? Error)> LoggAsync(BankSending s)
     {
         if (!IsConfigured)
         {
             s.Id = Guid.NewGuid();
             s.SendtAt = DateTime.UtcNow;
             _staging.Insert(0, s);
-            return s;
+            return (s, null);
         }
         try
         {
             await EnsureInitAsync();
             var resp = await _client.From<BankSending>().Insert(s);
-            return resp.Models.FirstOrDefault() ?? s;
+            return (resp.Models.FirstOrDefault() ?? s, null);
         }
-        catch (Exception ex) { _log.LogError(ex, "Logging av banksending feilet"); return s; }
+        catch (Exception ex) { _log.LogError(ex, "Logging av banksending feilet"); return (s, ex.Message); }
     }
 
     /// <summary>Hent de eldste sendingene i kø (throttlet av bakgrunnsarbeideren).</summary>

@@ -668,7 +668,14 @@ else if (_isEdit)
             Status = SendStatus.IKo,
             Detalj = "Lagt i sendekø.",
         };
-        var lagret = await BankSending.LoggAsync(s);
+        var (lagret, feil) = await BankSending.LoggAsync(s);
+        if (feil is not null)
+        {
+            _sendOk = false;
+            _sendMsg = "Kunne ikke legge søknaden i sendekø: " + feil;
+            _sender = false;
+            return;
+        }
         _sendinger.Insert(0, lagret);
 
         // Speil valget i «Delegert til bank» på kundekortet.
