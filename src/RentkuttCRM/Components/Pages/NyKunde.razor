@@ -183,12 +183,14 @@
         <div class="logg-liste">
             @foreach (var l in _endringslogg)
             {
-                <div class="logg-item">
+                <div class="logg-item @(l.Kategori == "innsyn" ? "logg-innsyn" : "")">
                     <div class="logg-meta">
                         <span class="logg-tid">@l.Opprettet.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
+                        @if (l.Kategori == "innsyn") { <span class="logg-tag innsyn">Innsyn</span> }
                         @if (!string.IsNullOrWhiteSpace(l.Aktor)) { <span class="logg-aktor">@l.Aktor</span> }
                     </div>
                     <div class="logg-tekst">@l.Tekst</div>
+                    @if (!string.IsNullOrWhiteSpace(l.Begrunnelse)) { <div class="logg-begrunnelse">Begrunnelse: @l.Begrunnelse</div> }
                 </div>
             }
         </div>
@@ -727,6 +729,8 @@
             _sendinger = sendTask.Result;
             _endringslogg = loggTask.Result;
             _harSamtykke = _k.SamtykkeGjeldsregisterKredittsjekk || await Samtykke.HarGyldigAsync(_k.Id, SamtykkeService.FormaalKreditt);
+            // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
+            await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");
         }
     }
 

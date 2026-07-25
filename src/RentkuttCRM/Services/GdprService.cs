@@ -74,8 +74,11 @@ where created_at < @grense and anonymisert_at is null;";
             }
 
             // 2) Fjern PII i relaterte tabeller for anonymiserte kort (notat/logg/banksending-navn).
+            //    Revisjonssporet er append-only — autoriser den kontrollerte oppryddingen for denne økten.
+            await ExecAsync(conn, "set app.allow_log_purge = 'on';", ct);
             await ExecAsync(conn, "delete from public.saksnotat where kundekort_id in (select id from public.kundekort where anonymisert_at is not null);", ct);
             await ExecAsync(conn, "delete from public.kundekort_logg where kundekort_id in (select id from public.kundekort where anonymisert_at is not null);", ct);
+            await ExecAsync(conn, "reset app.allow_log_purge;", ct);
             await ExecAsync(conn, "update public.banksending set kunde_navn = null where kundekort_id in (select id from public.kundekort where anonymisert_at is not null);", ct);
 
             // 3) Slett kundekort eldre enn slette-grensen (kaskade rydder banksending/saksnotat/kundekort_logg).
@@ -165,7 +168,7 @@ where created_at < @grense and anonymisert_at is null;";
     }
 
     /// <summary>Full eksport (JSON) av alle personopplysninger vi har om personen — for innsynskrav.</summary>
-    public async Task<(string? json, int antallKort, string? feil)> EksporterPersonAsync(string sok)
+    public async Task<(string? json, int antallKort, string? feil)> EksporterPersonAsync(string sok, string? aktor = null)
     {
         if (!IsConfigured) return (null, 0, "ConnectionStrings:Postgres er ikke satt.");
         sok = RensSok(sok);
@@ -186,8 +189,20 @@ from public.kundekort k where " + SokFilter + ";";
             await using var cmd = new NpgsqlCommand(sql, conn);
             LeggTilSokParams(cmd, sok);
             var json = (await cmd.ExecuteScalarAsync()) as string ?? "[]";
-            var (dekryptert, antall) = DekrypterEksport(json);
-            return (dekryptert, antall, null);
+            var (dekryptert, ids) = DekrypterEksport(json);
+
+            // Loggfør innsynet i revisjonssporet (append-only INSERT — ikke blokkert av triggeren).
+            if (ids.Count > 0)
+            {
+                await using var logg = new NpgsqlCommand(
+                    "insert into public.kundekort_logg (kundekort_id, aktor, tekst, kategori, begrunnelse) " +
+                    "select x, @aktor, 'Innsynseksport av persondata', 'innsyn', 'Registrertes innsynsrett (art. 15)' " +
+                    "from unnest(@ids) as x;", conn);
+                logg.Parameters.AddWithValue("aktor", (object?)aktor ?? "Innsyn & sletting");
+                logg.Parameters.AddWithValue("ids", ids.ToArray());
+                await logg.ExecuteNonQueryAsync();
+            }
+            return (dekryptert, ids.Count, null);
         }
         catch (Exception ex) { _log.LogError(ex, "Innsynseksport (GDPR) feilet"); return (null, 0, ex.Message); }
     }
@@ -203,6 +218,10 @@ from public.kundekort k where " + SokFilter + ";";
             await using var conn = new NpgsqlConnection(_conn);
             await conn.OpenAsync();
             await using var tx = await conn.BeginTransactionAsync();
+
+            // Revisjonssporet er append-only — autoriser den kontrollerte sletteveien for denne transaksjonen.
+            await using (var cmd = new NpgsqlCommand("set local app.allow_log_purge = 'on';", conn, (NpgsqlTransaction)tx))
+                await cmd.ExecuteNonQueryAsync();
 
             // Finn berørte kundekort-id-er.
             var ids = new List<Guid>();
@@ -240,23 +259,26 @@ from public.kundekort k where " + SokFilter + ";";
     }
 
     // Innsyn skal gi den registrerte lesbare data — dekrypter fnr-feltene i eksporten.
-    private (string json, int antall) DekrypterEksport(string json)
+    // Returnerer pen JSON + id-ene som ble eksportert (til innsyns-logging).
+    private (string json, List<Guid> ids) DekrypterEksport(string json)
     {
+        var ids = new List<Guid>();
         try
         {
             var arr = System.Text.Json.Nodes.JsonNode.Parse(json)?.AsArray();
-            if (arr is null) return (json, 0);
+            if (arr is null) return (json, ids);
             foreach (var el in arr)
             {
                 if (el?["kundekort"] is not System.Text.Json.Nodes.JsonObject kk) continue;
+                if (Guid.TryParse(kk["id"]?.GetValue<string>(), out var kid)) ids.Add(kid);
                 foreach (var felt in new[] { "foedselsnummer", "medsoker_foedselsnummer", "kunde_id" })
                 {
                     var v = kk[felt]?.GetValue<string>();
                     if (!string.IsNullOrEmpty(v)) kk[felt] = _krypto.Avdekk(v);
                 }
             }
-            return (arr.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), arr.Count);
+            return (arr.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), ids);
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Dekryptering av eksport feilet — leverer rå JSON"); return (json, 0); }
+        catch (Exception ex) { _log.LogWarning(ex, "Dekryptering av eksport feilet — leverer rå JSON"); return (json, ids); }
     }
 }

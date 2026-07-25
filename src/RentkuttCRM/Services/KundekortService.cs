@@ -94,12 +94,19 @@ public class KundekortService
         string kr(decimal? v) => v.HasValue ? $"{v:N0} kr" : "—";
         string t(string? v) => string.IsNullOrWhiteSpace(v) ? "—" : v;
         string i(int? v) => v.HasValue ? v.Value.ToString() : "—";
+        // Masker sensitive identifikatorer i revisjonssporet — vis kun de siste 4 sifrene,
+        // så en endring er synlig uten at fødselsnummer havner i klartekst i loggen.
+        string mask(string? v)
+        {
+            var dg = new string((v ?? "").Where(char.IsDigit).ToArray());
+            return dg.Length == 0 ? "—" : new string('*', Math.Max(0, dg.Length - 4)) + dg[^Math.Min(4, dg.Length)..];
+        }
         var d = new List<string>();
         void C(string felt, string fra, string til) { if (fra != til) d.Add($"Endret {felt}: {fra} → {til}"); }
         C("kundetype", a.KundeType == "B2B" ? "Bedrift" : "Privat", b.KundeType == "B2B" ? "Bedrift" : "Privat");
         C("status", t(a.Status), t(b.Status));
         C("fullt navn", t(a.FulltNavn), t(b.FulltNavn));
-        C("fødselsnummer", t(a.Foedselsnummer), t(b.Foedselsnummer));
+        C("fødselsnummer", mask(a.Foedselsnummer), mask(b.Foedselsnummer));
         C("orgnr", t(a.Orgnr), t(b.Orgnr));
         C("mobilnummer", t(a.Mobilnummer), t(b.Mobilnummer));
         C("e-post", t(a.Epost), t(b.Epost));

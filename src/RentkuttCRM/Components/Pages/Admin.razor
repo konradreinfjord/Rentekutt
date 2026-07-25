@@ -1726,7 +1726,7 @@ else if (_active == "GDPR")
     private async Task EksporterPerson()
     {
         _dsrKjorer = true; _dsrMsg = null;
-        var (json, antall, feil) = await Gdpr.EksporterPersonAsync(_dsrSok);
+        var (json, antall, feil) = await Gdpr.EksporterPersonAsync(_dsrSok, Session.Email);
         if (feil is not null || json is null) { _dsrMsg = "Eksport feilet: " + (feil ?? "ukjent"); _dsrKjorer = false; return; }
         var filnavn = $"innsyn_{new string(_dsrSok.Where(char.IsLetterOrDigit).ToArray())}.json";
         await JS.InvokeVoidAsync("rkDownload", filnavn, json, "application/json");

@@ -915,6 +915,10 @@ a { color: var(--accent); text-decoration: none; }
 .logg-tid { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
 .logg-aktor { font-size: 11px; color: var(--green-dark); font-weight: 600; }
 .logg-tekst { font-size: 12.5px; color: var(--text); margin-top: 1px; }
+.logg-begrunnelse { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; font-style: italic; }
+.logg-item.logg-innsyn { border-left-color: #b0b0b0; }
+.logg-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 999px; }
+.logg-tag.innsyn { background: #eef2f6; color: #5b6b7b; }
 .auto-lagret { font-size: 12px; font-weight: 600; margin-left: auto; }
 .auto-lagret.ok { color: var(--green-dark); }
 .auto-lagret.err { color: var(--danger, #b42318); }

@@ -11,6 +11,8 @@ public class KundekortLogg : BaseModel
     [Column("kundekort_id")] public Guid KundekortId { get; set; }
     [Column("aktor")] public string? Aktor { get; set; }
     [Column("tekst")] public string Tekst { get; set; } = "";
+    [Column("kategori")] public string Kategori { get; set; } = "endring";
+    [Column("begrunnelse")] public string? Begrunnelse { get; set; }
     [Column("opprettet", ignoreOnInsert: true)] public DateTime Opprettet { get; set; }
 }
 
@@ -32,15 +34,19 @@ public class LoggService
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"]) && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
     }
 
-    public Task LoggAsync(Guid kundekortId, string? aktor, string tekst)
-        => LoggFlereAsync(kundekortId, aktor, new[] { tekst });
+    public Task LoggAsync(Guid kundekortId, string? aktor, string tekst, string kategori = "endring", string? begrunnelse = null)
+        => LoggFlereAsync(kundekortId, aktor, new[] { tekst }, kategori, begrunnelse);
+
+    /// <summary>Loggfør innsyn/lesing av et kundekort (art. 15 / accountability).</summary>
+    public Task LoggInnsynAsync(Guid kundekortId, string? aktor, string tekst, string? begrunnelse = null)
+        => LoggAsync(kundekortId, aktor, tekst, "innsyn", begrunnelse);
 
     /// <summary>Skriv flere logglinjer på én gang (f.eks. flere feltendringer i én lagring).</summary>
-    public async Task LoggFlereAsync(Guid kundekortId, string? aktor, IEnumerable<string> tekster)
+    public async Task LoggFlereAsync(Guid kundekortId, string? aktor, IEnumerable<string> tekster, string kategori = "endring", string? begrunnelse = null)
     {
         var rader = tekster
             .Where(t => !string.IsNullOrWhiteSpace(t))
-            .Select(t => new KundekortLogg { KundekortId = kundekortId, Aktor = aktor, Tekst = t })
+            .Select(t => new KundekortLogg { KundekortId = kundekortId, Aktor = aktor, Tekst = t, Kategori = kategori, Begrunnelse = begrunnelse })
             .ToList();
         if (rader.Count == 0) return;
 
