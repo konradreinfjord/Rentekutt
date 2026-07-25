@@ -36,6 +36,10 @@
                 {
                     <span class="kk-chip" style="@ChipStyle(KildeFarge(_k.Kilde))">@_k.Kilde</span>
                 }
+                @if (_isEdit)
+                {
+                    <span class="kk-chip" style="@ChipStyle("#475569")">👤 @(string.IsNullOrWhiteSpace(_k.Eier) ? "Ueid" : (_k.EierNavn ?? _k.Eier))</span>
+                }
             </div>
             <div class="kk-head-contact">
                 <span>📞 @Vis(_k.Mobilnummer)</span>
@@ -281,15 +285,9 @@
 }
 
 <div class="kort-felter @(_isEdit && !KanEndre ? "laast" : "") @(_isEdit && KanEndre ? "felt-laas" : "")" @onchange="AutoLagre">
-@if (_isEdit && KanEndre)
+@if (_isEdit && KanEndre && !string.IsNullOrEmpty(_autoMsg))
 {
-    <div class="felt-laas-hint">
-        <span>🔒 Feltene er låst — <strong>dobbeltklikk</strong> et felt for å redigere. Endringer <strong>lagres automatisk</strong>.</span>
-        @if (!string.IsNullOrEmpty(_autoMsg))
-        {
-            <span class="auto-lagret @(_autoOk ? "ok" : "err")">@_autoMsg</span>
-        }
-    </div>
+    <div class="felt-laas-hint"><span class="auto-lagret @(_autoOk ? "ok" : "err")">@_autoMsg</span></div>
 }
 @* G. Lånedetaljer *@
 <div class="form-card">
