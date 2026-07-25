@@ -919,6 +919,10 @@ a { color: var(--accent); text-decoration: none; }
 .auto-lagret.ok { color: var(--green-dark); }
 .auto-lagret.err { color: var(--danger, #b42318); }
 
+.samtykke-status { font-size: 13px; font-weight: 600; padding: 10px 12px; border-radius: 8px; }
+.samtykke-status.ok { color: var(--green-dark); background: #ecfdf3; border: 1px solid #abefc6; }
+.samtykke-status.mangler { color: #b42318; background: #fef3f2; border: 1px solid #fecdca; }
+
 /* ---- Interne faner på kundekort ---- */
 .kk-tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
 .kk-tabs button {

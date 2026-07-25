@@ -65,6 +65,9 @@ builder.Services.AddScoped<SessionState>();
 // Innlogging + brukeradministrasjon (Supabase, med staging-fallback).
 builder.Services.AddScoped<SupabaseUserService>();
 
+// Feltnivåkryptering (fødselsnummer m.m.) — nøkkel via Gdpr__FieldKey.
+builder.Services.AddSingleton<CryptoService>();
+
 // Kundekort (lånesøknader).
 builder.Services.AddScoped<KundekortService>();
 
@@ -103,11 +106,20 @@ builder.Services.AddScoped<AlarmService>();
 // Endringslogg per kundekort (audit trail).
 builder.Services.AddScoped<LoggService>();
 
+// GDPR: anonymisering + sletting etter oppsatt antall måneder.
+builder.Services.AddScoped<GdprService>();
+
+// Samtykke (GDPR) — egen entitet + gyldighetssjekk før banksending.
+builder.Services.AddScoped<SamtykkeService>();
+
 // Rutingsregler (logikk-matrisen) — driver «Forslag bank» i markedet.
 builder.Services.AddScoped<RutingsregelService>();
 
 // Sikker sendekø: throttlet bakgrunnsarbeider som sender søknader til bank uten å bombardere API-et.
 builder.Services.AddHostedService<BankSendWorker>();
+
+// GDPR-jobb: daglig anonymisering/sletting etter oppsatt oppbevaringstid.
+builder.Services.AddHostedService<GdprWorker>();
 
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();

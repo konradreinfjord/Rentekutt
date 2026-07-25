@@ -13,8 +13,11 @@
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.BeregningService Beregning
+@inject RentkuttCRM.Services.GdprService Gdpr
+@inject RentkuttCRM.Services.KundekortService Kunder
 @inject RentkuttCRM.Services.DatabaseMigrator Migrator
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Admin — Rentekutt</PageTitle>
 
@@ -1075,9 +1078,10 @@ else if (_active == "GDPR")
         <h2>Personvern & oppbevaring</h2>
         <p class="page-sub" style="margin:0 0 16px">
             For å etterleve GDPR (dataminimering og lagringsbegrensning) behandles søknadsdata i to trinn,
-            regnet fra da søknaden ble opprettet. Først <strong>anonymisering</strong> — de finansielle
-            detaljene fjernes, men kontaktinfo og at en søknad ble sendt beholdes. Deretter <strong>sletting</strong>
-            — hele kundekortet fjernes permanent.
+            regnet fra da søknaden ble opprettet. Først <strong>anonymisering</strong> — identifiserende data
+            (navn, fødselsnummer, kontaktinfo, notater) fjernes, mens anonym statistikk (lånetype, beløp, status, dato)
+            beholdes. Deretter <strong>sletting</strong> — hele kundekortet fjernes permanent.
+            Jobben kjører <strong>automatisk hvert døgn</strong>.
         </p>
 
         <table class="data-table">
@@ -1085,19 +1089,36 @@ else if (_active == "GDPR")
             <tbody>
                 <tr>
                     <td><span class="type-tag lead">Anonymisering</span></td>
-                    <td>Fjerner alle søknadsdetaljer (lånebeløp, inntekt, gjeld, arbeidsforhold, husholdning m.m.)</td>
-                    <td>Navn + kontaktinfo, og at en søknad ble sendt (dato)</td>
+                    <td>Fjerner navn, fødselsnummer, mobil, e-post, adresse, kontonummer, medsøker-data og notater (også i notat-/endringslogg)</td>
+                    <td>Anonym statistikk: lånetype, beløp, status, kilde, kommune/fylke, datoer</td>
                     <td><input class="inline-input" type="number" min="1" max="120" @bind="_gdprAnonMonths" /> mnd</td>
                 </tr>
                 <tr>
                     <td><span class="type-tag">Sletting</span></td>
-                    <td>Sletter hele kundekortet permanent</td>
+                    <td>Sletter hele kundekortet permanent (inkl. banksending, notat og logg)</td>
                     <td class="muted">Ingenting</td>
                     <td><input class="inline-input" type="number" min="1" max="240" @bind="_gdprDeleteMonths" /> mnd</td>
                 </tr>
             </tbody>
         </table>
-        <button class="btn-primary" style="margin-top:14px" @onclick="SaveGdpr">Lagre</button>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap">
+            <button class="btn-primary" @onclick="SaveGdpr">Lagre</button>
+            <button class="btn-sm" @onclick="ForhaandsvisGdpr" disabled="@_gdprKjorer">@(_gdprKjorer ? "…" : "Forhåndsvis (tørrkjør)")</button>
+            @if (!_gdprBekreft)
+            {
+                <button class="btn-sm btn-danger" @onclick="() => _gdprBekreft = true" disabled="@_gdprKjorer">Kjør GDPR-jobb nå</button>
+            }
+            else
+            {
+                <span class="confirm-text">Irreversibelt — sikker?</span>
+                <button class="btn-danger-solid btn-sm" @onclick="KjorGdprNaa" disabled="@_gdprKjorer">@(_gdprKjorer ? "Kjører…" : "Ja, kjør")</button>
+                <button class="btn-sm" @onclick="() => _gdprBekreft = false">Avbryt</button>
+            }
+        </div>
+        @if (!Gdpr.IsConfigured)
+        {
+            <p class="page-sub" style="margin:8px 0 0; color:var(--danger, #b42318)">⚠ ConnectionStrings__Postgres må være satt i Azure for at jobben skal kunne kjøre.</p>
+        }
         @if (!string.IsNullOrEmpty(_gdprMsg))
         {
             <p class="page-sub" style="margin-top:10px">@_gdprMsg</p>
@@ -1107,10 +1128,100 @@ else if (_active == "GDPR")
     <div class="form-card">
         <h2>Slik ser en anonymisert søknad ut</h2>
         <p class="page-sub" style="margin:0">
-            Etter @_gdprAnonMonths måneder lagres f.eks. kun:
-            «<strong>Ola Nordmann (90012345)</strong> sendte en lånesøknad <strong>12.03.2026</strong>» —
-            ingen detaljer om beløp, inntekt eller gjeld.
+            Etter @_gdprAnonMonths måneder beholdes f.eks. kun anonym statistikk:
+            «En <strong>forbrukslånsøknad på 450 000 kr</strong>, status <strong>Fullført</strong>, opprettet
+            <strong>12.03.2026</strong> fra <strong>Prismatch</strong> i <strong>Bergen</strong>» —
+            <strong>uten</strong> navn, fødselsnummer eller kontaktinfo.
         </p>
+    </div>
+
+    <div class="form-card">
+        <h2>Feltnivåkryptering av fødselsnummer</h2>
+        <p class="page-sub" style="margin:0 0 12px">
+            Fødselsnummer, medsøkers fødselsnummer og kunde-id krypteres i ro (AES-256-GCM) når
+            nøkkelen <strong>Gdpr__FieldKey</strong> er satt i Azure. Et søkbart HMAC-felt gjør at
+            innsyn/sletting fortsatt kan finne personen uten å lagre fnr i klartekst.
+        </p>
+        @if (Kunder.KrypteringPaa)
+        {
+            <div class="samtykke-status ok" style="margin-bottom:12px">✓ Kryptering er PÅ. Nye og endrede kundekort krypteres automatisk.</div>
+            <p class="page-sub" style="margin:0 0 10px">
+                Eksisterende rader som fortsatt ligger i klartekst må bakfylles én gang:
+            </p>
+            <button class="btn-primary" @onclick="KrypterBackfill" disabled="@_krypterKjorer">
+                @(_krypterKjorer ? "Krypterer…" : "Krypter eksisterende data")
+            </button>
+        }
+        else
+        {
+            <div class="samtykke-status mangler">⚠ Kryptering er AV — Gdpr__FieldKey er ikke satt. Fødselsnummer lagres i klartekst.</div>
+            <p class="page-sub" style="margin:10px 0 0">
+                Sett en 32-byte nøkkel (base64) eller en passfrase i app-innstillingen <strong>Gdpr__FieldKey</strong> og start appen på nytt.
+            </p>
+        }
+        @if (!string.IsNullOrEmpty(_krypterMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_krypterMsg</p>
+        }
+    </div>
+
+    <div class="form-card">
+        <h2>Innsyn &amp; sletting per person</h2>
+        <p class="page-sub" style="margin:0 0 12px">
+            Registrertes rettigheter (GDPR art. 15 og 17): søk opp en person på fødselsnummer, mobilnummer
+            eller e-post for å <strong>eksportere</strong> alt vi har lagret (innsyn), eller <strong>slette</strong> alt permanent.
+        </p>
+        <div class="rule-builder" style="margin-bottom:12px">
+            <div class="rb-field" style="flex:1; min-width:240px">
+                <label>Fødselsnummer / mobil / e-post</label>
+                <input class="rb-input" @bind="_dsrSok" @bind:event="oninput" placeholder="f.eks. 12079330599 eller 93904919" />
+            </div>
+            <button class="btn-primary rb-add" @onclick="SokPerson" disabled="@_dsrKjorer">@(_dsrKjorer ? "…" : "Søk")</button>
+        </div>
+
+        @if (!Gdpr.IsConfigured)
+        {
+            <p class="page-sub" style="margin:0; color:var(--danger, #b42318)">⚠ ConnectionStrings__Postgres må være satt for at innsyn/sletting skal virke.</p>
+        }
+        @if (_dsrSokt && _dsrTreff.Count == 0)
+        {
+            <p class="page-sub" style="margin:0">Ingen kundekort funnet for søket.</p>
+        }
+        @if (_dsrTreff.Count > 0)
+        {
+            <table class="tbl">
+                <thead><tr><th>Navn</th><th>Fnr</th><th>Mobil</th><th>Status</th><th>Opprettet</th></tr></thead>
+                <tbody>
+                    @foreach (var t in _dsrTreff)
+                    {
+                        <tr>
+                            <td>@(t.Anonymisert ? "(anonymisert)" : (t.Navn ?? "—"))</td>
+                            <td>@(t.Fnr ?? "—")</td>
+                            <td>@(t.Mobil ?? "—")</td>
+                            <td>@(t.Status ?? "—")</td>
+                            <td>@t.OpprettetAt.TilOslo().ToString("dd.MM.yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="rule-builder" style="margin-top:12px">
+                <button class="btn-sm" @onclick="EksporterPerson" disabled="@_dsrKjorer">Last ned innsyn (JSON)</button>
+                @if (!_dsrSlettBekreft)
+                {
+                    <button class="btn-sm btn-danger" @onclick="() => _dsrSlettBekreft = true" disabled="@_dsrKjorer">Slett all data om personen</button>
+                }
+                else
+                {
+                    <span class="page-sub" style="margin:0 8px 0 0; color:var(--danger, #b42318)">Slette @_dsrTreff.Count kundekort permanent?</span>
+                    <button class="btn-danger-solid btn-sm" @onclick="SlettPerson" disabled="@_dsrKjorer">@(_dsrKjorer ? "Sletter…" : "Ja, slett alt")</button>
+                    <button class="btn-sm" @onclick="() => _dsrSlettBekreft = false">Avbryt</button>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_dsrMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_dsrMsg</p>
+        }
     </div>
 
     <div class="form-card">
@@ -1547,6 +1658,90 @@ else if (_active == "GDPR")
         await Settings.SetAsync("gdpr_anonymize_months", _gdprAnonMonths.ToString());
         await Settings.SetAsync("gdpr_delete_months", _gdprDeleteMonths.ToString());
         _gdprMsg = "Lagret.";
+    }
+
+    private bool _gdprKjorer;
+    private bool _gdprBekreft;
+
+    private async Task ForhaandsvisGdpr()
+    {
+        _gdprKjorer = true;
+        _gdprMsg = null;
+        var (anon, slett, feil) = await Gdpr.KjorAsync(_gdprAnonMonths, _gdprDeleteMonths, torrkjor: true);
+        _gdprMsg = feil is null
+            ? $"Tørrkjør: ville anonymisert {anon} og slettet {slett} kundekort (ingen data endret)."
+            : "GDPR forhåndsvisning feilet: " + feil;
+        _gdprKjorer = false;
+    }
+
+    private async Task KjorGdprNaa()
+    {
+        _gdprKjorer = true;
+        _gdprMsg = null;
+        // Lagre gjeldende innstillinger først, så kjør med dem.
+        if (_gdprAnonMonths < 1) _gdprAnonMonths = 1;
+        if (_gdprDeleteMonths < 1) _gdprDeleteMonths = 1;
+        await Settings.SetAsync("gdpr_anonymize_months", _gdprAnonMonths.ToString());
+        await Settings.SetAsync("gdpr_delete_months", _gdprDeleteMonths.ToString());
+        var (anon, slett, feil) = await Gdpr.KjorAsync(_gdprAnonMonths, _gdprDeleteMonths);
+        _gdprMsg = feil is null
+            ? $"Kjørt ✓ — anonymiserte {anon}, slettet {slett} kundekort."
+            : "GDPR-jobb feilet: " + feil;
+        _gdprKjorer = false;
+        _gdprBekreft = false;
+    }
+
+    // ---- GDPR: feltnivåkryptering (bakfylling) ----
+    private bool _krypterKjorer;
+    private string? _krypterMsg;
+
+    private async Task KrypterBackfill()
+    {
+        _krypterKjorer = true; _krypterMsg = null;
+        var (opp, u, feil) = await Kunder.KrypterEksisterendeAsync();
+        _krypterMsg = feil is null
+            ? $"Ferdig ✓ — krypterte {opp} kundekort ({u} var allerede kryptert)."
+            : "Kryptering feilet: " + feil;
+        _krypterKjorer = false;
+    }
+
+    // ---- GDPR: innsyn & sletting per person (registrertes rettigheter) ----
+    private string _dsrSok = "";
+    private bool _dsrSokt;
+    private bool _dsrKjorer;
+    private bool _dsrSlettBekreft;
+    private string? _dsrMsg;
+    private List<GdprService.PersonTreff> _dsrTreff = new();
+
+    private async Task SokPerson()
+    {
+        _dsrKjorer = true; _dsrMsg = null; _dsrSlettBekreft = false;
+        var (treff, feil) = await Gdpr.SokPersonAsync(_dsrSok);
+        _dsrTreff = treff;
+        _dsrSokt = true;
+        _dsrMsg = feil;
+        _dsrKjorer = false;
+    }
+
+    private async Task EksporterPerson()
+    {
+        _dsrKjorer = true; _dsrMsg = null;
+        var (json, antall, feil) = await Gdpr.EksporterPersonAsync(_dsrSok);
+        if (feil is not null || json is null) { _dsrMsg = "Eksport feilet: " + (feil ?? "ukjent"); _dsrKjorer = false; return; }
+        var filnavn = $"innsyn_{new string(_dsrSok.Where(char.IsLetterOrDigit).ToArray())}.json";
+        await JS.InvokeVoidAsync("rkDownload", filnavn, json, "application/json");
+        _dsrMsg = $"Eksporterte {antall} kundekort.";
+        _dsrKjorer = false;
+    }
+
+    private async Task SlettPerson()
+    {
+        _dsrKjorer = true; _dsrMsg = null;
+        var (slett, feil) = await Gdpr.SlettPersonAsync(_dsrSok, Session.Email);
+        _dsrMsg = feil is null ? $"Slettet {slett} kundekort permanent." : "Sletting feilet: " + feil;
+        _dsrSlettBekreft = false;
+        if (feil is null) { _dsrTreff = new(); _dsrSokt = false; }
+        _dsrKjorer = false;
     }
 
     // ---- Logikk-matrise (universalfilter → ruting til bank) ----

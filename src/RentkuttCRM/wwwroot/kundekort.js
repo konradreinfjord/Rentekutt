@@ -21,3 +21,16 @@
         if (felt) felt.classList.remove('aapen');
     });
 })();
+
+// Last ned tekst som fil (brukes til GDPR-innsynseksport).
+window.rkDownload = function (filnavn, tekst, mime) {
+    try {
+        var blob = new Blob([tekst], { type: mime || 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filnavn;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    } catch (e) { console.error('rkDownload feilet', e); }
+};

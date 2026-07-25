@@ -16,6 +16,10 @@ public class Kundekort : BaseModel
     [Column("kunde_id")] public string KundeId { get; set; } = "";
     [Column("kunde_type")] public string KundeType { get; set; } = "B2C";
 
+    /// <summary>Søkbar HMAC av fødselsnummer (kun sifre) — brukes til likhets-oppslag
+    /// når selve fødselsnummeret er kryptert. Settes av <c>KundekortService</c>.</summary>
+    [Column("fnr_hmac")] public string? FnrHmac { get; set; }
+
     /// <summary>Organisasjonsnummer for B2B. Mappes fra payload-feltet «orgnr».
     /// kunde_id speiler dette for gruppering, men «Orgnr» i UI leser herfra.</summary>
     [Column("orgnr")] public string? Orgnr { get; set; }
@@ -130,4 +134,8 @@ public class Kundekort : BaseModel
 
     [Column("updated_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>Grunn kopi — brukes til å bygge en kryptert DB-variant uten å endre
+    /// objektet appen holder i minnet (som forblir i klartekst).</summary>
+    public Kundekort Klon() => (Kundekort)MemberwiseClone();
 }

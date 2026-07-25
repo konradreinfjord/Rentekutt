@@ -39,20 +39,53 @@ public class KundekortService
     private readonly Supabase.Client _client;
     private readonly PostnummerService _postnr;
     private readonly LoggService _logg;
+    private readonly CryptoService _krypto;
     private readonly ILogger<KundekortService> _log;
     public bool IsConfigured { get; }
 
     private static readonly List<Kundekort> _staging = new();
     private bool _initialized;
 
-    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, IConfiguration cfg, ILogger<KundekortService> log)
+    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, IConfiguration cfg, ILogger<KundekortService> log)
     {
         _client = client;
         _postnr = postnr;
         _logg = logg;
+        _krypto = krypto;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
+    }
+
+    // ---- Feltnivåkryptering (fødselsnummer m.m.) ----
+    // Appen jobber alltid i klartekst; kryptering skjer kun i det vi skriver til / leser
+    // fra databasen. Krypter-ved-skriving skjer på en KLON (ForDb), så objektet kalleren
+    // holder forblir i klartekst. Dekryptering skjer på alle leseveier (Avdekk).
+
+    /// <summary>Lag en kryptert DB-variant (fnr/medsøker-fnr/kunde_id) + søkbar HMAC. Rører ikke originalen.</summary>
+    private Kundekort ForDb(Kundekort k)
+    {
+        var db = k.Klon();
+        db.FnrHmac = _krypto.HmacFnr(k.Foedselsnummer) ?? _krypto.HmacFnr(k.KundeId);
+        db.Foedselsnummer = _krypto.Beskytt(k.Foedselsnummer);
+        db.MedsokerFoedselsnummer = _krypto.Beskytt(k.MedsokerFoedselsnummer);
+        db.KundeId = _krypto.Beskytt(k.KundeId) ?? "";
+        return db;
+    }
+
+    /// <summary>Dekrypter personopplysninger på et kundekort lest fra databasen.</summary>
+    private void Avdekk(Kundekort? k)
+    {
+        if (k is null) return;
+        k.Foedselsnummer = _krypto.Avdekk(k.Foedselsnummer);
+        k.MedsokerFoedselsnummer = _krypto.Avdekk(k.MedsokerFoedselsnummer);
+        k.KundeId = _krypto.Avdekk(k.KundeId) ?? "";
+    }
+
+    private List<Kundekort> AvdekkAlle(List<Kundekort> liste)
+    {
+        foreach (var k in liste) Avdekk(k);
+        return liste;
     }
 
     // Menneskelesbare endringer mellom to versjoner av et kundekort (til logg).
@@ -136,17 +169,20 @@ public class KundekortService
             // Tom Id = ny sak (DB genererer id). Ellers oppdater eksisterende sak.
             if (k.Id == Guid.Empty)
             {
-                var resp = await _client.From<Kundekort>().Insert(k);
+                var resp = await _client.From<Kundekort>().Insert(ForDb(k));
                 InvaliderCache();
                 var nyId = resp.Models.FirstOrDefault()?.Id ?? Guid.Empty;
                 if (nyId != Guid.Empty)
+                {
+                    k.Id = nyId;   // så kaller (webhook m.fl.) kan knytte samtykke/relasjoner til id-en
                     await _logg.LoggAsync(nyId, aktor ?? k.Kilde,
                         $"Registrert kundekort{(string.IsNullOrWhiteSpace(k.Kilde) ? "" : $" ({k.Kilde})")}");
+                }
             }
             else
             {
                 var gammel = await GetAsync(k.Id);
-                var resp = await _client.From<Kundekort>().Update(k);
+                var resp = await _client.From<Kundekort>().Update(ForDb(k));
                 // Avslør stille feil: en oppdatering som treffer 0 rader (RLS/ukjent id)
                 // returnerer ingen modeller — ikke meld suksess da.
                 if (resp.Models.Count == 0)
@@ -187,7 +223,7 @@ public class KundekortService
         if (_listeCache is not null && DateTime.UtcNow - _listeCacheTid < CacheLevetid)
             return _listeCache;
         await EnsureReadyAsync();
-        _listeCache = (await _client.From<Kundekort>().Get()).Models;
+        _listeCache = AvdekkAlle((await _client.From<Kundekort>().Get()).Models);
         _listeCacheTid = DateTime.UtcNow;
         return _listeCache;
     }
@@ -210,7 +246,7 @@ public class KundekortService
         if (_lettCache is not null && DateTime.UtcNow - _lettCacheTid < CacheLevetid)
             return _lettCache;
         await EnsureReadyAsync();
-        _lettCache = (await _client.From<Kundekort>().Select(LetteKolonner).Get()).Models;
+        _lettCache = AvdekkAlle((await _client.From<Kundekort>().Select(LetteKolonner).Get()).Models);
         _lettCacheTid = DateTime.UtcNow;
         return _lettCache;
     }
@@ -452,7 +488,9 @@ public class KundekortService
         try
         {
             await EnsureReadyAsync();
-            return await _client.From<Kundekort>().Where(x => x.Id == id).Single();
+            var k = await _client.From<Kundekort>().Where(x => x.Id == id).Single();
+            Avdekk(k);
+            return k;
         }
         catch (Exception ex)
         {
@@ -467,5 +505,48 @@ public class KundekortService
         try { await _client.InitializeAsync(); }
         catch (Exception ex) { _log.LogWarning(ex, "Supabase InitializeAsync ga feil (fortsetter)"); }
         _initialized = true;
+    }
+
+    public bool KrypteringPaa => _krypto.IsEnabled;
+
+    /// <summary>Engangs-bakfylling: krypter fødselsnummer/kunde_id og sett søkbar HMAC på
+    /// eksisterende rader som ennå ligger i klartekst (eller mangler HMAC). Idempotent.</summary>
+    public async Task<(int oppdatert, int uendret, string? feil)> KrypterEksisterendeAsync()
+    {
+        if (!IsConfigured) return (0, 0, "Supabase er ikke konfigurert.");
+        if (!_krypto.IsEnabled) return (0, 0, "Gdpr__FieldKey er ikke satt — kan ikke kryptere.");
+        try
+        {
+            await EnsureReadyAsync();
+            // Rå rader (uten dekryptering) — kan være en blanding av klartekst og kryptert.
+            var alle = (await _client.From<Kundekort>().Get()).Models;
+            int opp = 0, u = 0;
+            foreach (var raw in alle)
+            {
+                var maaKrypteres =
+                    (!string.IsNullOrEmpty(raw.Foedselsnummer) && !_krypto.ErBeskyttet(raw.Foedselsnummer)) ||
+                    (!string.IsNullOrEmpty(raw.MedsokerFoedselsnummer) && !_krypto.ErBeskyttet(raw.MedsokerFoedselsnummer)) ||
+                    (!string.IsNullOrEmpty(raw.KundeId) && !_krypto.ErBeskyttet(raw.KundeId)) ||
+                    string.IsNullOrEmpty(raw.FnrHmac);
+                if (!maaKrypteres) { u++; continue; }
+
+                // Dekrypter det som allerede er kryptert, la klartekst stå — så bygger vi
+                // en frisk kryptert variant (idempotent) og skriver tilbake.
+                var klartekst = raw.Klon();
+                Avdekk(klartekst);
+                var db = ForDb(klartekst);
+                db.Id = raw.Id;
+                await _client.From<Kundekort>().Update(db);
+                opp++;
+            }
+            InvaliderCache();
+            _log.LogInformation("Bakfylling kryptering: {Opp} oppdatert, {U} allerede kryptert", opp, u);
+            return (opp, u, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Bakfylling av kryptering feilet");
+            return (0, 0, ex.Message);
+        }
     }
 }

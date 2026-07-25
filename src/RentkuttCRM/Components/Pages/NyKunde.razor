@@ -10,6 +10,7 @@
 @inject RentkuttCRM.Services.InstabankService Instabank
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.LoggService Logg
+@inject RentkuttCRM.Services.SamtykkeService Samtykke
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -271,6 +272,23 @@
                     </div>
                 }
             </div>
+        }
+    </div>
+
+    <div class="form-card">
+        <h2>Samtykke (GDPR)</h2>
+        <p class="page-sub" style="margin:0 0 10px">Gjeldsregister og kredittsjekk — kreves før søknaden kan sendes til bank.</p>
+        @if (_harSamtykke)
+        {
+            <div class="samtykke-status ok">✓ Gyldig samtykke registrert. Søknaden kan sendes til bank.</div>
+        }
+        else
+        {
+            <div class="samtykke-status mangler">⚠ Mangler samtykke. Søknaden kan ikke sendes til bank før samtykke er registrert.</div>
+            @if (_isEdit)
+            {
+                <button type="button" class="btn-sec" style="margin-top:10px" @onclick="RegistrerSamtykke">Registrer samtykke</button>
+            }
         }
     </div>
 }
@@ -708,7 +726,19 @@
             _notatLogg = notatTask.Result;
             _sendinger = sendTask.Result;
             _endringslogg = loggTask.Result;
+            _harSamtykke = _k.SamtykkeGjeldsregisterKredittsjekk || await Samtykke.HarGyldigAsync(_k.Id, SamtykkeService.FormaalKreditt);
         }
+    }
+
+    // ---- Samtykke ----
+    private bool _harSamtykke;
+    private async Task RegistrerSamtykke()
+    {
+        await Samtykke.RegistrerAsync(_k.Id, SamtykkeService.FormaalKreditt,
+            Session.UserName ?? Session.Email, tekstversjon: "manuelt registrert av rådgiver");
+        _harSamtykke = true;
+        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, "Registrerte samtykke (Gjeldsregister og kredittsjekk)");
+        _endringslogg = await Logg.ForKundeAsync(_k.Id);
     }
 
     // ---- Endringslogg + auto-lagring ----
@@ -780,6 +810,14 @@
         var valgbare = ProdukterForValgtBank();
         if (valgbare.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)) return;
         var valgtProdukt = valgbare.FirstOrDefault(p => p.Id.ToString() == _valgtProduktId);
+
+        // GDPR-sperre: ikke send til bank uten gyldig samtykke.
+        if (!_harSamtykke)
+        {
+            _sendOk = false;
+            _sendMsg = "Mangler samtykke (Gjeldsregister og kredittsjekk). Registrer samtykke i Oversikt-fanen før sending.";
+            return;
+        }
 
         _sender = true;
         _sendMsg = null;

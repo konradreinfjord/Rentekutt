@@ -15,16 +15,18 @@ public class WebhookController : ControllerBase
     private readonly KundekortService _kundekort;
     private readonly EventService _events;
     private readonly SmsMalService _sms;
+    private readonly SamtykkeService _samtykke;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
-        SmsMalService sms, IWebHostEnvironment env, ILogger<WebhookController> log)
+        SmsMalService sms, SamtykkeService samtykke, IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
         _events = events;
         _sms = sms;
+        _samtykke = samtykke;
         _env = env;
         _log = log;
     }
@@ -78,6 +80,10 @@ public class WebhookController : ControllerBase
             k.Kilde = KildeLabel(hook.Name);
             var (ok, error) = await _kundekort.SaveAsync(k);
             if (!ok) { _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
+
+            // Dokumentér samtykke som egen entitet (tidspunkt + kilde) når leadet oppgir det.
+            if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
+                await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: "lead-payload", ip: clientIp);
 
             await _sms.MaybeSendAutomatikkAsync(k);   // auto-SMS til kunde hvis slått på
             opprettet++;

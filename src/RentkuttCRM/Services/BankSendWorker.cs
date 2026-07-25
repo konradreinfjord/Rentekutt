@@ -82,7 +82,8 @@ public class BankSendWorker : BackgroundService
                 {
                     var kunder = scope.ServiceProvider.GetRequiredService<KundekortService>();
                     var instabank = scope.ServiceProvider.GetRequiredService<InstabankService>();
-                    utfall = await BehandleAsync(neste, ko, kunder, instabank);
+                    var samtykke = scope.ServiceProvider.GetRequiredService<SamtykkeService>();
+                    utfall = await BehandleAsync(neste, ko, kunder, instabank, samtykke);
                 }
             }
             catch (Exception ex) { _log.LogError(ex, "Sendekø-syklus feilet"); }
@@ -121,7 +122,7 @@ public class BankSendWorker : BackgroundService
         }
     }
 
-    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank)
+    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank, SamtykkeService samtykke)
     {
         // Banker uten hardkodet API-sending registreres som manuelt videresendt (ingen API-kall).
         if (!InstabankService.ErInstabankNavn(s.Bank))
@@ -142,6 +143,18 @@ public class BankSendWorker : BackgroundService
         {
             s.Status = SendStatus.Feilet; s.Detalj = "Fant ikke kundekortet.";
             await ko.OppdaterAsync(s); return Utfall.IngenApiKall;
+        }
+
+        // GDPR-sperre: krev gyldig samtykke (Gjeldsregister og kredittsjekk) før oversendelse.
+        // Eldre lead uten samtykke-rad dekkes av det boolske feltet på kundekortet.
+        var harSamtykke = k.SamtykkeGjeldsregisterKredittsjekk || await samtykke.HarGyldigAsync(id, SamtykkeService.FormaalKreditt);
+        if (!harSamtykke)
+        {
+            s.Status = SendStatus.Feilet;
+            s.Detalj = "Mangler gyldig samtykke (Gjeldsregister og kredittsjekk) — ikke sendt til bank.";
+            await ko.OppdaterAsync(s);
+            await kunder.SetStatusAsync(id, KundekortService.StatusFeiletSending);
+            return Utfall.Varig;
         }
 
         var r = await instabank.SendSoknadAsync(k, s.ProduktKode);
