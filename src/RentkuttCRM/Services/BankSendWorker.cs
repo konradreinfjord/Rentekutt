@@ -63,6 +63,18 @@ public class BankSendWorker : BackgroundService
                 $"Utestående: {(st.Utestaende.Count > 0 ? string.Join(", ", st.Utestaende) : "—")}. Feilet: {(st.Feilet.Count > 0 ? string.Join("; ", st.Feilet) : "—")}",
                 AlarmService.Alvorlighet.Kritisk, "migrasjon-feil");
 
+        // FUNN E: gjør «kryptering AV» synlig (kritisk alarm) i stedet for kun en stille loggmelding —
+        // uten nøkkel lagres nye fødselsnummer i klartekst.
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            if (!scope.ServiceProvider.GetRequiredService<CryptoService>().IsEnabled)
+                await AlarmAsync("Kryptering", "Feltnivåkryptering er AV",
+                    "Gdpr__FieldKey mangler — nye fødselsnummer lagres i KLARTEKST. Sett nøkkelen og kjør bakfylling.",
+                    AlarmService.Alvorlighet.Kritisk, "kryptering-av");
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke sjekke krypteringsstatus"); }
+
         while (!ct.IsCancellationRequested)
         {
             // Sikkerhetsbryter åpen ⇒ ikke rør API-et før pausen er over.
@@ -147,7 +159,7 @@ public class BankSendWorker : BackgroundService
 
         // GDPR-sperre: krev gyldig samtykke (Gjeldsregister og kredittsjekk) før oversendelse.
         // Eldre lead uten samtykke-rad dekkes av det boolske feltet på kundekortet.
-        var harSamtykke = k.SamtykkeGjeldsregisterKredittsjekk || await samtykke.HarGyldigAsync(id, SamtykkeService.FormaalKreditt);
+        var harSamtykke = await samtykke.HarGyldigEllerLegacyAsync(id, SamtykkeService.FormaalKreditt, k.SamtykkeGjeldsregisterKredittsjekk);
         if (!harSamtykke)
         {
             s.Status = SendStatus.Feilet;

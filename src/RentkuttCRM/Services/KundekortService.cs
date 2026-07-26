@@ -45,18 +45,20 @@ public class KundekortService
     private readonly PostnummerService _postnr;
     private readonly LoggService _logg;
     private readonly CryptoService _krypto;
+    private readonly AlarmService _alarm;
     private readonly ILogger<KundekortService> _log;
     public bool IsConfigured { get; }
 
     private static readonly List<Kundekort> _staging = new();
     private bool _initialized;
 
-    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, IConfiguration cfg, ILogger<KundekortService> log)
+    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, AlarmService alarm, IConfiguration cfg, ILogger<KundekortService> log)
     {
         _client = client;
         _postnr = postnr;
         _logg = logg;
         _krypto = krypto;
+        _alarm = alarm;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
@@ -76,6 +78,15 @@ public class KundekortService
         db.MedsokerFoedselsnummer = _krypto.Beskytt(k.MedsokerFoedselsnummer);
         db.KundeId = _krypto.Beskytt(k.KundeId) ?? "";
         return db;
+    }
+
+    /// <summary>Har kortet et fødselsnummer som må beskyttes? (søker, medsøker, eller kunde_id som er fnr).</summary>
+    private static bool HarFodselsnummer(Kundekort k)
+    {
+        static bool ErFnr(string? s) => !string.IsNullOrWhiteSpace(s) && new string(s.Where(char.IsDigit).ToArray()).Length == 11;
+        return !string.IsNullOrWhiteSpace(k.Foedselsnummer)
+            || !string.IsNullOrWhiteSpace(k.MedsokerFoedselsnummer)
+            || (k.KundeType == "B2C" && ErFnr(k.KundeId));
     }
 
     /// <summary>Dekrypter personopplysninger på et kundekort lest fra databasen.</summary>
@@ -168,6 +179,20 @@ public class KundekortService
         // B2B: hold orgnr-feltet i synk med et gyldig 9-sifret kunde_id.
         if (k.KundeType == "B2B" && string.IsNullOrWhiteSpace(k.Orgnr) && k.KundeId.Length == 9 && k.KundeId.All(char.IsDigit))
             k.Orgnr = k.KundeId;
+
+        // Fail-open: mangler krypteringsnøkkelen, lagres fødselsnummer i KLARTEKST (så leads ikke
+        // går tapt), men vi reiser en alarm slik at tilstanden ikke er stille. Alarmen dedupliseres
+        // på nøkkel, så den teller opp i stedet for å spamme.
+        if (IsConfigured && !_krypto.IsEnabled && HarFodselsnummer(k))
+        {
+            try
+            {
+                await _alarm.RaiseAsync("Kryptering", "Fødselsnummer lagret i klartekst",
+                    "Gdpr__FieldKey mangler — fødselsnummer lagres i klartekst. Sett nøkkelen og kjør bakfylling.",
+                    AlarmService.Alvorlighet.Kritisk, "Kundekort", "kryptering-av-klartekst");
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Alarm (klartekst-fnr) feilet"); }
+        }
 
         if (!IsConfigured)
         {

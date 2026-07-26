@@ -735,7 +735,7 @@
             _notatLogg = notatTask.Result;
             _sendinger = sendTask.Result;
             _endringslogg = loggTask.Result;
-            _harSamtykke = _k.SamtykkeGjeldsregisterKredittsjekk || await Samtykke.HarGyldigAsync(_k.Id, SamtykkeService.FormaalKreditt);
+            _harSamtykke = await Samtykke.HarGyldigEllerLegacyAsync(_k.Id, SamtykkeService.FormaalKreditt, _k.SamtykkeGjeldsregisterKredittsjekk);
             // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
             await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");
         }
@@ -746,7 +746,7 @@
     private async Task RegistrerSamtykke()
     {
         await Samtykke.RegistrerAsync(_k.Id, SamtykkeService.FormaalKreditt,
-            Session.UserName ?? Session.Email, tekstversjon: "manuelt registrert av rådgiver");
+            Session.UserName ?? Session.Email, tekstversjon: SamtykkeService.SamtykketekstVersjon);
         _harSamtykke = true;
         await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, "Registrerte samtykke (Gjeldsregister og kredittsjekk)");
         _endringslogg = await Logg.ForKundeAsync(_k.Id);

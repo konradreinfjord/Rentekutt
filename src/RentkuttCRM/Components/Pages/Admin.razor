@@ -15,6 +15,7 @@
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.GdprService Gdpr
 @inject RentkuttCRM.Services.KundekortService Kunder
+@inject RentkuttCRM.Services.CryptoService Krypto
 @inject RentkuttCRM.Services.DatabaseMigrator Migrator
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -1165,6 +1166,33 @@ else if (_active == "GDPR")
         {
             <p class="page-sub" style="margin-top:10px">@_krypterMsg</p>
         }
+
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:14px">
+            <h3 style="margin:0 0 8px; font-size:14px">Diagnose — lest fra kjørende prosess / live database</h3>
+            @{ var (fieldKeyLastet, selvtestOk) = KrypteringStatus(); }
+            <ul class="page-sub" style="margin:0; padding-left:18px; line-height:1.9">
+                <li>Gdpr__FieldKey lastet i kjørende prosess:
+                    <strong>@(fieldKeyLastet ? "Ja" : "Nei")</strong></li>
+                <li>Selvtest kryptering (krypter→dekrypter i kjørende prosess):
+                    <strong>@(fieldKeyLastet ? (selvtestOk ? "OK" : "Feilet") : "— (kryptering AV)")</strong></li>
+                <li>HMAC-nøkkel: <strong>avledet fra Gdpr__FieldKey (domenetagg «hmac-v1»)</strong></li>
+                @if (_diagKjort)
+                {
+                    <li>Rader med fødselsnummer uten <code>enc:1:</code>-format:
+                        <strong style="@(_diagUkryptert > 0 ? "color:var(--danger,#b42318)" : "")">@_diagUkryptert</strong></li>
+                    <li>Rader med fødselsnummer satt men <code>fnr_hmac</code> = null:
+                        <strong style="@(_diagManglerHmac > 0 ? "color:var(--danger,#b42318)" : "")">@_diagManglerHmac</strong></li>
+                }
+            </ul>
+            <button class="btn-sm" style="margin-top:10px" @onclick="KjorKryptDiagnose" disabled="@_diagKjorer">
+                @(_diagKjorer ? "Teller…" : "Kjør databasetelling (live)")
+            </button>
+            @if (!string.IsNullOrEmpty(_diagFeil))
+            {
+                <p class="page-sub" style="margin-top:8px; color:var(--danger,#b42318)">@_diagFeil</p>
+            }
+            <p class="page-sub" style="margin:8px 0 0; font-size:11.5px">Status leses direkte fra kjørende konfigurasjon og databasen — ikke fra en lagret innstilling. Nøkkelverdier vises aldri.</p>
+        </div>
     </div>
 
     <div class="form-card">
@@ -1737,6 +1765,34 @@ else if (_active == "GDPR")
     // ---- GDPR: feltnivåkryptering (bakfylling) ----
     private bool _krypterKjorer;
     private string? _krypterMsg;
+
+    // Diagnose lest fra KJØRENDE prosess (ikke lagret innstilling): er nøkkelen lastet, og
+    // fungerer krypteringen faktisk (rundtur via CryptoService' offentlige API — ingen kodeendring der).
+    private (bool lastet, bool selvtestOk) KrypteringStatus()
+    {
+        var lastet = Krypto.IsEnabled;
+        bool ok = false;
+        try
+        {
+            const string proeve = "12345678901";
+            var kryptert = Krypto.Beskytt(proeve);
+            ok = Krypto.ErBeskyttet(kryptert) && Krypto.Avdekk(kryptert) == proeve;
+        }
+        catch { ok = false; }
+        return (lastet, ok);
+    }
+
+    private bool _diagKjorer, _diagKjort;
+    private int _diagUkryptert, _diagManglerHmac;
+    private string? _diagFeil;
+    private async Task KjorKryptDiagnose()
+    {
+        _diagKjorer = true; _diagFeil = null;
+        var (uKryptert, manglerHmac, feil) = await Gdpr.KrypteringsDiagnoseAsync();
+        _diagUkryptert = uKryptert; _diagManglerHmac = manglerHmac; _diagFeil = feil;
+        _diagKjort = feil is null;
+        _diagKjorer = false;
+    }
 
     private async Task KrypterBackfill()
     {

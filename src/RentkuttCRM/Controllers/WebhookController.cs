@@ -83,7 +83,7 @@ public class WebhookController : ControllerBase
 
             // Dokumentér samtykke som egen entitet (tidspunkt + kilde) når leadet oppgir det.
             if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
-                await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: "lead-payload", ip: clientIp);
+                await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
 
             await _sms.MaybeSendAutomatikkAsync(k);   // auto-SMS til kunde hvis slått på
             opprettet++;

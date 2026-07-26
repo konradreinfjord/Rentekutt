@@ -64,7 +64,7 @@ update public.kundekort set
     adresse = null, postnummer = null, poststed = null, kontonummer = null,
     medsoker_navn = null, medsoker_foedselsnummer = null, medsoker_mobil = null,
     medsoker_epost = null, medsoker_adresse = null, medsoker_postnummer = null, medsoker_poststed = null,
-    notater = null, kunde_id = 'anonymisert', anonymisert_at = now()
+    notater = null, kunde_id = 'anonymisert', fnr_hmac = null, anonymisert_at = now()
 where created_at < @grense and anonymisert_at is null;";
             int anon;
             await using (var cmd = new NpgsqlCommand(anonSql, conn))
@@ -80,6 +80,8 @@ where created_at < @grense and anonymisert_at is null;";
             await ExecAsync(conn, "delete from public.kundekort_logg where kundekort_id in (select id from public.kundekort where anonymisert_at is not null);", ct);
             await ExecAsync(conn, "reset app.allow_log_purge;", ct);
             await ExecAsync(conn, "update public.banksending set kunde_navn = null where kundekort_id in (select id from public.kundekort where anonymisert_at is not null);", ct);
+            // Alarmer kan inneholde kundenavn i detalj (matchet via noekkel som inneholder kundekort-id).
+            await ExecAsync(conn, "delete from public.alarm a using public.kundekort k where k.anonymisert_at is not null and a.noekkel like '%' || k.id::text || '%';", ct);
 
             // 3) Slett kundekort eldre enn slette-grensen (kaskade rydder banksending/saksnotat/kundekort_logg).
             int slett;
@@ -106,6 +108,27 @@ where created_at < @grense and anonymisert_at is null;";
             _log.LogError(ex, "GDPR-jobb feilet");
             return (0, 0, ex.Message);
         }
+    }
+
+    /// <summary>Live krypteringsdiagnose lest direkte fra databasen (ikke fra lagret innstilling):
+    /// antall rader med fødselsnummer i klartekst, og antall med fnr satt men manglende HMAC.</summary>
+    public async Task<(int uKryptert, int manglerHmac, string? feil)> KrypteringsDiagnoseAsync()
+    {
+        if (!IsConfigured) return (0, 0, "ConnectionStrings:Postgres er ikke satt.");
+        try
+        {
+            await using var conn = new NpgsqlConnection(_conn);
+            await conn.OpenAsync();
+            int uKryptert, manglerHmac;
+            await using (var cmd = new NpgsqlCommand(
+                "select count(*) from public.kundekort where foedselsnummer is not null and foedselsnummer not like 'enc:1:%';", conn))
+                uKryptert = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            await using (var cmd = new NpgsqlCommand(
+                "select count(*) from public.kundekort where foedselsnummer is not null and fnr_hmac is null;", conn))
+                manglerHmac = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            return (uKryptert, manglerHmac, null);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Krypteringsdiagnose feilet"); return (0, 0, ex.Message); }
     }
 
     private static async Task ExecAsync(NpgsqlConnection conn, string sql, CancellationToken ct)
@@ -179,7 +202,8 @@ select coalesce(json_agg(json_build_object(
     'saksnotat',    (select coalesce(json_agg(row_to_json(sn)),'[]') from public.saksnotat sn      where sn.kundekort_id = k.id),
     'endringslogg', (select coalesce(json_agg(row_to_json(lg)),'[]') from public.kundekort_logg lg where lg.kundekort_id = k.id),
     'banksending',  (select coalesce(json_agg(row_to_json(bs)),'[]') from public.banksending bs    where bs.kundekort_id = k.id),
-    'samtykke',     (select coalesce(json_agg(row_to_json(sm)),'[]') from public.samtykke sm       where sm.kundekort_id = k.id)
+    'samtykke',     (select coalesce(json_agg(row_to_json(sm)),'[]') from public.samtykke sm       where sm.kundekort_id = k.id),
+    'alarm',        (select coalesce(json_agg(row_to_json(al)),'[]') from public.alarm al          where al.noekkel like '%' || k.id::text || '%')
 ) order by k.created_at desc), '[]')::text
 from public.kundekort k where " + SokFilter + ";";
         try
@@ -237,6 +261,11 @@ from public.kundekort k where " + SokFilter + ";";
             foreach (var tabell in new[] { "saksnotat", "kundekort_logg", "banksending", "samtykke" })
                 await using (var cmd = new NpgsqlCommand($"delete from public.{tabell} where kundekort_id = any(@ids);", conn, (NpgsqlTransaction)tx))
                 { cmd.Parameters.AddWithValue("ids", ids.ToArray()); await cmd.ExecuteNonQueryAsync(); }
+
+            // Alarmer refererer kortet via noekkel (som inneholder kundekort-id) og kan ha kundenavn i detalj.
+            foreach (var kid in ids)
+                await using (var cmd = new NpgsqlCommand("delete from public.alarm where noekkel like @m;", conn, (NpgsqlTransaction)tx))
+                { cmd.Parameters.AddWithValue("m", "%" + kid + "%"); await cmd.ExecuteNonQueryAsync(); }
 
             int slett;
             await using (var cmd = new NpgsqlCommand("delete from public.kundekort where id = any(@ids);", conn, (NpgsqlTransaction)tx))

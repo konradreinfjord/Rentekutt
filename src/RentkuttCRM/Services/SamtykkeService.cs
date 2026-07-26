@@ -25,6 +25,10 @@ public class SamtykkeService
     /// <summary>Formål som kreves før kredittvurdering/oversendelse til bank.</summary>
     public const string FormaalKreditt = "Gjeldsregister og kredittsjekk";
 
+    /// <summary>Versjon av samtykketeksten kunden godtar. Bump ved endring av selve teksten,
+    /// så vi kan dokumentere nøyaktig hvilken ordlyd hvert samtykke er gitt mot.</summary>
+    public const string SamtykketekstVersjon = "samtykke-v1";
+
     private readonly Supabase.Client _client;
     private readonly ILogger<SamtykkeService> _log;
     public bool IsConfigured { get; }
@@ -69,6 +73,33 @@ public class SamtykkeService
             return rader.Any(x => x.Formaal == formaal && x.Gitt && (x.Utlop == null || x.Utlop > naa));
         }
         catch (Exception ex) { _log.LogError(ex, "Sjekk av samtykke feilet"); return false; }
+    }
+
+    /// <summary>Gyldig samtykke der samtykke-ENTITETEN er fasit når den finnes (håndhever utløp),
+    /// og det gamle boolske flagget kun brukes som fallback for eldre saker uten samtykke-rad.
+    /// Retter FUNN A: tidligere kortsluttet det boolske flagget utløpssjekken.</summary>
+    public async Task<bool> HarGyldigEllerLegacyAsync(Guid kundekortId, string formaal, bool legacyFlagg)
+    {
+        var naa = DateTime.UtcNow;
+        List<Samtykke> rader;
+        if (!IsConfigured)
+        {
+            rader = _staging.Where(x => x.KundekortId == kundekortId && x.Formaal == formaal).ToList();
+        }
+        else
+        {
+            try
+            {
+                await EnsureInitAsync();
+                rader = (await _client.From<Samtykke>().Where(x => x.KundekortId == kundekortId).Get())
+                    .Models.Where(x => x.Formaal == formaal).ToList();
+            }
+            catch (Exception ex) { _log.LogError(ex, "Sjekk av samtykke feilet"); return false; }
+        }
+        // Finnes samtykke-rad(er) for formålet → entiteten er fasit, inkl. utløp.
+        if (rader.Count > 0) return rader.Any(x => x.Gitt && (x.Utlop == null || x.Utlop > naa));
+        // Ingen rad (eldre sak) → fall tilbake på det boolske flagget.
+        return legacyFlagg;
     }
 
     public async Task<List<Samtykke>> ForKundeAsync(Guid kundekortId)

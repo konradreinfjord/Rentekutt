@@ -5,6 +5,12 @@ using Supabase;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Logg-redaksjon: maskér fødselsnummer i ALL console-logg (stdout / Azure Log Stream) som
+// et globalt sikkerhetsnett. Kun treff som består MOD11 + gyldig datoprefiks maskeres, så
+// kontonummer o.l. rammes ikke. (Merk: telemetri som ev. innføres senere må ha egen redaksjon.)
+builder.Logging.AddConsole(o => o.FormatterName = RentkuttCRM.Services.RedactingConsoleFormatter.FormatterNavn);
+builder.Logging.AddConsoleFormatter<RentkuttCRM.Services.RedactingConsoleFormatter, Microsoft.Extensions.Logging.Console.ConsoleFormatterOptions>();
+
 // Supabase – url/key settes som App settings i Azure (Supabase__Url / Supabase__Key).
 // Klienten registreres lazy (Scoped), så appen starter selv om nøklene ennå ikke er satt.
 var supabaseUrl = builder.Configuration["Supabase:Url"];
