@@ -98,7 +98,21 @@ a { color: var(--accent); text-decoration: none; }
 }
 .btn-logout:hover { background: var(--surface-2); border-color: #cfd2d8; }
 
+/* Bredmodus-knapp (strekk siden ut i full bredde) */
+.btn-bredde {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; padding: 0; line-height: 1; font-size: 15px;
+    background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-2);
+    border-radius: var(--r-sm); cursor: pointer; font-family: inherit;
+    transition: background .12s, border-color .12s, color .12s;
+}
+.btn-bredde:hover { background: var(--surface-2); border-color: #cfd2d8; }
+.btn-bredde.aktiv { background: var(--green, #2f7d4f); border-color: var(--green, #2f7d4f); color: #fff; }
+
 .app-content { padding: 28px 32px; max-width: 1180px; width: 100%; }
+.app-content.wide { max-width: none; }
+.app-content.wide .kk { max-width: none; }
+.app-content.wide .db-stats { max-width: none; }
 
 /* ---------- Sidebar ---------- */
 .sidebar {
