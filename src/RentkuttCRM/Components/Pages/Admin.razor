@@ -503,7 +503,7 @@ ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
             <h2 style="font-size:15px">Vipps-bekreftelse (påbegynt søknad)</h2>
             <p class="page-sub" style="margin:-2px 0 0">Egen Rentekutt-kanal som kun mottar Vipps/BankID-bekreftelser. Oppretter et utkast med status «Påbegynt søknad» som kompletteres når søknadsskjemaet kommer inn (match på mobil → e-post → navn).</p>
         </div>
-        <WebhookWidget Hook="_webhookVipps" Url="@WebhookUrlVipps" Name="@WebhookService.VippsName" />
+        <WebhookWidget Hook="_webhookVipps" Url="@WebhookUrlVipps" Name="@WebhookService.VippsName" ErVipps="true" />
 
         <div class="form-card" style="margin-top:16px">
             <div style="display:flex; justify-content:space-between; align-items:center">
