@@ -105,7 +105,8 @@ public class BankSendWorker : BackgroundService
                     var kunder = scope.ServiceProvider.GetRequiredService<KundekortService>();
                     var instabank = scope.ServiceProvider.GetRequiredService<InstabankService>();
                     var samtykke = scope.ServiceProvider.GetRequiredService<SamtykkeService>();
-                    utfall = await BehandleAsync(neste, ko, kunder, instabank, samtykke);
+                    var krypto = scope.ServiceProvider.GetRequiredService<CryptoService>();
+                    utfall = await BehandleAsync(neste, ko, kunder, instabank, samtykke, krypto);
                 }
             }
             catch (Exception ex) { _log.LogError(ex, "Sendekø-syklus feilet"); }
@@ -144,7 +145,7 @@ public class BankSendWorker : BackgroundService
         }
     }
 
-    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank, SamtykkeService samtykke)
+    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank, SamtykkeService samtykke, CryptoService krypto)
     {
         // Banker uten hardkodet API-sending registreres som manuelt videresendt (ingen API-kall).
         if (!InstabankService.ErInstabankNavn(s.Bank))
@@ -165,6 +166,21 @@ public class BankSendWorker : BackgroundService
         {
             s.Status = SendStatus.Feilet; s.Detalj = "Fant ikke kundekortet.";
             await ko.OppdaterAsync(s); return Utfall.IngenApiKall;
+        }
+
+        // Definitiv diagnose: hvis fnr fremdeles er kryptert HER, klarte ikke sendekø-prosessen
+        // å dekryptere. Rapporter prosessens egen krypteringsstatus (IsEnabled + selvtest).
+        if ((k.Foedselsnummer?.StartsWith("enc:1:", StringComparison.Ordinal) ?? false)
+            || (k.KundeId?.StartsWith("enc:1:", StringComparison.Ordinal) ?? false))
+        {
+            string selvtest;
+            try { var t = krypto.Beskytt("12345678901"); selvtest = (krypto.ErBeskyttet(t) && krypto.Avdekk(t) == "12345678901") ? "OK" : "FEILET"; }
+            catch { selvtest = "FEILET"; }
+            s.Status = SendStatus.Feilet;
+            s.Detalj = $"Kryptering i sendekø-prosessen: IsEnabled={krypto.IsEnabled}, selvtest={selvtest} — men fnr forble kryptert (enc:1:). Prosessen/instansen som kjører sendekøen har ikke riktig Gdpr__FieldKey.";
+            await kunder.SetStatusAsync(id, KundekortService.StatusFeiletSending);
+            await ko.OppdaterAsync(s);
+            return Utfall.Varig;
         }
 
         // GDPR-sperre: krev gyldig samtykke (Gjeldsregister og kredittsjekk) før oversendelse.
