@@ -200,7 +200,7 @@ public class InstabankService
         // Påkrevde felt: SSN, e-post, mobil, beløp.
         var ssn = FoerstGyldigFnr(k.Foedselsnummer, k.KundeId);
         var mangler = new List<string>();
-        if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("fødselsnummer");
+        if (string.IsNullOrWhiteSpace(ssn)) mangler.Add(FnrManglerGrunn(k.Foedselsnummer));
         if (string.IsNullOrWhiteSpace(k.Epost)) mangler.Add("e-post");
         if (string.IsNullOrWhiteSpace(k.Mobilnummer)) mangler.Add("mobilnummer");
         if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
@@ -273,7 +273,7 @@ public class InstabankService
 
         var mangler = new List<string>();
         if (orgnr.Length != 9) mangler.Add("organisasjonsnummer");
-        if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("signers fødselsnummer");
+        if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("signers " + FnrManglerGrunn(k.Foedselsnummer));
         if (string.IsNullOrWhiteSpace(mobil)) mangler.Add("mobilnummer");
         if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
         if ((k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
@@ -331,6 +331,18 @@ public class InstabankService
     private static string? FoerstGyldigFnr(params string?[] kandidater) =>
         kandidater.Select(x => new string((x ?? "").Where(char.IsDigit).ToArray()))
                   .FirstOrDefault(x => x.Length == 11);
+
+    /// <summary>Diagnostisk årsak til at fnr «mangler» — skiller tomt, feil antall siffer,
+    /// og «kunne ikke dekrypteres» (Gdpr__FieldKey mangler på prosessen som kjører sendekøen).</summary>
+    private static string FnrManglerGrunn(string? fnr)
+    {
+        var raw = (fnr ?? "").Trim();
+        if (raw.StartsWith("enc:1:", StringComparison.Ordinal))
+            return "fødselsnummer (kryptering ikke aktiv i sendekøen — kunne ikke dekryptere; Gdpr__FieldKey mangler på denne instansen)";
+        if (string.IsNullOrEmpty(raw)) return "fødselsnummer";
+        var siffer = new string(raw.Where(char.IsDigit).ToArray()).Length;
+        return $"gyldig fødselsnummer (fant {siffer} siffer på kortet, må være 11)";
+    }
 
     // Modulus-11-validering av norsk fødselsnummer (håndterer også D-nummer, der
     // første siffer er +4). Sjekker begge kontrollsifrene — samme regler som bankene.
