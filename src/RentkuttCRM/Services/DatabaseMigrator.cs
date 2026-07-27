@@ -40,8 +40,8 @@ public class DatabaseMigrator
 
     public DatabaseMigrator(IConfiguration cfg, ILogger<DatabaseMigrator> log)
     {
-        _connectionString = cfg.GetConnectionString("Postgres")
-                            ?? cfg["ConnectionStrings:Postgres"];
+        _connectionString = PgConn.Normaliser(cfg.GetConnectionString("Postgres")
+                            ?? cfg["ConnectionStrings:Postgres"]);
         _log = log;
     }
 

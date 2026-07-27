@@ -20,7 +20,7 @@ public class GdprService
 
     public GdprService(IConfiguration cfg, CryptoService krypto, ILogger<GdprService> log)
     {
-        _conn = cfg.GetConnectionString("Postgres") ?? cfg["ConnectionStrings:Postgres"];
+        _conn = PgConn.Normaliser(cfg.GetConnectionString("Postgres") ?? cfg["ConnectionStrings:Postgres"]);
         _krypto = krypto;
         _log = log;
     }
