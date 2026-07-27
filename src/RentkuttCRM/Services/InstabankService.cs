@@ -204,6 +204,9 @@ public class InstabankService
         if (string.IsNullOrWhiteSpace(k.Epost)) mangler.Add("e-post");
         if (string.IsNullOrWhiteSpace(k.Mobilnummer)) mangler.Add("mobilnummer");
         if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
+        // Instabank krever løpetid — uten den velger Instabank selv en verdi som kan havne under
+        // avtalens minimum (E_DURATION_IS_BELOW_AGR_LIMIT). Krev en gyldig løpetid før sending.
+        if ((k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende — mangler: " + string.Join(", ", mangler));
 
@@ -251,7 +254,8 @@ public class InstabankService
         };
         if (k.RefinansieresBelop is > 0) application["RefinanceAmount"] = k.RefinansieresBelop;
 
-        return await PostAsync("create", new { Application = application, DoSetAccepted = false });
+        var r = await PostAsync("create", new { Application = application, DoSetAccepted = false });
+        return r.Ok ? r : r with { Detalj = $"{r.Detalj} [sendt: beløp={k.OnsketLaanebelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]" };
     }
 
     // Bedriftslån (produkt 2001). Krever Company (orgnr + mobil), Applicant (signer-fnr) og Agent-e-post.
@@ -272,6 +276,7 @@ public class InstabankService
         if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("signers fødselsnummer");
         if (string.IsNullOrWhiteSpace(mobil)) mangler.Add("mobilnummer");
         if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
+        if ((k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
         if (string.IsNullOrWhiteSpace(agentEpost)) mangler.Add("agent-e-post (sakseier eller Instabank__AgentEmail)");
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende bedriftslån — mangler: " + string.Join(", ", mangler));
@@ -299,7 +304,8 @@ public class InstabankService
             ["IsPreOffer"] = preOffer,
             ["Reference"] = k.Id.ToString(),
         };
-        return await PostAsync("create", new { Application = application, DoSetAccepted = false });
+        var r = await PostAsync("create", new { Application = application, DoSetAccepted = false });
+        return r.Ok ? r : r with { Detalj = $"{r.Detalj} [sendt: beløp={k.OnsketLaanebelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]" };
     }
 
     // PurposeForLoan for bedrift: Investment | Liquidity | Other.

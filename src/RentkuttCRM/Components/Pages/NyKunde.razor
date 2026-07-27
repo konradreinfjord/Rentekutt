@@ -841,6 +841,17 @@
         _sendMsg = null;
         var avsender = Session.UserName ?? Session.Email ?? "ukjent";
 
+        // Lagre gjeldende skjema-tilstand FØR kølegging — bakgrunnsarbeideren laster kortet fra
+        // databasen ved sending, så nettopp endrede felt (løpetid/beløp) må være persistert først.
+        var (forLagretOk, forLagreFeil) = await Svc.SaveAsync(_k, strict: false, aktor: avsender);
+        if (!forLagretOk)
+        {
+            _sendOk = false;
+            _sendMsg = "Kunne ikke lagre kortet før sending: " + (forLagreFeil ?? "ukjent feil");
+            _sender = false;
+            return;
+        }
+
         // Legges i sikker sendekø — en throttlet bakgrunnsarbeider sender til bank,
         // så vi aldri bombarderer API-et. Status oppdateres når den er behandlet.
         var s = new BankSending
