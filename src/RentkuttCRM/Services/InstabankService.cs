@@ -20,6 +20,7 @@ public class InstabankService
 {
     // Produktkoder fra Instabank Agent API.
     public const int ProduktForbrukslaan = 151;
+    public const int ProduktBoliglaan = 180;
     public const int ProduktKredittlinje = 251;
     public const int ProduktKredittkort = 600;
     public const int ProduktBedriftslaan = 2001;
@@ -31,6 +32,7 @@ public class InstabankService
     public static readonly StandardProdukt[] StandardProdukter =
     {
         new("Forbrukslån",     ProduktForbrukslaan,   "privat",  "Forbrukslån,Refinansiering"),
+        new("Boliglån",        ProduktBoliglaan,      "privat",  "Boliglån"),
         new("Kredittlinje",    ProduktKredittlinje,   "privat",  ""),
         new("Kredittkort",     ProduktKredittkort,    "privat",  ""),
         new("Bedriftslån",     ProduktBedriftslaan,   "bedrift", ""),
@@ -58,6 +60,11 @@ public class InstabankService
 
     private string? Username => _config["Instabank:Username"];
     private string? AgentEmail => _config["Instabank:AgentEmail"];
+    /// <summary>Maks lånebeløp for forbrukslån (produkt 151) hos Instabank. Beløp over dette
+    /// avvises med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT — så høye beløp er boliglån. Overstyres med
+    /// Instabank__ForbrukslaanMaks; standard 500 000 kr (Instabanks avtalegrense for forbrukslån).</summary>
+    private decimal ForbrukslaanMaks =>
+        decimal.TryParse(_config["Instabank:ForbrukslaanMaks"], out var v) && v > 0 ? v : 500_000m;
     private string? PassordFor(string env) =>
         env == "prod" ? _config["Instabank:PasswordProd"] : _config["Instabank:PasswordTest"];
 
@@ -158,8 +165,10 @@ public class InstabankService
         {
             case ProduktForbrukslaan:                                   // 151
                 if (ErBoliglaan(k.Laanetype))
-                    return new(false, null, null, null, "Boliglån krever eiendomsdata (matrikkel) — kommer når Eiendomsverdi-integrasjonen er implementert.");
+                    return await SendPrivatAsync(k, preOffer, ProduktBoliglaan);
                 return await SendPrivatAsync(k, preOffer);
+            case ProduktBoliglaan:                                      // 180 (samme payload som 151)
+                return await SendPrivatAsync(k, preOffer, ProduktBoliglaan);
             case ProduktBedriftslaan:                                   // 2001
                 return await SendBedriftAsync(k, preOffer);
             case ProduktKredittlinje:                                   // 251
@@ -172,7 +181,7 @@ public class InstabankService
         // Ingen eksplisitt produktkode: behold tidligere auto-ruting på kundetype.
         if (k.KundeType == "B2B") return await SendBedriftAsync(k, preOffer);
         if (ErBoliglaan(k.Laanetype))
-            return new(false, null, null, null, "Boliglån krever eiendomsdata (matrikkel) — kommer når Eiendomsverdi-integrasjonen er implementert.");
+            return await SendPrivatAsync(k, preOffer, ProduktBoliglaan);
         return await SendPrivatAsync(k, preOffer);
     }
 
@@ -180,6 +189,7 @@ public class InstabankService
     public static string ProduktNavn(int kode) => kode switch
     {
         ProduktForbrukslaan => "Forbrukslån",
+        ProduktBoliglaan => "Boliglån",
         ProduktKredittlinje => "Kredittlinje",
         ProduktKredittkort => "Kredittkort",
         ProduktBedriftslaan => "Bedriftslån",
@@ -189,13 +199,13 @@ public class InstabankService
 
     /// <summary>Produktkoder som faktisk kan sendes til Instabank i dag (verifisert payload).
     /// null = auto-ruting (bakoverkompatibelt). 151/2001 støttes; 251/600/2000 gjør ikke ennå.</summary>
-    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBedriftslaan;
+    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBoliglaan or ProduktBedriftslaan;
 
     private static bool ErBoliglaan(string? laanetype) =>
         (laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase);
 
-    // Privat forbrukslån (produkt 151).
-    private async Task<Resultat> SendPrivatAsync(Kundekort k, bool preOffer)
+    // Privat forbrukslån (151) og boliglån (180) — samme payload-skjema, kun produktkoden skiller.
+    private async Task<Resultat> SendPrivatAsync(Kundekort k, bool preOffer, int produkt = ProduktForbrukslaan)
     {
         // Påkrevde felt: SSN, e-post, mobil, beløp.
         var ssn = FoerstGyldigFnr(k.Foedselsnummer, k.KundeId);
@@ -209,6 +219,14 @@ public class InstabankService
         if ((k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende — mangler: " + string.Join(", ", mangler));
+
+        // Beløpsgrense: forbrukslån (151) hos Instabank er avtalt opp til ForbrukslaanMaks. Høyere beløp
+        // avvises av Instabank med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT (uleselig 500-feil). Gi rådgiveren
+        // en tydelig melding før sending — så høye beløp er boliglån (180), ikke forbrukslån.
+        // Gjelder KUN forbrukslån; boliglån skal nettopp ha høye beløp.
+        if (produkt == ProduktForbrukslaan && (k.OnsketLaanebelop ?? 0) > ForbrukslaanMaks)
+            return new(false, null, null, null,
+                $"Beløpet {k.OnsketLaanebelop:N0} kr overstiger maksbeløpet for forbrukslån hos Instabank ({ForbrukslaanMaks:N0} kr). Så høye beløp er boliglån og kan ikke sendes som forbrukslån.");
 
         // Valider fødselsnummeret lokalt (modulus-11) før vi kaller Instabank — unngår
         // 500-feil «Invalid socialSecurityNumber» og beskytter bank-API-et mot ugyldige data.
@@ -244,7 +262,7 @@ public class InstabankService
 
         var application = new Dictionary<string, object?>
         {
-            ["Product"] = new { Code = ProduktForbrukslaan },
+            ["Product"] = new { Code = produkt },
             ["Calculation"] = k.OnsketLopetidMnd is int lm && lm > 0
                 ? new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop, ["DurationInMonths"] = lm }
                 : new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop },
