@@ -98,6 +98,16 @@ public class BankSendWorker : BackgroundService
             try
             {
                 using var scope = _scopeFactory.CreateScope();
+
+                // Instanser uten krypteringsnøkkel skal IKKE behandle køen — de ville ikke klart
+                // å dekryptere fødselsnummeret, og ville feilmarkert sendinger. La en instans MED
+                // nøkkelen (scale-out) plukke dem i stedet. Sendingen blir stående i kø.
+                if (!scope.ServiceProvider.GetRequiredService<CryptoService>().IsEnabled)
+                {
+                    try { await Task.Delay(Idle, ct); } catch { break; }
+                    continue;
+                }
+
                 var ko = scope.ServiceProvider.GetRequiredService<BankSendingService>();
                 var neste = (await ko.HentKoAsync(1)).FirstOrDefault();
                 if (neste is not null)
