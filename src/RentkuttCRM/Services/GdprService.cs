@@ -90,8 +90,11 @@ where created_at < @grense and anonymisert_at is null;";
                 cmd.Parameters.AddWithValue("grense", slettGrense);
                 slett = await cmd.ExecuteNonQueryAsync(ct);
             }
-            // Rydd gamle alarmer (detalj kan inneholde kundenavn).
-            await using (var cmd = new NpgsqlCommand("delete from public.alarm where created_at < @grense;", conn))
+            // Rydd gamle alarmer — men KUN de som er kvittert ut manuelt. Ukvitterte alarmer
+            // (f.eks. «kryptering AV» / klartekst-skriving) bevares til en person har sett og
+            // kvittert dem, slik at hendelsessporet ikke forsvinner av seg selv. PII-bærende
+            // banksending-alarmer ryddes uansett via kundekort-livssyklusen (anonymisering/sletting).
+            await using (var cmd = new NpgsqlCommand("delete from public.alarm where created_at < @grense and kvittert = true;", conn))
             {
                 cmd.Parameters.AddWithValue("grense", slettGrense);
                 await cmd.ExecuteNonQueryAsync(ct);

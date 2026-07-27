@@ -83,6 +83,9 @@ builder.Services.AddScoped<NotatService>();
 // Webhooks (inbound lead-mottak).
 builder.Services.AddScoped<WebhookService>();
 
+// Lagring av innkommende webhook-payloads (siste 50, for feilsøking).
+builder.Services.AddScoped<WebhookPayloadService>();
+
 // SMS (LinkMobility) + 2FA.
 builder.Services.AddHttpClient("linkmobility");
 builder.Services.AddSingleton<LinkMobilityService>();

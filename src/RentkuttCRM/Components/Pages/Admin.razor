@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.CustomerFieldCatalog Catalog
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.WebhookService Webhooks
+@inject RentkuttCRM.Services.WebhookPayloadService Payloads
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
 @inject RentkuttCRM.Services.SettingsService Settings
 @inject RentkuttCRM.Services.EventService Events
@@ -494,10 +495,49 @@ ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
     {
         <div class="section" style="margin-bottom:14px">
             <h2>Kanaler</h2>
-            <p class="page-sub" style="margin:-4px 0 0">Innkommende leadkanaler — endepunkter som mottar søknader (Rentekutt og Prismatch).</p>
+            <p class="page-sub" style="margin:-4px 0 0">Innkommende leadkanaler — endepunkter som mottar søknader (Rentekutt og Prismatch) samt Vipps-bekreftelser.</p>
         </div>
         <WebhookWidget Hook="_webhook" Url="@WebhookUrl" Name="@WebhookService.InboundName" />
         <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
+        <div class="section" style="margin:18px 0 6px">
+            <h2 style="font-size:15px">Vipps-bekreftelse (påbegynt søknad)</h2>
+            <p class="page-sub" style="margin:-2px 0 0">Egen Rentekutt-kanal som kun mottar Vipps/BankID-bekreftelser. Oppretter et utkast med status «Påbegynt søknad» som kompletteres når søknadsskjemaet kommer inn (match på mobil → e-post → navn).</p>
+        </div>
+        <WebhookWidget Hook="_webhookVipps" Url="@WebhookUrlVipps" Name="@WebhookService.VippsName" />
+
+        <div class="form-card" style="margin-top:16px">
+            <div style="display:flex; justify-content:space-between; align-items:center">
+                <h2 style="margin:0">Siste innkommende payloads</h2>
+                <button class="btn-sm" @onclick="VisPayloads" disabled="@_payloadsLaster">
+                    @(_payloadsLaster ? "Laster…" : (_visPayloads ? "Oppdater" : "Vis siste 50"))
+                </button>
+            </div>
+            <p class="page-sub" style="margin:6px 0 0">Rå payloads som er mottatt (fødselsnummer maskert). Nyeste 50 beholdes — for feilsøking av mapping/feilede opprettelser.</p>
+            @if (_visPayloads)
+            {
+                @if (_sistePayloads.Count == 0)
+                {
+                    <p class="notat-empty" style="margin-top:10px">Ingen payloads registrert ennå.</p>
+                }
+                else
+                {
+                    <div class="logg-liste" style="max-height:520px; margin-top:12px">
+                        @foreach (var p in _sistePayloads)
+                        {
+                            <div class="logg-item">
+                                <div class="logg-meta">
+                                    <span class="logg-tid">@p.Mottatt.TilOslo().ToString("dd.MM.yyyy HH:mm:ss")</span>
+                                    <span class="kilde-badge">@(p.Kanal ?? "—")</span>
+                                    <span class="status @(p.Ok ? "st-fullfort" : "st-avslatt")">@(p.Ok ? "OK" : "FEILET")</span>
+                                    @if (!string.IsNullOrWhiteSpace(p.Feil)) { <span style="font-size:11.5px; color:var(--danger,#b42318)">@p.Feil</span> }
+                                </div>
+                                <pre class="code-block" style="margin-top:6px; max-height:200px; overflow:auto; white-space:pre-wrap">@p.Payload</pre>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
     }
     else if (_apiTab == "Tredjeparter")
     {
@@ -1311,8 +1351,9 @@ else if (_active == "GDPR")
         var produktTask = Produkter.ListAsync();
         var webhookTask = Webhooks.GetInboundAsync();
         var webhookPrismatchTask = Webhooks.GetByNameAsync(WebhookService.PrismatchName);
+        var webhookVippsTask = Webhooks.GetByNameAsync(WebhookService.VippsName);
         var eventsTask = Events.ListAsync(100);
-        await Task.WhenAll(usersTask, banksTask, produktTask, webhookTask, webhookPrismatchTask, eventsTask);
+        await Task.WhenAll(usersTask, banksTask, produktTask, webhookTask, webhookPrismatchTask, webhookVippsTask, eventsTask);
         _userRows = usersTask.Result;
         _banks = banksTask.Result;
         _produkter = produktTask.Result;
@@ -1325,7 +1366,8 @@ else if (_active == "GDPR")
         if (lagtTil > 0) _produkter = await Produkter.ListAsync();
         _webhook = webhookTask.Result;
         _webhookPrismatch = webhookPrismatchTask.Result;
-        _inboundWebhooks = new[] { _webhook, _webhookPrismatch }.Where(w => w is not null).Select(w => w!).ToList();
+        _webhookVipps = webhookVippsTask.Result;
+        _inboundWebhooks = new[] { _webhook, _webhookPrismatch, _webhookVipps }.Where(w => w is not null).Select(w => w!).ToList();
         _events = eventsTask.Result;
         // Innstillingene deler én cachet bulk-henting (første kall laster alt).
         _smsMaxHour = await Settings.GetIntAsync(TwoFactorService.KeyMaxPerHour, TwoFactorService.DefaultMaxPerHour);
@@ -1412,9 +1454,22 @@ else if (_active == "GDPR")
     // ---- Inbound webhooks + status + hendelser ----
     private Webhook? _webhook;
     private Webhook? _webhookPrismatch;
+    private Webhook? _webhookVipps;
     private List<Webhook> _inboundWebhooks = new();
     private List<Hendelse> _events = new();
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
+    private string WebhookUrlVipps => $"{Nav.BaseUri}api/webhook/vipps";
+
+    private bool _visPayloads;
+    private bool _payloadsLaster;
+    private List<WebhookPayload> _sistePayloads = new();
+    private async Task VisPayloads()
+    {
+        _payloadsLaster = true;
+        _sistePayloads = await Payloads.SisteAsync(50);
+        _visPayloads = true;
+        _payloadsLaster = false;
+    }
     private string TredjepartUrl => $"{Nav.BaseUri}api/tredjepart/status";
 
     // ---- Tredjepart-API (GET status på mobilnummer) ----

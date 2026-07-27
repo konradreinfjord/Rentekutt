@@ -7,7 +7,10 @@ namespace RentkuttCRM.Services;
 public class KundekortService
 {
     public static readonly string[] Statuser =
-        { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+        { "Påbegynt søknad", "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+    /// <summary>Utkast opprettet fra Vipps/BankID-bekreftelse, før kunden har fullført skjemaet.</summary>
+    public const string StatusPaabegynt = "Påbegynt søknad";
+    public const string StatusAapen = "Åpen";
     public const string StatusFullfort = "Fullført og utbetalt";
     public const string StatusAvslatt = "Avslått";
     public const string StatusSendtBank = "Sendt bank";
@@ -461,6 +464,49 @@ public class KundekortService
             })
             .OrderByDescending(k => k.CreatedAt)
             .FirstOrDefault();
+    }
+
+    private static string RensNavn(string? s) => new((s ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    /// <summary>Finn et påbegynt utkast (Vipps) som matcher en innkommende søknad.
+    /// Prioritert rekkefølge: 1) mobilnummer (siste 8 sifre), 2) e-post, 3) navn.</summary>
+    public async Task<Kundekort?> FinnPaabegyntAsync(string? mobil, string? epost, string? navn)
+    {
+        var utkast = (await ListAsync()).Where(k => k.Status == StatusPaabegynt).ToList();
+        if (utkast.Count == 0) return null;
+
+        // 1) Mobilnummer — match på de siste 8 sifrene (tåler +47/landkode).
+        var mDig = new string((mobil ?? "").Where(char.IsDigit).ToArray());
+        if (mDig.Length >= 8)
+        {
+            var tail = mDig[^8..];
+            var m = utkast.FirstOrDefault(k =>
+            {
+                var d = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
+                return d.Length >= 8 && d[^8..] == tail;
+            });
+            if (m is not null) return m;
+        }
+
+        // 2) E-post (uten hensyn til store/små bokstaver).
+        if (!string.IsNullOrWhiteSpace(epost))
+        {
+            var e = utkast.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k.Epost)
+                && string.Equals(k.Epost.Trim(), epost.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (e is not null) return e;
+        }
+
+        // 3) Navn (normalisert: kun bokstaver/tall, uten mellomrom/case).
+        if (!string.IsNullOrWhiteSpace(navn))
+        {
+            var n = RensNavn(navn);
+            if (n.Length > 0)
+            {
+                var x = utkast.FirstOrDefault(k => RensNavn(k.FulltNavn) == n);
+                if (x is not null) return x;
+            }
+        }
+        return null;
     }
 
     public async Task SetStatusAsync(Guid id, string status, string? aktor = null)

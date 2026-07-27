@@ -11,7 +11,9 @@ public class WebhookService
 {
     public const string InboundName = "www.rentekutt.no";
     public const string PrismatchName = "prismatch.no";
-    public static readonly string[] InboundNames = { InboundName, PrismatchName };
+    /// <summary>Egen Rentekutt-kanal som KUN mottar Vipps/BankID-bekreftelser (påbegynt søknad).</summary>
+    public const string VippsName = "vipps.rentekutt.no";
+    public static readonly string[] InboundNames = { InboundName, PrismatchName, VippsName };
 
     private readonly Supabase.Client _client;
     private readonly ILogger<WebhookService> _log;

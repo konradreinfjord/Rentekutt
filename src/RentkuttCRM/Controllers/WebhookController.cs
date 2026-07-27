@@ -16,17 +16,22 @@ public class WebhookController : ControllerBase
     private readonly EventService _events;
     private readonly SmsMalService _sms;
     private readonly SamtykkeService _samtykke;
+    private readonly AlarmService _alarm;
+    private readonly WebhookPayloadService _payloads;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
-        SmsMalService sms, SamtykkeService samtykke, IWebHostEnvironment env, ILogger<WebhookController> log)
+        SmsMalService sms, SamtykkeService samtykke, AlarmService alarm, WebhookPayloadService payloads,
+        IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
         _events = events;
         _sms = sms;
         _samtykke = samtykke;
+        _alarm = alarm;
+        _payloads = payloads;
         _env = env;
         _log = log;
     }
@@ -45,8 +50,9 @@ public class WebhookController : ControllerBase
 
         var token = ExtractToken();
         var hook = await _hooks.ValidateTokenAsync(token);
-        if (hook is null)
+        if (hook is null || hook.Name == WebhookService.VippsName)
         {
+            // Vipps-tokenet gjelder KUN /vipps-endepunktet, ikke søknadsmottak.
             _log.LogWarning("Webhook avvist: ugyldig/manglende token fra {IP}", HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { error = "Ugyldig token." });
         }
@@ -55,54 +61,202 @@ public class WebhookController : ControllerBase
         if (!WebhookService.IpAllowed(hook, clientIp))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "IP ikke tillatt." });
 
-        // Støtt både ett objekt og en liste av leads.
-        var elements = body.ValueKind == JsonValueKind.Array
-            ? body.EnumerateArray().ToList()
-            : new List<JsonElement> { body };
-
+        // Lagre rå payload (fnr maskert) uansett utfall — for feilsøking av siste 50.
+        var raw = FnrRedactor.Redact(body.GetRawText());
         var opprettet = 0;
         string? sisteInfo = null;
-        var feltLogget = false;
+        string? feil = null;
+        Guid? forsteId = null;
 
-        foreach (var el in elements)
+        try
         {
-            if (el.ValueKind != JsonValueKind.Object) continue;
-            var flat = Flatten(el);
+            // Robust: støtt både ett objekt og en liste; hopp over det som ikke er objekt.
+            var elements = body.ValueKind == JsonValueKind.Array
+                ? body.EnumerateArray().ToList()
+                : new List<JsonElement> { body };
+            var feltLogget = false;
 
-            // Logg hvilke felt som kommer inn (kun navn, ingen verdier/PII) — for verifisering.
-            if (!feltLogget)
+            foreach (var el in elements)
             {
-                await _events.LogAsync("Webhook RAW", "Mottatte felt: " + string.Join(", ", flat.Keys.Take(40)), hook.Name);
-                feltLogget = true;
+                if (el.ValueKind != JsonValueKind.Object) continue;
+                var flat = Flatten(el);
+
+                if (!feltLogget)
+                {
+                    await _events.LogAsync("Webhook RAW", "Mottatte felt: " + string.Join(", ", flat.Keys.Take(40)), hook.Name);
+                    feltLogget = true;
+                }
+
+                var k = MapFlexible(flat);
+                k.Kilde = KildeLabel(hook.Name);
+
+                // Match mot et påbegynt Vipps-utkast: mobil → e-post → navn. Treff = komplettér
+                // utkastet (samme rad) og løft status fra «Påbegynt søknad» til «Åpen».
+                var utkast = await _kundekort.FinnPaabegyntAsync(k.Mobilnummer, k.Epost, k.FulltNavn);
+                string? aktor = null;
+                if (utkast is not null)
+                {
+                    k.Id = utkast.Id;
+                    if (string.IsNullOrWhiteSpace(k.Foedselsnummer)) k.Foedselsnummer = utkast.Foedselsnummer;
+                    if (string.IsNullOrWhiteSpace(k.FulltNavn)) k.FulltNavn = utkast.FulltNavn;
+                    if (string.IsNullOrWhiteSpace(k.Mobilnummer)) k.Mobilnummer = utkast.Mobilnummer;
+                    if (string.IsNullOrWhiteSpace(k.Epost)) k.Epost = utkast.Epost;
+                    aktor = "System (komplettert fra Vipps-utkast)";
+                }
+
+                var (ok, error) = await _kundekort.SaveAsync(k, aktor: aktor);
+                if (!ok) { feil = error; _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
+
+                if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
+                    await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
+
+                await _sms.MaybeSendAutomatikkAsync(k);
+                opprettet++;
+                forsteId ??= k.Id;
+                var belop = k.OnsketLaanebelop.HasValue ? $" · {k.OnsketLaanebelop:N0} kr" : "";
+                sisteInfo = $"{k.KundeType} · {k.Laanetype ?? "—"}{belop}";
             }
-
-            var k = MapFlexible(flat);
-            k.Kilde = KildeLabel(hook.Name);
-            var (ok, error) = await _kundekort.SaveAsync(k);
-            if (!ok) { _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
-
-            // Dokumentér samtykke som egen entitet (tidspunkt + kilde) når leadet oppgir det.
-            if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
-                await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
-
-            await _sms.MaybeSendAutomatikkAsync(k);   // auto-SMS til kunde hvis slått på
-            opprettet++;
-            var belop = k.OnsketLaanebelop.HasValue ? $" · {k.OnsketLaanebelop:N0} kr" : "";
-            sisteInfo = $"{k.KundeType} · {k.Laanetype ?? "—"}{belop}";
+        }
+        catch (Exception ex)
+        {
+            feil = ex.Message;
+            _log.LogError(ex, "Webhook-behandling feilet");
         }
 
+        var vellykket = opprettet > 0 && feil is null;
+        await _payloads.LagreAsync(hook.Name, raw, vellykket,
+            feil ?? (opprettet == 0 ? "Ingen gyldige leads i payload." : null), forsteId);
+
+        if (!vellykket)
+            await _alarm.RaiseAsync("Webhook", $"Søknad mottatt men ikke korrekt opprettet ({hook.Name})",
+                feil ?? "Ingen gyldige leads i payload — se siste payloads i Admin → Kanaler.",
+                AlarmService.Alvorlighet.Advarsel, "Webhook", $"webhook-feil-{hook.Name}");
+
         if (opprettet == 0)
-            return BadRequest(new { error = "Ingen gyldige leads i payload." });
+            return BadRequest(new { error = feil ?? "Ingen gyldige leads i payload." });
 
         await _hooks.RecordReceiptAsync(hook, sisteInfo ?? $"{opprettet} lead(s)");
         await _events.LogAsync("Webhook", $"{opprettet} lead(s) mottatt ({sisteInfo})", hook.Name);
         return Ok(new { status = "mottatt", opprettet });
     }
 
+    /// <summary>
+    /// Vipps/BankID-bekreftelse. Når kunden autentiserer seg med Vipps opprettes et utkast
+    /// (status «Påbegynt søknad») med navn/mobil/e-post (+ ev. fnr). Kompletteres senere når
+    /// selve søknadsskjemaet kommer inn på /soknad (match på mobil → e-post → navn).
+    /// Egen kanal/token — aksepterer KUN Vipps-webhooken.
+    /// </summary>
+    [HttpPost("vipps")]
+    [EnableRateLimiting("webhook")]
+    public async Task<IActionResult> Vipps([FromBody] JsonElement body)
+    {
+        if (!Request.IsHttps && !_env.IsDevelopment())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "HTTPS påkrevd." });
+
+        var token = ExtractToken();
+        var hook = await _hooks.ValidateTokenAsync(token);
+        if (hook is null || hook.Name != WebhookService.VippsName)
+        {
+            _log.LogWarning("Vipps-webhook avvist: ugyldig/manglende token fra {IP}", HttpContext.Connection.RemoteIpAddress);
+            return Unauthorized(new { error = "Ugyldig token." });
+        }
+
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (!WebhookService.IpAllowed(hook, clientIp))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "IP ikke tillatt." });
+
+        // Lagre rå payload (fnr maskert) uansett utfall — for feilsøking av siste 50.
+        var raw = FnrRedactor.Redact(body.GetRawText());
+        string? feil = null;
+        Guid? id = null;
+        try
+        {
+            // Robust: tåler at Vipps sender ett objekt eller en liste; ta første objekt.
+            var el = body.ValueKind == JsonValueKind.Array ? body.EnumerateArray().FirstOrDefault() : body;
+            var k = MapVipps(Flatten(el));
+            if (string.IsNullOrWhiteSpace(k.Mobilnummer) && string.IsNullOrWhiteSpace(k.Epost) && string.IsNullOrWhiteSpace(k.FulltNavn))
+            {
+                feil = "Vipps-bekreftelsen mangler både mobil, e-post og navn — kan verken opprette eller matche.";
+            }
+            else
+            {
+                var (ok, error) = await _kundekort.SaveAsync(k, aktor: "Vipps");
+                if (!ok) feil = error ?? "Lagring av utkast feilet.";
+                else
+                {
+                    id = k.Id;
+                    if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
+                        await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, "Vipps", tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
+                    await _hooks.RecordReceiptAsync(hook, "Vipps-bekreftelse (påbegynt søknad)");
+                    await _events.LogAsync("Vipps", "Påbegynt søknad opprettet fra Vipps-bekreftelse", hook.Name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            feil = ex.Message;
+            _log.LogError(ex, "Vipps-behandling feilet");
+        }
+
+        await _payloads.LagreAsync(hook.Name, raw, feil is null, feil, id);
+        if (feil is not null)
+        {
+            await _alarm.RaiseAsync("Vipps", "Vipps-bekreftelse ikke korrekt opprettet",
+                feil + " — se siste payloads i Admin → Kanaler.",
+                AlarmService.Alvorlighet.Advarsel, "Webhook", "vipps-feil");
+            return StatusCode(StatusCodes.Status422UnprocessableEntity, new { error = feil });
+        }
+        return Ok(new { status = "påbegynt", id });
+    }
+
+    private static Kundekort MapVipps(Dictionary<string, string> f)
+    {
+        // Vipps-payload bruker CellPhone/FullName/Email/CustomerType/Address/ZipCode/CompanyName.
+        var typeRaw = Get(f, "customertype", "kunde_type", "type", "kundetype") ?? "B2C";
+        var type = typeRaw.ToUpperInvariant().Contains("B2B") ? "B2B" : "B2C";
+
+        var mobil = Get(f, "cellphone", "mobilnummer", "mobil", "phone", "phonenumber", "telefon", "tlf", "phone_number", "mobilephone");
+        var fnr = Get(f, "fodselsnummer", "fnr", "personnummer", "nin", "ssn", "nationalidentitynumber", "nationalidnumber");
+        var epost = Get(f, "epost", "email", "mail", "e_post");
+        var firmanavn = Get(f, "companyname", "company_name", "firmanavn");
+        // For B2B foretrekkes firmanavn; ellers personnavn.
+        var navn = (type == "B2B" ? firmanavn : null)
+                   ?? Get(f, "fullt_navn", "navn", "name", "fullname") ?? firmanavn;
+        if (string.IsNullOrWhiteSpace(navn))
+        {
+            var fornavn = Get(f, "fornavn", "given_name", "givenname", "firstname", "first_name");
+            var etternavn = Get(f, "etternavn", "family_name", "familyname", "lastname", "last_name", "surname");
+            var sammen = string.Join(" ", new[] { fornavn, etternavn }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            if (!string.IsNullOrWhiteSpace(sammen)) navn = sammen;
+        }
+
+        // Adresse kan ha bolignummer på egen linje ("… 16C\nH0406") — samle til én lesbar linje.
+        var adresse = Get(f, "adresse", "address", "gateadresse")?.Replace("\r", "").Replace("\n", ", ").Trim();
+        var postnr = Get(f, "postnummer", "postnr", "zip", "zipcode", "postalcode");
+        var ordre = Get(f, "ordernumber", "ordrenummer", "order_id", "orderid");
+
+        return new Kundekort
+        {
+            KundeType = type,
+            KundeId = !string.IsNullOrWhiteSpace(fnr) ? fnr : Digits(mobil),
+            Foedselsnummer = fnr,
+            FulltNavn = navn,
+            Mobilnummer = mobil,
+            Epost = epost,
+            Adresse = adresse,
+            Postnummer = postnr,   // SaveAsync/BerikGeografi fyller poststed/kommune/fylke fra postnr
+            Kilde = "Vipps",
+            Notater = string.IsNullOrWhiteSpace(ordre) ? null : $"Vipps ordrenr: {ordre}",
+            SamtykkeGjeldsregisterKredittsjekk = GetBool(f, "samtykke_gjeldsregister_og_kredittsjekk", "samtykke"),
+            Status = KundekortService.StatusPaabegynt,
+        };
+    }
+
     private static string KildeLabel(string hookName) => hookName switch
     {
         WebhookService.PrismatchName => "Prismatch",
         WebhookService.InboundName => "Rentekutt.no",
+        WebhookService.VippsName => "Vipps",
         _ => hookName,
     };
 
