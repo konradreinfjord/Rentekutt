@@ -1225,6 +1225,17 @@ else if (_active == "GDPR")
                     <li>Rader med fødselsnummer satt men <code>fnr_hmac</code> = null:
                         <strong style="@(_diagManglerHmac > 0 ? "color:var(--danger,#b42318)" : "")">@_diagManglerHmac</strong></li>
                 }
+                @if (_dekTestKjort)
+                {
+                    <li><strong>Dekrypteringstest av eksisterende data (nåværende nøkkel):</strong>
+                        @_dekMedFnr med fnr · <strong style="color:var(--green,#2f7d4f)">@_dekOk dekryptert OK</strong> ·
+                        <strong style="@(_dekFeil > 0 ? "color:var(--danger,#b42318)" : "")">@_dekFeil kunne IKKE dekrypteres</strong>
+                        @if (_dekFeil > 0)
+                        {
+                            <span style="color:var(--danger,#b42318)"> ← nøkkelen er en ANNEN enn dataene ble kryptert med</span>
+                        }
+                    </li>
+                }
             </ul>
             <button class="btn-sm" style="margin-top:10px" @onclick="KjorKryptDiagnose" disabled="@_diagKjorer">
                 @(_diagKjorer ? "Teller…" : "Kjør databasetelling (live)")
@@ -1860,12 +1871,19 @@ else if (_active == "GDPR")
     private bool _diagKjorer, _diagKjort;
     private int _diagUkryptert, _diagManglerHmac;
     private string? _diagFeil;
+    private bool _dekTestKjort;
+    private int _dekMedFnr, _dekOk, _dekFeil;
     private async Task KjorKryptDiagnose()
     {
         _diagKjorer = true; _diagFeil = null;
+        // 1) Live-telling via direkte DB (kan feile hvis ConnectionStrings__Postgres er ugyldig).
         var (uKryptert, manglerHmac, feil) = await Gdpr.KrypteringsDiagnoseAsync();
         _diagUkryptert = uKryptert; _diagManglerHmac = manglerHmac; _diagFeil = feil;
         _diagKjort = feil is null;
+        // 2) Dekrypteringstest via Supabase-API (virker uavhengig av DB-tilkoblingen) — beviser om
+        //    NÅVÆRENDE nøkkel kan dekryptere eksisterende data (avslører nøkkel-mismatch).
+        var (medFnr, ok, kunneIkke) = await Kunder.DekrypteringstestAsync();
+        _dekMedFnr = medFnr; _dekOk = ok; _dekFeil = kunneIkke; _dekTestKjort = medFnr >= 0;
         _diagKjorer = false;
     }
 

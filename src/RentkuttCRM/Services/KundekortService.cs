@@ -591,6 +591,31 @@ public class KundekortService
 
     public bool KrypteringPaa => _krypto.IsEnabled;
 
+    /// <summary>Tester om NÅVÆRENDE nøkkel faktisk kan dekryptere EKSISTERENDE lagrede fnr.
+    /// Henter rå (ukryptert-lest) verdier og forsøker Avdekk manuelt. Hvis mange «kunne ikke»,
+    /// er nøkkelverdien en annen enn den dataene ble kryptert med (ikke bare «nøkkel mangler»).</summary>
+    public async Task<(int medFnr, int dekryptertOk, int kunneIkke)> DekrypteringstestAsync()
+    {
+        if (!IsConfigured) return (0, 0, 0);
+        try
+        {
+            await EnsureReadyAsync();
+            var raa = (await _client.From<Kundekort>().Select("id,foedselsnummer").Get()).Models
+                      .Where(x => !string.IsNullOrWhiteSpace(x.Foedselsnummer)).ToList();
+            int ok = 0, feil = 0;
+            foreach (var r in raa)
+            {
+                if (!_krypto.ErBeskyttet(r.Foedselsnummer)) { ok++; continue; } // klartekst = «kan leses»
+                var dek = _krypto.Avdekk(r.Foedselsnummer);
+                if (dek is not null && !_krypto.ErBeskyttet(dek)
+                    && new string(dek.Where(char.IsDigit).ToArray()).Length == 11) ok++;
+                else feil++;
+            }
+            return (raa.Count, ok, feil);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Dekrypteringstest feilet"); return (-1, 0, 0); }
+    }
+
     /// <summary>Engangs-bakfylling: krypter fødselsnummer/kunde_id og sett søkbar HMAC på
     /// eksisterende rader som ennå ligger i klartekst (eller mangler HMAC). Idempotent.</summary>
     public async Task<(int oppdatert, int uendret, string? feil)> KrypterEksisterendeAsync()
