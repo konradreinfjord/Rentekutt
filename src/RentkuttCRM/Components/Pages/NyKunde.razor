@@ -414,6 +414,13 @@
                 <input @bind="_k.Foedselsnummer" placeholder="11 siffer" />
             }
         </div>
+        <div class="ff">
+            <label>Kilde fnr (sikkerhetsnivå)</label>
+            <select @bind="_k.FnrKilde">
+                <option value="">— ukjent —</option>
+                @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
+            </select>
+        </div>
         <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
         <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
         <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>

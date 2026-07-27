@@ -18,12 +18,13 @@ public class WebhookController : ControllerBase
     private readonly SamtykkeService _samtykke;
     private readonly AlarmService _alarm;
     private readonly WebhookPayloadService _payloads;
+    private readonly LoggService _logg;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<WebhookController> _log;
 
     public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
         SmsMalService sms, SamtykkeService samtykke, AlarmService alarm, WebhookPayloadService payloads,
-        IWebHostEnvironment env, ILogger<WebhookController> log)
+        LoggService logg, IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
@@ -32,6 +33,7 @@ public class WebhookController : ControllerBase
         _samtykke = samtykke;
         _alarm = alarm;
         _payloads = payloads;
+        _logg = logg;
         _env = env;
         _log = log;
     }
@@ -90,14 +92,27 @@ public class WebhookController : ControllerBase
                 var k = MapFlexible(flat);
                 k.Kilde = KildeLabel(hook.Name);
 
-                // Match mot et påbegynt Vipps-utkast: mobil → e-post → navn. Treff = komplettér
-                // utkastet (samme rad) og løft status fra «Påbegynt søknad» til «Åpen».
-                var utkast = await _kundekort.FinnPaabegyntAsync(k.Mobilnummer, k.Epost, k.FulltNavn);
+                // Valider kontrollsiffer (MOD11) ved mottak når fnr er oppgitt. Avvises generisk —
+                // responsen røper aldri om nummeret finnes fra før (ikke et oppslagsverktøy).
+                if (!string.IsNullOrWhiteSpace(k.Foedselsnummer) && !Fnr.ErGyldig(k.Foedselsnummer))
+                { feil = "Ugyldig fødselsnummer."; continue; }
+                if (!string.IsNullOrWhiteSpace(k.MedsokerFoedselsnummer) && !Fnr.ErGyldig(k.MedsokerFoedselsnummer))
+                { feil = "Ugyldig fødselsnummer (medsøker)."; continue; }
+
+                // Match mot et påbegynt Vipps-utkast: KUN entydige kriterier (mobil → e-post; navn
+                // brukes ikke). Treff = komplettér utkastet (samme rad) og løft status til «Åpen».
+                // Ingen match → utkastet (om det finnes) blir stående som «Påbegynt søknad».
+                var (utkast, matchFelt) = await _kundekort.FinnPaabegyntAsync(k.Mobilnummer, k.Epost);
                 string? aktor = null;
                 if (utkast is not null)
                 {
                     k.Id = utkast.Id;
-                    if (string.IsNullOrWhiteSpace(k.Foedselsnummer)) k.Foedselsnummer = utkast.Foedselsnummer;
+                    // Behold Vipps/BankID-verifisert identitet + sikkerhetsnivå dersom søknaden mangler den.
+                    if (string.IsNullOrWhiteSpace(k.Foedselsnummer))
+                    {
+                        k.Foedselsnummer = utkast.Foedselsnummer;
+                        if (!string.IsNullOrWhiteSpace(utkast.FnrKilde)) k.FnrKilde = utkast.FnrKilde;
+                    }
                     if (string.IsNullOrWhiteSpace(k.FulltNavn)) k.FulltNavn = utkast.FulltNavn;
                     if (string.IsNullOrWhiteSpace(k.Mobilnummer)) k.Mobilnummer = utkast.Mobilnummer;
                     if (string.IsNullOrWhiteSpace(k.Epost)) k.Epost = utkast.Epost;
@@ -106,6 +121,12 @@ public class WebhookController : ControllerBase
 
                 var (ok, error) = await _kundekort.SaveAsync(k, aktor: aktor);
                 if (!ok) { feil = error; _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
+
+                // Revisjonsspor per kobling: hvilket felt matchet (tidspunkt er automatisk). Ingen fnr i teksten.
+                // Vipps-sesjon/ref er logget på samme sak ved opprettelse av utkastet.
+                if (utkast is not null)
+                    await _logg.LoggAsync(k.Id, "System",
+                        $"Vipps-utkast koblet til søknad — matchet på {matchFelt}", kategori: "kobling");
 
                 if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
                     await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
@@ -173,10 +194,17 @@ public class WebhookController : ControllerBase
         {
             // Robust: tåler at Vipps sender ett objekt eller en liste; ta første objekt.
             var el = body.ValueKind == JsonValueKind.Array ? body.EnumerateArray().FirstOrDefault() : body;
-            var k = MapVipps(Flatten(el));
+            var flat = Flatten(el);
+            var k = MapVipps(flat);
+            // Vipps subjekt-/sesjons-ID for revisjonssporet (ingen fnr).
+            var vippsRef = Get(flat, "ordernumber", "sub", "subject", "sessionid", "session_id", "sid", "referanse") ?? "—";
             if (string.IsNullOrWhiteSpace(k.Mobilnummer) && string.IsNullOrWhiteSpace(k.Epost) && string.IsNullOrWhiteSpace(k.FulltNavn))
             {
                 feil = "Vipps-bekreftelsen mangler både mobil, e-post og navn — kan verken opprette eller matche.";
+            }
+            else if (!string.IsNullOrWhiteSpace(k.Foedselsnummer) && !Fnr.ErGyldig(k.Foedselsnummer))
+            {
+                feil = "Ugyldig fødselsnummer.";
             }
             else
             {
@@ -187,6 +215,9 @@ public class WebhookController : ControllerBase
                     id = k.Id;
                     if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
                         await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, "Vipps", tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
+                    // Revisjonsspor: knytt Vipps-sesjonen til saken ved opprettelse (ingen fnr i teksten).
+                    await _logg.LoggAsync(k.Id, "Vipps",
+                        $"Påbegynt søknad opprettet via Vipps-autentisering — subjekt/sesjon: {vippsRef}", kategori: "kobling");
                     await _hooks.RecordReceiptAsync(hook, "Vipps-bekreftelse (påbegynt søknad)");
                     await _events.LogAsync("Vipps", "Påbegynt søknad opprettet fra Vipps-bekreftelse", hook.Name);
                 }
@@ -246,6 +277,7 @@ public class WebhookController : ControllerBase
             Adresse = adresse,
             Postnummer = postnr,   // SaveAsync/BerikGeografi fyller poststed/kommune/fylke fra postnr
             Kilde = "Vipps",
+            FnrKilde = KundekortService.FnrKildeVipps,
             Notater = string.IsNullOrWhiteSpace(ordre) ? null : $"Vipps ordrenr: {ordre}",
             SamtykkeGjeldsregisterKredittsjekk = GetBool(f, "samtykke_gjeldsregister_og_kredittsjekk", "samtykke"),
             Status = KundekortService.StatusPaabegynt,
@@ -468,6 +500,8 @@ public class WebhookController : ControllerBase
             SkjemaVersjon = GetInt(f, "skjema_versjon"),
             SamtykkeGjeldsregisterKredittsjekk = GetBool(f, "samtykke_gjeldsregister_og_kredittsjekk", "samtykke_gjeldsregister_og_kredittsjekk"),
 
+            // Fnr oppgitt i søknadsskjema = lavere sikkerhetsnivå enn Vipps/BankID-autentisert.
+            FnrKilde = KundekortService.FnrKildeSkjema,
             Status = "Åpen",
         };
     }

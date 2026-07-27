@@ -118,6 +118,9 @@ public class Kundekort : BaseModel
 
     /// <summary>Rettslig grunnlag for behandlingen (GDPR art. 6) — f.eks. «Samtykke» eller «Avtale».</summary>
     [Column("behandlingsgrunnlag")] public string? Behandlingsgrunnlag { get; set; }
+
+    /// <summary>Kilde/sikkerhetsnivå for fødselsnummeret: BankID / Vipps / Skjema.</summary>
+    [Column("fnr_kilde")] public string? FnrKilde { get; set; }
     [Column("delegert_bank")] public string? DelegertBank { get; set; }
 
     [Column("status")] public string Status { get; set; } = "Åpen";

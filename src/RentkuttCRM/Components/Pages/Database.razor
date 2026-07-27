@@ -114,6 +114,10 @@ else
                     </td>
                     <td>
                         <span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>
+                        @if (ErDuplikat(k))
+                        {
+                            <span class="dup-badge" title="@DuplikatTekst(k)">⚠ Duplikat</span>
+                        }
                         @if (CaseCount(k.KundeId) > 1)
                         {
                             <span class="multi-badge" title="@CaseCount(k.KundeId) søknader på denne kunden">@CaseCount(k.KundeId) søknader</span>
@@ -238,6 +242,9 @@ else
 
     private Dictionary<string, int> _caseCount = new();
     private Dictionary<Guid, string> _searchCache = new();
+    // Duplikater: kundekort som deler mobil eller e-post med minst ett annet kort.
+    private HashSet<Guid> _duplikatMobil = new();
+    private HashSet<Guid> _duplikatEpost = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -251,6 +258,7 @@ else
         _partnere = partnereTask.Result;
         _berParams = berTask.Result;
         _caseCount = _rows.GroupBy(k => k.KundeId).ToDictionary(g => g.Key, g => g.Count());
+        BeregnDuplikater();
         _searchCache = _rows.ToDictionary(k => k.Id, Searchable);
         _loading = false;
     }
@@ -300,6 +308,30 @@ else
     }
 
     private int CaseCount(string kundeId) => _caseCount.GetValueOrDefault(kundeId, 1);
+
+    // Duplikat = samme mobil (siste 8 sifre) eller e-post på tvers av flere søknader.
+    private static string MobilNokkel(string? m)
+    {
+        var d = new string((m ?? "").Where(char.IsDigit).ToArray());
+        return d.Length >= 8 ? d[^8..] : "";
+    }
+    private void BeregnDuplikater()
+    {
+        _duplikatMobil = _rows.Where(k => MobilNokkel(k.Mobilnummer).Length == 8)
+            .GroupBy(k => MobilNokkel(k.Mobilnummer)).Where(g => g.Count() > 1)
+            .SelectMany(g => g).Select(k => k.Id).ToHashSet();
+        _duplikatEpost = _rows.Where(k => !string.IsNullOrWhiteSpace(k.Epost))
+            .GroupBy(k => k.Epost!.Trim().ToLowerInvariant()).Where(g => g.Count() > 1)
+            .SelectMany(g => g).Select(k => k.Id).ToHashSet();
+    }
+    private bool ErDuplikat(Kundekort k) => _duplikatMobil.Contains(k.Id) || _duplikatEpost.Contains(k.Id);
+    private string DuplikatTekst(Kundekort k)
+    {
+        var m = _duplikatMobil.Contains(k.Id);
+        var e = _duplikatEpost.Contains(k.Id);
+        var felt = (m, e) switch { (true, true) => "mobil og e-post", (true, false) => "mobil", _ => "e-post" };
+        return $"Registrert flere ganger med samme {felt}";
+    }
 
     private static string StatusKlasse(string s) => s switch
     {

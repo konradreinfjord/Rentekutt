@@ -24,6 +24,12 @@ public class KundekortService
         _ => ("apen", "Åpen", false),
     };
 
+    /// <summary>Kilde/sikkerhetsnivå for fødselsnummeret på saken (dokumenterer hvordan identiteten
+    /// ble fastslått): BankID (høyest), Vipps, eller Skjema (kunden oppga selv i skjema).</summary>
+    public static readonly string[] FnrKilder = { "BankID", "Vipps", "Skjema" };
+    public const string FnrKildeVipps = "Vipps";
+    public const string FnrKildeSkjema = "Skjema";
+
     /// <summary>Rettslig grunnlag (GDPR art. 6). «Samtykke» er standard for innkommende leads.</summary>
     public static readonly string[] Behandlingsgrunnlag =
         { "Samtykke", "Avtale", "Rettslig forpliktelse", "Berettiget interesse" };
@@ -466,14 +472,14 @@ public class KundekortService
             .FirstOrDefault();
     }
 
-    private static string RensNavn(string? s) => new((s ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
-
     /// <summary>Finn et påbegynt utkast (Vipps) som matcher en innkommende søknad.
-    /// Prioritert rekkefølge: 1) mobilnummer (siste 8 sifre), 2) e-post, 3) navn.</summary>
-    public async Task<Kundekort?> FinnPaabegyntAsync(string? mobil, string? epost, string? navn)
+    /// KUN entydige kriterier: 1) mobilnummer (siste 8 sifre), 2) e-post. Navn brukes IKKE
+    /// som matchkriterium (ikke entydig — kunne koblet en Vipps-sesjon til feil persons søknad).
+    /// Returnerer utkastet og hvilket felt som matchet (for revisjonssporet).</summary>
+    public async Task<(Kundekort? utkast, string? felt)> FinnPaabegyntAsync(string? mobil, string? epost)
     {
         var utkast = (await ListAsync()).Where(k => k.Status == StatusPaabegynt).ToList();
-        if (utkast.Count == 0) return null;
+        if (utkast.Count == 0) return (null, null);
 
         // 1) Mobilnummer — match på de siste 8 sifrene (tåler +47/landkode).
         var mDig = new string((mobil ?? "").Where(char.IsDigit).ToArray());
@@ -485,7 +491,7 @@ public class KundekortService
                 var d = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
                 return d.Length >= 8 && d[^8..] == tail;
             });
-            if (m is not null) return m;
+            if (m is not null) return (m, "mobilnummer");
         }
 
         // 2) E-post (uten hensyn til store/små bokstaver).
@@ -493,20 +499,11 @@ public class KundekortService
         {
             var e = utkast.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k.Epost)
                 && string.Equals(k.Epost.Trim(), epost.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (e is not null) return e;
+            if (e is not null) return (e, "e-post");
         }
 
-        // 3) Navn (normalisert: kun bokstaver/tall, uten mellomrom/case).
-        if (!string.IsNullOrWhiteSpace(navn))
-        {
-            var n = RensNavn(navn);
-            if (n.Length > 0)
-            {
-                var x = utkast.FirstOrDefault(k => RensNavn(k.FulltNavn) == n);
-                if (x is not null) return x;
-            }
-        }
-        return null;
+        // Ingen entydig match → ingen kobling (utkastet blir stående som «Påbegynt søknad»).
+        return (null, null);
     }
 
     public async Task SetStatusAsync(Guid id, string status, string? aktor = null)
