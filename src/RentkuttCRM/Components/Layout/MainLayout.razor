@@ -3,7 +3,6 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
-@inject RentkuttCRM.Services.WebhookService Webhooks
 @inject NavigationManager Nav
 @inject ProtectedLocalStorage LocalStorage
 
@@ -118,22 +117,13 @@ else
     }
 
     // Sjekk om noen tekniske overføringer feiler (vises som varsellampe i headeren).
-    private async Task SjekkHelseAsync()
+    private void SjekkHelse()
     {
+        // Varsellampa skal kun lyse ved reelle tekniske alarmer (manglende konfigurasjon/tilkobling).
+        // Vi varsler IKKE på «ingen innkommende trafikk siste N døgn» — lav leadvolum er ikke en feil.
         var issues = new List<(string, string)>();
         if (!Users.IsConfigured) issues.Add(("Database (Supabase)", "Ikke konfigurert / ikke tilkoblet"));
         if (!LinkMobility.ErKonfigurert) issues.Add(("LinkMobility", "SMS/2FA ikke konfigurert"));
-        try
-        {
-            var hooks = new[] { await Webhooks.GetInboundAsync(), await Webhooks.GetByNameAsync(RentkuttCRM.Services.WebhookService.PrismatchName) };
-            foreach (var w in hooks)
-            {
-                // Feil = kanal som var aktiv og har mottatt data før, men ikke siste 3 døgn.
-                if (w is { Active: true, LastReceivedAt: { } t } && t <= DateTime.UtcNow.AddDays(-3))
-                    issues.Add(($"Kanal: {w.Name}", $"Ingen data siste 3 døgn (sist {t.TilOslo():dd.MM HH:mm})"));
-            }
-        }
-        catch { /* nettverksfeil ved helsesjekk skal ikke velte UI */ }
         _issues = issues;
     }
 
@@ -150,7 +140,7 @@ else
             // å re-rendre login-siden hvert sekund (kan forstyrre innloggingen).
             if (!Session.IsLoggedIn) return;
             _now = Tid.Naa;
-            if (_tick++ % 30 == 0) await SjekkHelseAsync();   // helsesjekk hvert 30. sek (og ved oppstart)
+            if (_tick++ % 30 == 0) SjekkHelse();   // helsesjekk hvert 30. sek (og ved oppstart)
             await InvokeAsync(StateHasChanged);
         }, null, 0, 1000);
     }
