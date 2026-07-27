@@ -1215,6 +1215,8 @@ else if (_active == "GDPR")
                     <strong>@(fieldKeyLastet ? "Ja" : "Nei")</strong></li>
                 <li>Selvtest kryptering (krypter→dekrypter i kjørende prosess):
                     <strong>@(fieldKeyLastet ? (selvtestOk ? "OK" : "Feilet") : "— (kryptering AV)")</strong></li>
+                <li>Miljøvariabel-navn i prosessen som matcher «FieldKey»/«Gdpr» (kun navn, aldri verdi):
+                    <strong>@EnvNoekkelFunn()</strong></li>
                 <li>HMAC-nøkkel: <strong>avledet fra Gdpr__FieldKey (domenetagg «hmac-v1»)</strong></li>
                 @if (_diagKjort)
                 {
@@ -1823,6 +1825,24 @@ else if (_active == "GDPR")
 
     // Diagnose lest fra KJØRENDE prosess (ikke lagret innstilling): er nøkkelen lastet, og
     // fungerer krypteringen faktisk (rundtur via CryptoService' offentlige API — ingen kodeendring der).
+    // Viser NAVNET på miljøvariabler i prosessen som inneholder «FieldKey»/«Gdpr» (aldri verdien).
+    // Avslører feilplassering: «Gdpr__FieldKey» = riktig app-setting; «CUSTOMCONNSTR_…»/«SQLCONNSTR_…»
+    // = lagt under Connection strings (feil); ingen treff = når ikke prosessen (feil navn/slot).
+    private string EnvNoekkelFunn()
+    {
+        try
+        {
+            var treff = Environment.GetEnvironmentVariables().Keys.Cast<string>()
+                .Where(k => k.Contains("FieldKey", StringComparison.OrdinalIgnoreCase)
+                            || k.Contains("Gdpr", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(k => k).ToList();
+            return treff.Count == 0
+                ? "INGEN — nøkkelen når ikke prosessen (sjekk navn/slot/seksjon i Azure)"
+                : string.Join(", ", treff);
+        }
+        catch { return "(kunne ikke lese miljøvariabler)"; }
+    }
+
     private (bool lastet, bool selvtestOk) KrypteringStatus()
     {
         var lastet = Krypto.IsEnabled;
