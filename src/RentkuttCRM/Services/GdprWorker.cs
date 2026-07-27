@@ -31,6 +31,10 @@ public class GdprWorker : BackgroundService
                 var slettMnd = await settings.GetIntAsync("gdpr_delete_months", 24);
                 var (anon, slett, feil) = await gdpr.KjorAsync(anonMnd, slettMnd, torrkjor: false, ct);
                 if (feil is not null) _log.LogWarning("GDPR-jobb hoppet over / feilet: {Feil}", feil);
+
+                // Rydd webhook-payload-bufferet (tidsbasert, i tillegg til 50-taket ved skriving).
+                var payloads = scope.ServiceProvider.GetRequiredService<WebhookPayloadService>();
+                await payloads.SlettEldreEnnAsync(WebhookPayloadService.RetensjonDager);
             }
             catch (Exception ex) { _log.LogError(ex, "GDPR-jobb-syklus feilet"); }
 

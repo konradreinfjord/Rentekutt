@@ -24,6 +24,8 @@ public class WebhookPayload : BaseModel
 public class WebhookPayloadService
 {
     public const int MaksBevart = 50;
+    /// <summary>Payloads eldre enn dette slettes (tidsbasert, i tillegg til 50-taket).</summary>
+    public const int RetensjonDager = 10;
 
     private readonly Supabase.Client _client;
     private readonly ILogger<WebhookPayloadService> _log;
@@ -76,6 +78,24 @@ public class WebhookPayloadService
                 .Get()).Models;
         }
         catch (Exception ex) { _log.LogError(ex, "Henting av webhook-payloads feilet"); return new(); }
+    }
+
+    /// <summary>Slett payloads eldre enn <paramref name="dager"/> dager. Returnerer antall slettet.</summary>
+    public async Task<int> SlettEldreEnnAsync(int dager)
+    {
+        if (dager < 1) dager = 1;
+        var grense = DateTime.UtcNow.AddDays(-dager);
+        if (!IsConfigured) return _staging.RemoveAll(x => x.Mottatt < grense);
+        try
+        {
+            await EnsureInitAsync();
+            var alle = (await _client.From<WebhookPayload>().Get()).Models;
+            var gamle = alle.Where(x => x.Mottatt < grense).ToList();
+            foreach (var g in gamle)
+                await _client.From<WebhookPayload>().Where(x => x.Id == g.Id).Delete();
+            return gamle.Count;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Sletting av gamle webhook-payloads feilet"); return 0; }
     }
 
     private async Task EnsureInitAsync()

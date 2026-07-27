@@ -139,6 +139,29 @@ public class AlarmService
         catch (Exception ex) { _log.LogError(ex, "Kvittering av alarm feilet"); }
     }
 
+    /// <summary>Kvitter ut alle ÅPNE alarmer med gitt nøkkel — brukes til å auto-lukke en alarm
+    /// når tilstanden er løst (f.eks. «kryptering AV» når nøkkelen er lastet igjen), slik at en
+    /// stale alarm fra et tidligere deploy-vindu ikke blir stående.</summary>
+    public async Task LosOppNoekkelAsync(string noekkel, string avNavn)
+    {
+        var naa = DateTime.UtcNow;
+        if (!IsConfigured)
+        {
+            foreach (var a in _staging.Where(x => !x.Kvittert && x.Noekkel == noekkel))
+            { a.Kvittert = true; a.KvittertAv = avNavn; a.KvittertAt = naa; }
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            var apne = (await _client.From<Alarm>().Where(a => a.Kvittert == false && a.Noekkel == noekkel).Get()).Models;
+            foreach (var a in apne)
+                await _client.From<Alarm>().Where(x => x.Id == a.Id)
+                    .Set(x => x.Kvittert, true).Set(x => x.KvittertAv!, avNavn).Set(x => x.KvittertAt!, naa).Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Auto-lukking av alarm ({Noekkel}) feilet", noekkel); }
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;

@@ -276,7 +276,9 @@ public class WebhookController : ControllerBase
             Epost = epost,
             Adresse = adresse,
             Postnummer = postnr,   // SaveAsync/BerikGeografi fyller poststed/kommune/fylke fra postnr
-            Kilde = "Vipps",
+            // Vipps-autentisering skjer på rentekutt.no → kilde = Rentekutt.no (ikke «Vipps»).
+            // Selve autentiseringsmetoden dokumenteres i FnrKilde + revisjonssporet.
+            Kilde = KildeLabel(WebhookService.InboundName),
             FnrKilde = KundekortService.FnrKildeVipps,
             Notater = string.IsNullOrWhiteSpace(ordre) ? null : $"Vipps ordrenr: {ordre}",
             SamtykkeGjeldsregisterKredittsjekk = GetBool(f, "samtykke_gjeldsregister_og_kredittsjekk", "samtykke"),

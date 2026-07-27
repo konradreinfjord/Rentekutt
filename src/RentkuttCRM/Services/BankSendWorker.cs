@@ -68,10 +68,20 @@ public class BankSendWorker : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
+            var alarm = scope.ServiceProvider.GetRequiredService<AlarmService>();
             if (!scope.ServiceProvider.GetRequiredService<CryptoService>().IsEnabled)
-                await AlarmAsync("Kryptering", "Feltnivåkryptering er AV",
+            {
+                await alarm.RaiseAsync("Kryptering", "Feltnivåkryptering er AV",
                     "Gdpr__FieldKey mangler — nye fødselsnummer lagres i KLARTEKST. Sett nøkkelen og kjør bakfylling.",
-                    AlarmService.Alvorlighet.Kritisk, "kryptering-av");
+                    AlarmService.Alvorlighet.Kritisk, "Sendekø", "kryptering-av");
+            }
+            else
+            {
+                // Nøkkelen ER lastet → lukk ev. gamle «kryptering AV»-alarmer fra et tidligere
+                // deploy-vindu, så de ikke blir stående og villede når kryptering faktisk er på.
+                await alarm.LosOppNoekkelAsync("kryptering-av", "System (nøkkel lastet)");
+                await alarm.LosOppNoekkelAsync("kryptering-av-klartekst", "System (nøkkel lastet)");
+            }
         }
         catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke sjekke krypteringsstatus"); }
 

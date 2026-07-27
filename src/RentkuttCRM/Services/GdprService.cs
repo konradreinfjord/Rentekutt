@@ -100,6 +100,12 @@ where created_at < @grense and anonymisert_at is null;";
                 await cmd.ExecuteNonQueryAsync(ct);
             }
 
+            // Rydd rå payloads knyttet til kort som nå er slettet eller anonymisert (PII i payloaden).
+            await ExecAsync(conn,
+                "delete from public.webhook_payload wp where wp.kundekort_id is not null and " +
+                "(not exists (select 1 from public.kundekort k where k.id = wp.kundekort_id) " +
+                " or wp.kundekort_id in (select id from public.kundekort where anonymisert_at is not null));", ct);
+
             // 4) Logg kjøringen (systemhendelse, ingen PII).
             await ExecAsync(conn, $"insert into public.hendelser (type, beskrivelse, kilde) values ('GDPR', 'Anonymiserte {anon}, slettet {slett} kundekort', 'GDPR-jobb');", ct);
 
@@ -261,7 +267,8 @@ from public.kundekort k where " + SokFilter + ";";
             if (ids.Count == 0) { await tx.RollbackAsync(); return (0, null); }
 
             // Slett barn eksplisitt (uavhengig av kaskade-oppsett) + selve kundekortet.
-            foreach (var tabell in new[] { "saksnotat", "kundekort_logg", "banksending", "samtykke" })
+            // webhook_payload inkluderes: rå payload for saken (viser sist mottatt) skal også bort.
+            foreach (var tabell in new[] { "saksnotat", "kundekort_logg", "banksending", "samtykke", "webhook_payload" })
                 await using (var cmd = new NpgsqlCommand($"delete from public.{tabell} where kundekort_id = any(@ids);", conn, (NpgsqlTransaction)tx))
                 { cmd.Parameters.AddWithValue("ids", ids.ToArray()); await cmd.ExecuteNonQueryAsync(); }
 
