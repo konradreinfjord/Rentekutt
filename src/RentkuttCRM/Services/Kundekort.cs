@@ -113,6 +113,23 @@ public class Kundekort : BaseModel
     [Column("fylke")] public string? Fylke { get; set; }
     [Column("boligverdi")] public decimal? Boligverdi { get; set; }
 
+    // G. Boliglån — eiendom/sikkerhet. Kreves av Instabank boliglån (produkt 180). Matrikkel
+    // (kommune/gnr/bnr/fnr/snr) er påkrevd for selveier; borettslag-feltene for andel/sameie.
+    [Column("eiendom_kommune")] public string? EiendomKommune { get; set; }
+    [Column("eiendom_kommunenummer")] public int? EiendomKommunenummer { get; set; }
+    [Column("eiendom_gaardsnummer")] public int? EiendomGaardsnummer { get; set; }
+    [Column("eiendom_bruksnummer")] public int? EiendomBruksnummer { get; set; }
+    [Column("eiendom_festenummer")] public int? EiendomFestenummer { get; set; }
+    [Column("eiendom_seksjonsnummer")] public int? EiendomSeksjonsnummer { get; set; }
+    [Column("eiendom_andelsnummer")] public string? EiendomAndelsnummer { get; set; }
+    [Column("eiendom_borettslag_orgnr")] public string? EiendomBorettslagOrgnr { get; set; }
+    [Column("eiendom_fellesgjeld")] public decimal? EiendomFellesgjeld { get; set; }
+    [Column("eiendom_felleskostnad")] public decimal? EiendomFelleskostnad { get; set; }
+    [Column("eiendom_estimert_verdi")] public decimal? EiendomEstimertVerdi { get; set; }
+    [Column("eiendom_etakst_referanse")] public string? EiendomEtakstReferanse { get; set; }
+    [Column("eiendom_forsikret")] public bool EiendomForsikret { get; set; }
+    [Column("eiendom_forsikringsselskap")] public string? EiendomForsikringsselskap { get; set; }
+
     [Column("notater")] public string? Notater { get; set; }
     [Column("kilde")] public string? Kilde { get; set; }
 

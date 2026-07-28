@@ -1208,6 +1208,22 @@ else if (_active == "GDPR")
         }
 
         <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:14px">
+            <h3 style="margin:0 0 8px; font-size:14px">Opprydding — mobilnummer feilaktig lagret som fødselsnummer</h3>
+            <p class="page-sub" style="margin:0 0 10px">
+                Tidligere ble mobilnummeret speilet inn i fødselsnummer-feltet på enkelte leads (bl.a. prismatch).
+                Denne engangsjobben blanker fnr-feltet <strong>kun</strong> der verdien ikke er et gyldig fødselsnummer
+                og er identisk med mobilnummeret. Gyldige fødselsnumre røres aldri.
+            </p>
+            <button class="btn-primary" @onclick="RyddMobilIFnr" disabled="@_ryddKjorer">
+                @(_ryddKjorer ? "Rydder…" : "Rydd mobil-i-fnr")
+            </button>
+            @if (!string.IsNullOrEmpty(_ryddMsg))
+            {
+                <p class="page-sub" style="margin-top:10px">@_ryddMsg</p>
+            }
+        </div>
+
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:14px">
             <h3 style="margin:0 0 8px; font-size:14px">Diagnose — lest fra kjørende prosess / live database</h3>
             @{ var (fieldKeyLastet, selvtestOk) = KrypteringStatus(); }
             <ul class="page-sub" style="margin:0; padding-left:18px; line-height:1.9">
@@ -1833,6 +1849,8 @@ else if (_active == "GDPR")
     // ---- GDPR: feltnivåkryptering (bakfylling) ----
     private bool _krypterKjorer;
     private string? _krypterMsg;
+    private bool _ryddKjorer;
+    private string? _ryddMsg;
 
     // Diagnose lest fra KJØRENDE prosess (ikke lagret innstilling): er nøkkelen lastet, og
     // fungerer krypteringen faktisk (rundtur via CryptoService' offentlige API — ingen kodeendring der).
@@ -1895,6 +1913,16 @@ else if (_active == "GDPR")
             ? $"Ferdig ✓ — krypterte {opp} kundekort ({u} var allerede kryptert)."
             : "Kryptering feilet: " + feil;
         _krypterKjorer = false;
+    }
+
+    private async Task RyddMobilIFnr()
+    {
+        _ryddKjorer = true; _ryddMsg = null;
+        var (ryddet, sjekket, feil) = await Kunder.RyddMobilIFnrAsync();
+        _ryddMsg = feil is null
+            ? $"Ferdig ✓ — blanket fødselsnummer på {ryddet} lead(s) der verdien var mobilnummeret (av {sjekket} med fnr-verdi)."
+            : "Opprydding feilet: " + feil;
+        _ryddKjorer = false;
     }
 
     // ---- GDPR: innsyn & sletting per person (registrertes rettigheter) ----

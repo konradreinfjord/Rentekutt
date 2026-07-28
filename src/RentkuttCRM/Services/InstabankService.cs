@@ -61,10 +61,24 @@ public class InstabankService
     private string? Username => _config["Instabank:Username"];
     private string? AgentEmail => _config["Instabank:AgentEmail"];
     /// <summary>Maks lånebeløp for forbrukslån (produkt 151) hos Instabank. Beløp over dette
-    /// avvises med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT — så høye beløp er boliglån. Overstyres med
-    /// Instabank__ForbrukslaanMaks; standard 500 000 kr (Instabanks avtalegrense for forbrukslån).</summary>
+    /// avvises med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT. Overstyres med Instabank__ForbrukslaanMaks;
+    /// standard 500 000 kr (Instabanks avtalegrense for forbrukslån).</summary>
     private decimal ForbrukslaanMaks =>
         decimal.TryParse(_config["Instabank:ForbrukslaanMaks"], out var v) && v > 0 ? v : 500_000m;
+
+    /// <summary>Maks lånebeløp for boliglån (produkt 180) hos Instabank. Overstyres med
+    /// Instabank__BoliglaanMaks; standard 10 000 000 kr.</summary>
+    private decimal BoliglaanMaks =>
+        decimal.TryParse(_config["Instabank:BoliglaanMaks"], out var v) && v > 0 ? v : 10_000_000m;
+
+    /// <summary>Maks lånebeløp for et Instabank-produkt (forbrukslån/boliglån). Brukes både av
+    /// send-barrieren og av kundeportalen for å vise grensen. 0 = ingen kjent grense.</summary>
+    public decimal MaksBelopFor(int? produkt) => produkt switch
+    {
+        ProduktForbrukslaan => ForbrukslaanMaks,
+        ProduktBoliglaan => BoliglaanMaks,
+        _ => 0m,
+    };
     private string? PassordFor(string env) =>
         env == "prod" ? _config["Instabank:PasswordProd"] : _config["Instabank:PasswordTest"];
 
@@ -220,13 +234,18 @@ public class InstabankService
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende — mangler: " + string.Join(", ", mangler));
 
-        // Beløpsgrense: forbrukslån (151) hos Instabank er avtalt opp til ForbrukslaanMaks. Høyere beløp
-        // avvises av Instabank med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT (uleselig 500-feil). Gi rådgiveren
-        // en tydelig melding før sending — så høye beløp er boliglån (180), ikke forbrukslån.
-        // Gjelder KUN forbrukslån; boliglån skal nettopp ha høye beløp.
-        if (produkt == ProduktForbrukslaan && (k.OnsketLaanebelop ?? 0) > ForbrukslaanMaks)
+        // Beløpsgrense per produkt: forbrukslån (151) opp til ForbrukslaanMaks, boliglån (180) opp til
+        // BoliglaanMaks. Beløp over avvises av Instabank med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT (uleselig
+        // 500-feil). Vi fanger det før sending og gir rådgiveren en tydelig melding — samme barriere for
+        // manuell og automatisk sending.
+        var maks = MaksBelopFor(produkt);
+        if (maks > 0 && (k.OnsketLaanebelop ?? 0) > maks)
+        {
+            var pnavn = ProduktNavn(produkt).ToLowerInvariant();
+            var tips = produkt == ProduktForbrukslaan ? " Så høye beløp er boliglån." : "";
             return new(false, null, null, null,
-                $"Beløpet {k.OnsketLaanebelop:N0} kr overstiger maksbeløpet for forbrukslån hos Instabank ({ForbrukslaanMaks:N0} kr). Så høye beløp er boliglån og kan ikke sendes som forbrukslån.");
+                $"Beløpet {k.OnsketLaanebelop:N0} kr overstiger maksbeløpet for {pnavn} hos Instabank ({maks:N0} kr).{tips}");
+        }
 
         // Valider fødselsnummeret lokalt (modulus-11) før vi kaller Instabank — unngår
         // 500-feil «Invalid socialSecurityNumber» og beskytter bank-API-et mot ugyldige data.
@@ -271,6 +290,36 @@ public class InstabankService
             ["Reference"] = k.Id.ToString(),
         };
         if (k.RefinansieresBelop is > 0) application["RefinanceAmount"] = k.RefinansieresBelop;
+
+        // Boliglån (180) krever eiendoms-/sikkerhetsobjekt (Items[]). Bygges fra G · Boliglån-feltene.
+        // «Debt» = restgjeld på eiendommen = Boliggjeld. Matrikkel for selveier; Cooperation for andel.
+        if (produkt == ProduktBoliglaan)
+        {
+            static object? Tekst(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+            var eiendom = RensNull(new Dictionary<string, object?>
+            {
+                ["Municipality"] = Tekst(k.EiendomKommune),
+                ["MunicipalityNumber"] = k.EiendomKommunenummer,
+                ["CadastralUnitNumber"] = k.EiendomGaardsnummer,
+                ["UnitNumber"] = k.EiendomBruksnummer,
+                // Festenummer 0 = «ingen feste» — send 0 når matrikkel oppgis (gnr satt), ellers utelates.
+                ["LeaseholdUnitNumber"] = k.EiendomFestenummer ?? (k.EiendomGaardsnummer is not null ? 0 : (int?)null),
+                ["SectionNumber"] = k.EiendomSeksjonsnummer,
+                ["ApartmentReference"] = Tekst(k.EiendomAndelsnummer),
+                ["Cooperation"] = string.IsNullOrWhiteSpace(k.EiendomBorettslagOrgnr) ? null
+                    : new Dictionary<string, object?> { ["OrganizationNumber"] = new string(k.EiendomBorettslagOrgnr.Where(char.IsDigit).ToArray()) },
+                ["CommonDebt"] = k.EiendomFellesgjeld,
+                ["CommonCost"] = k.EiendomFelleskostnad,
+                ["EstimatedValue"] = k.EiendomEstimertVerdi,
+                ["EstimateReference"] = Tekst(k.EiendomEtakstReferanse),
+                ["IsInsured"] = k.EiendomForsikret,
+                ["InsuranceCompany"] = string.IsNullOrWhiteSpace(k.EiendomForsikringsselskap) ? null
+                    : new Dictionary<string, object?> { ["Name"] = k.EiendomForsikringsselskap.Trim() },
+                ["Debt"] = k.Boliggjeld,
+            });
+            // Items[] ligger rett under Application (bekreftet mot Instabank Agent API «Create mortgage»).
+            application["Items"] = new[] { eiendom };
+        }
 
         var r = await PostAsync("create", new { Application = application, DoSetAccepted = false });
         return r.Ok ? r : r with { Detalj = $"{r.Detalj} [sendt: beløp={k.OnsketLaanebelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]" };

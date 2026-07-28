@@ -162,12 +162,25 @@ public class KundekortService
         if (string.IsNullOrWhiteSpace(k.Fylke)) k.Fylke = _postnr.Fylke(k.Postnummer) ?? k.Fylke;
     }
 
+    /// <summary>Auto-fyll boliglån/eiendom-feltene (G) fra kundens eksisterende opplysninger når de er
+    /// tomme — så agenten har et utgangspunkt. Kun der vi faktisk har data (kommune, boligverdi).
+    /// Overskriver aldri felt agenten selv har fylt (skjer bare når feltet er tomt). Matrikkel/
+    /// borettslag finnes ikke i leadet og fylles manuelt; adresse kan avvike fra bostedsadressen.</summary>
+    private static void AutofyllEiendom(Kundekort k)
+    {
+        if (string.IsNullOrWhiteSpace(k.EiendomKommune) && !string.IsNullOrWhiteSpace(k.Kommune))
+            k.EiendomKommune = k.Kommune;
+        if ((k.EiendomEstimertVerdi ?? 0) <= 0 && k.Boligverdi is > 0)
+            k.EiendomEstimertVerdi = k.Boligverdi;
+    }
+
     /// <param name="strict">Når true (manuelt skjema) kreves korrekt fødselsnr/orgnr-lengde.
     /// Når false (API/webhook) opprettes saken uansett — id = fødselsnr → mobil → fallback.</param>
     public async Task<(bool ok, string? error)> SaveAsync(Kundekort k, bool strict = false, string? aktor = null)
     {
         k.KundeId = (k.KundeId ?? "").Trim();
         BerikGeografi(k);   // fyll kommune/poststed/fylke fra postnummer når de mangler
+        AutofyllEiendom(k); // fyll G · Boliglån (kommune/estimert verdi) fra eksisterende felt
         if (string.IsNullOrWhiteSpace(k.Behandlingsgrunnlag)) k.Behandlingsgrunnlag = BehandlingsgrunnlagStandard;
 
         if (strict)
@@ -182,7 +195,10 @@ public class KundekortService
             k.KundeId = "lead-" + Guid.NewGuid().ToString("N")[..12];
         }
 
-        if (k.KundeType == "B2C" && string.IsNullOrWhiteSpace(k.Foedselsnummer) && k.KundeId.Length == 11)
+        // Speil KUN et gyldig fødselsnummer (MOD11) fra kunde_id inn i fnr-feltet. For prismatch-leads
+        // faller kunde_id tilbake til mobilnummer — og et mobilnummer skal ALDRI havne som fødselsnummer
+        // (pnr skal være blankt). MOD11-sjekken sikrer at bare et ekte fnr speiles.
+        if (k.KundeType == "B2C" && string.IsNullOrWhiteSpace(k.Foedselsnummer) && Fnr.ErGyldig(k.KundeId))
             k.Foedselsnummer = k.KundeId;
 
         // B2B: hold orgnr-feltet i synk med et gyldig 9-sifret kunde_id.
@@ -653,6 +669,47 @@ public class KundekortService
         catch (Exception ex)
         {
             _log.LogError(ex, "Bakfylling av kryptering feilet");
+            return (0, 0, ex.Message);
+        }
+    }
+
+    /// <summary>Engangs-opprydding: blank fødselsnummer-feltet på leads der verdien IKKE er et gyldig
+    /// fødselsnummer (MOD11), men er selve mobilnummeret — feilaktig speilet fra kunde_id på prismatch-
+    /// leads. Kirurgisk: rører kun rader der fnr-sifrene er identiske med mobilnummeret, aldri et
+    /// gyldig fnr eller andre skjeve verdier. Nullstiller også FnrHmac for disse. Returnerer antall.</summary>
+    public async Task<(int ryddet, int sjekket, string? feil)> RyddMobilIFnrAsync()
+    {
+        if (!IsConfigured) return (0, 0, "Supabase er ikke konfigurert.");
+        try
+        {
+            await EnsureReadyAsync();
+            var alle = (await _client.From<Kundekort>().Get()).Models;
+            int ryddet = 0, sjekket = 0;
+            foreach (var raw in alle)
+            {
+                if (string.IsNullOrWhiteSpace(raw.Foedselsnummer)) continue;
+                sjekket++;
+
+                var fnr = _krypto.Avdekk(raw.Foedselsnummer);           // klartekst eller dekryptert
+                if (string.IsNullOrWhiteSpace(fnr) || Fnr.ErGyldig(fnr)) continue;  // gyldig fnr → behold
+
+                var fnrDigits = new string(fnr.Where(char.IsDigit).ToArray());
+                var mobilDigits = new string((raw.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
+                // Kun rydd når «fnr» faktisk ER mobilnummeret — ikke andre ugyldige verdier.
+                if (fnrDigits.Length == 0 || fnrDigits != mobilDigits) continue;
+
+                raw.Foedselsnummer = null;
+                raw.FnrHmac = null;
+                await _client.From<Kundekort>().Update(raw);
+                ryddet++;
+            }
+            InvaliderCache();
+            _log.LogInformation("Opprydding mobil-i-fnr: {R} ryddet av {S} med fnr-verdi", ryddet, sjekket);
+            return (ryddet, sjekket, null);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Opprydding mobil-i-fnr feilet");
             return (0, 0, ex.Message);
         }
     }

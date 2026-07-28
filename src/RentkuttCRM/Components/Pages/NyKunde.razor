@@ -95,10 +95,18 @@
             </div>
         }
         <button class="btn-primary btn-sm" @onclick="SendTilBank"
-                disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank) || (valgteProdukter.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)))"
-                title="@(_isEdit ? "" : "Lagre kundekortet først")">@(_sender ? "Sender…" : "Send til bank")</button>
+                disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank) || (valgteProdukter.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)) || OverMaks)"
+                title="@(!_isEdit ? "Lagre kundekortet først" : OverMaks ? "Beløpet overstiger maksgrensen for produktet" : "")">@(_sender ? "Sender…" : "Send til bank")</button>
         @if (!string.IsNullOrEmpty(_sendMsg)) { <span class="form-msg @(_sendOk ? "ok" : "err")">@_sendMsg</span> }
     </div>
+    @{ var _maks = GjeldendeMaks(); }
+    @if (_maks > 0)
+    {
+        <p class="page-sub" style="margin:8px 0 0; font-size:12px; @(OverMaks ? "color:var(--red,#c0392b); font-weight:600" : "")">
+            Maks lånebeløp for @(valgteProdukter.FirstOrDefault(p => p.Id.ToString() == _valgtProduktId)?.Navn?.ToLowerInvariant()) hos Instabank: <strong>@_maks.ToString("N0") kr</strong>.
+            @if (OverMaks) { <text>Ønsket beløp (@_k.OnsketLaanebelop?.ToString("N0") kr) overstiger grensen — kan ikke sendes.</text> }
+        </p>
+    }
 
     @* «Sendt til bank»-loggen vises i Oversikt-fanen — ikke duplisert her. *@
 </div>
@@ -523,6 +531,41 @@
     </div>
 </div>
 
+@* G. Boliglån — eiendom/sikkerhet (kreves av Instabank boliglån, produkt 180) *@
+<div class="form-card">
+    <h2>G · Boliglån <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(eiendom/sikkerhet — kreves ved boliglån til Instabank)</span></h2>
+
+    <h3 style="margin:6px 0 8px; font-size:13px">Matrikkel <span class="muted" style="font-weight:400">(påkrevd for selveier)</span></h3>
+    <div class="form-grid">
+        <div class="ff"><label>Kommune</label><input @bind="_k.EiendomKommune" placeholder="f.eks. Bergen" /></div>
+        <div class="ff"><label>Kommunenummer</label><input type="number" @bind="_k.EiendomKommunenummer" placeholder="f.eks. 4601" /></div>
+        <div class="ff"><label>Gårdsnummer (gnr)</label><input type="number" @bind="_k.EiendomGaardsnummer" /></div>
+        <div class="ff"><label>Bruksnummer (bnr)</label><input type="number" @bind="_k.EiendomBruksnummer" /></div>
+        <div class="ff"><label>Festenummer (fnr)</label><input type="number" @bind="_k.EiendomFestenummer" /></div>
+        <div class="ff"><label>Seksjonsnummer (snr)</label><input type="number" @bind="_k.EiendomSeksjonsnummer" /></div>
+    </div>
+
+    <h3 style="margin:14px 0 8px; font-size:13px">Borettslag / sameie <span class="muted" style="font-weight:400">(påkrevd for andel/delt eierskap)</span></h3>
+    <div class="form-grid">
+        <div class="ff"><label>Andelsnummer</label><input @bind="_k.EiendomAndelsnummer" /></div>
+        <div class="ff"><label>Borettslagets orgnr</label><input @bind="_k.EiendomBorettslagOrgnr" placeholder="9 siffer" /></div>
+        <div class="ff"><label>Fellesgjeld (kr)</label><input type="number" @bind="_k.EiendomFellesgjeld" /></div>
+        <div class="ff"><label>Felleskostnad per mnd (kr)</label><input type="number" @bind="_k.EiendomFelleskostnad" /></div>
+    </div>
+
+    <h3 style="margin:14px 0 8px; font-size:13px">Verdi og forsikring</h3>
+    <div class="form-grid">
+        <div class="ff"><label>Estimert eiendomsverdi (kr)</label><input type="number" @bind="_k.EiendomEstimertVerdi" /></div>
+        <div class="ff"><label>E-takst referanse</label><input @bind="_k.EiendomEtakstReferanse" /></div>
+        <div class="ff"><label>Forsikringsselskap</label><input @bind="_k.EiendomForsikringsselskap" /></div>
+        <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.EiendomForsikret" /> Eiendommen er forsikret</label></div>
+    </div>
+
+    <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+        Restgjeld på eiendommen («Debt») hentes fra <strong>Boliggjeld / restgjeld boliglån</strong> i F · Gjeld.
+    </p>
+</div>
+
 @* H. Utbetaling *@
 <div class="form-card">
     <h2>H · Utbetaling</h2>
@@ -820,6 +863,16 @@
 
     private bool ErAutoValgt => !string.IsNullOrWhiteSpace(_valgtProduktId) && _valgtProduktId == AutoValgtProduktId();
 
+    // Maks lånebeløp for valgt Instabank-produkt (0 = ingen kjent grense / ikke Instabank).
+    private decimal GjeldendeMaks()
+    {
+        if (!InstabankService.ErInstabankNavn(_valgtBank)) return 0m;
+        var kode = ProdukterForValgtBank().FirstOrDefault(p => p.Id.ToString() == _valgtProduktId)?.Kode;
+        return Instabank.MaksBelopFor(kode);
+    }
+    // True når ønsket beløp overstiger grensen for valgt Instabank-produkt (blokkerer sending).
+    private bool OverMaks { get { var m = GjeldendeMaks(); return m > 0 && (_k.OnsketLaanebelop ?? 0) > m; } }
+
     private async Task SendTilBank()
     {
         if (!KanEndre) return;
@@ -835,6 +888,19 @@
             _sendOk = false;
             _sendMsg = "Mangler samtykke (Gjeldsregister og kredittsjekk). Registrer samtykke i Oversikt-fanen før sending.";
             return;
+        }
+
+        // Beløpsbarriere (Instabank): forbrukslån maks 500 000, boliglån maks 10 000 000. Stopper den
+        // manuelle sendingen med en gang — samme grense håndheves også i sendekøen for automatisk sending.
+        if (InstabankService.ErInstabankNavn(_valgtBank))
+        {
+            var maks = Instabank.MaksBelopFor(valgtProdukt?.Kode);
+            if (maks > 0 && (_k.OnsketLaanebelop ?? 0) > maks)
+            {
+                _sendOk = false;
+                _sendMsg = $"Beløpet {_k.OnsketLaanebelop:N0} kr overstiger maksbeløpet for {valgtProdukt?.Navn?.ToLowerInvariant()} hos Instabank ({maks:N0} kr).";
+                return;
+            }
         }
 
         _sender = true;
