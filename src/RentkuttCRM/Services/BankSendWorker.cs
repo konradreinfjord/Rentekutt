@@ -58,6 +58,12 @@ public class BankSendWorker : BackgroundService
             await AlarmAsync("Migrasjon", "Databasemigrering er ikke konfigurert",
                 "ConnectionStrings:Postgres mangler i Azure — nye tabeller/kolonner når ikke prod.",
                 AlarmService.Alvorlighet.Kritisk, "migrasjon-ikke-konfigurert");
+        else if (!st.Kjort && !string.IsNullOrWhiteSpace(st.SisteFeil))
+            // Teknisk feil på DB-tilkoblingen (f.eks. 28P01 feil passord etter nøkkelrotasjon):
+            // migrasjoner OG GDPR-jobber stopper stille. Gjør det synlig som kritisk alarm.
+            await AlarmAsync("Migrasjon", "Databasetilkobling feilet — migrasjoner kjører ikke",
+                $"ConnectionStrings:Postgres virker ikke: {st.SisteFeil}. Nye kolonner (f.eks. boliglån) og GDPR-jobber stopper til passordet i tilkoblingsstrengen oppdateres.",
+                AlarmService.Alvorlighet.Kritisk, "migrasjon-tilkobling-feil");
         else if (st.Feilet.Count > 0 || st.Utestaende.Count > 0)
             await AlarmAsync("Migrasjon", "Databasemigrasjoner utestående/feilet",
                 $"Utestående: {(st.Utestaende.Count > 0 ? string.Join(", ", st.Utestaende) : "—")}. Feilet: {(st.Feilet.Count > 0 ? string.Join("; ", st.Feilet) : "—")}",

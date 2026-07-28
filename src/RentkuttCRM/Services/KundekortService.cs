@@ -289,6 +289,20 @@ public class KundekortService
         }
     }
 
+    /// <summary>Live-test av Supabase-API-et (PostgREST). Bekrefter at REST-laget svarer på en lett
+    /// spørring. Brukes i Admin for å vise API-kontakt uavhengig av den direkte Postgres-tilkoblingen.</summary>
+    public async Task<(bool ok, string detalj)> TestApiAsync()
+    {
+        if (!IsConfigured) return (false, "Supabase:Url / Supabase:Key er ikke satt.");
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Select("id").Limit(1).Get();
+            return (true, "Tilkoblet (Supabase API / PostgREST).");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     // ---- Kort-levetids cache for hele lista ----
     // Blazor Server holder circuit-scopet i live på tvers av sidenavigering, så
     // gjentatte sidelastinger (CRM → Marked → Oppfølging → tilbake) gjenbruker

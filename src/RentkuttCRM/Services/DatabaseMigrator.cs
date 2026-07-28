@@ -45,6 +45,23 @@ public class DatabaseMigrator
         _log = log;
     }
 
+    /// <summary>Live-test av den direkte Postgres-tilkoblingen (ConnectionStrings:Postgres). Brukes i
+    /// Admin for å vise om migrasjoner/GDPR-jobber har DB-kontakt, uavhengig av Supabase-API-et.</summary>
+    public async Task<(bool ok, string detalj)> TestTilkoblingAsync()
+    {
+        if (!IsConfigured) return (false, "ConnectionStrings:Postgres er ikke satt.");
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                await conn.OpenAsync(cts.Token);
+            await using var cmd = new NpgsqlCommand("select 1", conn);
+            await cmd.ExecuteScalarAsync();
+            return (true, "Tilkoblet (direkte Postgres).");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     /// <summary>Ber PostgREST laste skjema-cachen på nytt. Brukes selvhelbredende ved PGRST204/205
     /// (kolonne/tabell finnes i DB, men REST-laget kjenner den ikke ennå) og fra Admin manuelt.</summary>
     public async Task<bool> ReloadSchemaCacheAsync()

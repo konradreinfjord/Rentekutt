@@ -18,6 +18,7 @@
 @inject RentkuttCRM.Services.KundekortService Kunder
 @inject RentkuttCRM.Services.CryptoService Krypto
 @inject RentkuttCRM.Services.DatabaseMigrator Migrator
+@inject RentkuttCRM.Services.AlarmService Alarm
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -343,16 +344,21 @@ else if (_active == "API og Data")
     {
         <div class="section">
             <h2>Alle tilkoblinger</h2>
-            <p class="page-sub" style="margin:-4px 0 16px">Lampe = grønn hvis data siste 3 døgn, rød hvis ikke.</p>
+            <p class="page-sub" style="margin:-4px 0 16px">Database-radene er live-testet nå. Kanaler: grønn hvis data siste 3 døgn. Manglende DB-kontakt varsles også i alarmlista.</p>
 
             <h3 class="stat-subhead">Utility</h3>
             <table class="data-table" style="margin-bottom:20px">
                 <thead><tr><th>Helse</th><th>Tilkobling</th><th>Type</th><th>Siste status</th></tr></thead>
                 <tbody>
                     <tr>
-                        <td><span class="lampe @(Users.IsConfigured ? "on" : "off")"></span></td>
-                        <td>Database (Supabase)</td><td>Kjerne</td>
-                        <td>@(Users.IsConfigured ? "Tilkoblet" : "Ikke tilkoblet")</td>
+                        <td><span class="lampe @(_apiOk ? "on" : "off")"></span></td>
+                        <td>Database — Supabase API (PostgREST)</td><td>Kjerne</td>
+                        <td>@(_apiDetalj ?? (Users.IsConfigured ? "Tester…" : "Ikke konfigurert"))</td>
+                    </tr>
+                    <tr>
+                        <td><span class="lampe @(_dbOk ? "on" : "off")"></span></td>
+                        <td>Database — direkte Postgres <span class="muted" style="font-weight:400; font-size:11px">(migrasjoner / GDPR)</span></td><td>Kjerne</td>
+                        <td>@(_dbDetalj ?? (Migrator.IsConfigured ? "Tester…" : "Ikke konfigurert"))</td>
                     </tr>
                     <tr>
                         <td><span class="lampe @(LinkMobility.ErKonfigurert ? "on" : "off")"></span></td>
@@ -1398,6 +1404,7 @@ else if (_active == "GDPR")
         _webhookVipps = webhookVippsTask.Result;
         _inboundWebhooks = new[] { _webhook, _webhookPrismatch, _webhookVipps }.Where(w => w is not null).Select(w => w!).ToList();
         _events = eventsTask.Result;
+        await SjekkTilkoblingerAsync();   // live-test API + direkte Postgres, alarm ved manglende kontakt
         // Innstillingene deler én cachet bulk-henting (første kall laster alt).
         _smsMaxHour = await Settings.GetIntAsync(TwoFactorService.KeyMaxPerHour, TwoFactorService.DefaultMaxPerHour);
         _smsMax24h = await Settings.GetIntAsync(TwoFactorService.KeyMaxPer24h, TwoFactorService.DefaultMaxPer24h);
@@ -1478,6 +1485,31 @@ else if (_active == "GDPR")
         await Settings.SetAsync(SmsMalService.KeyAutoEnabled, _autoEnabled ? "true" : "false");
         await Settings.SetAsync(SmsMalService.KeyAutoMal, _autoMal);
         _autoMsg = "Automatikk lagret.";
+    }
+
+    // ---- Tilkoblingsstatus (live-test av API + direkte Postgres) ----
+    private bool _apiOk;
+    private string? _apiDetalj;
+    private bool _dbOk;
+    private string? _dbDetalj;
+
+    // Live-tester begge databasetilkoblingene og reiser en kritisk alarm ved manglende kontakt,
+    // så feil (f.eks. utdatert DB-passord) blir synlig i alarmlista, ikke bare her.
+    private async Task SjekkTilkoblingerAsync()
+    {
+        var (apiOk, apiDetalj) = await Kunder.TestApiAsync();
+        _apiOk = apiOk; _apiDetalj = apiDetalj;
+        var (dbOk, dbDetalj) = await Migrator.TestTilkoblingAsync();
+        _dbOk = dbOk; _dbDetalj = dbDetalj;
+
+        var naa = DateTime.UtcNow.TilOslo().ToString("dd.MM.yyyy HH:mm:ss");
+        if (!apiOk)
+            await Alarm.RaiseAsync("API", "Ingen kontakt med Supabase API (PostgREST)",
+                $"Tidspunkt: {naa}. {apiDetalj}", AlarmService.Alvorlighet.Kritisk, "API", "db-api-nede");
+        if (!dbOk)
+            await Alarm.RaiseAsync("Database", "Ingen kontakt med direkte database (Postgres)",
+                $"Tidspunkt: {naa}. {dbDetalj} — migrasjoner og GDPR-jobber stopper til tilkoblingen (passord i ConnectionStrings:Postgres) er riktig.",
+                AlarmService.Alvorlighet.Kritisk, "Database", "db-direkte-nede");
     }
 
     // ---- Inbound webhooks + status + hendelser ----
