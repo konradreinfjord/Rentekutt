@@ -21,16 +21,38 @@ public static class PgConn
 
         try
         {
-            var uri = new Uri(t);
-            var deler = uri.UserInfo.Split(':', 2);
-            var db = uri.AbsolutePath.Trim('/');
+            // Manuell parsing (ikke new Uri): et DB-passord kan inneholde tegn som «@ : / ?» som
+            // knekker URI-parseren. Vi deler derfor robust selv — passord med spesialtegn tolereres.
+            var uten = t[(t.IndexOf("://", StringComparison.Ordinal) + 3)..];
+            var sporsmal = uten.IndexOf('?');                       // strip ev. query (?sslmode=…)
+            if (sporsmal >= 0) uten = uten[..sporsmal];
+
+            // userinfo @ vert:port/db — del på SISTE '@' (passordet kan inneholde '@').
+            var at = uten.LastIndexOf('@');
+            var userinfo = at >= 0 ? uten[..at] : "";
+            var vertDb = at >= 0 ? uten[(at + 1)..] : uten;
+
+            // userinfo = bruker:passord — del på FØRSTE ':' (passordet kan inneholde ':').
+            var user = userinfo; var pass = "";
+            var kolon = userinfo.IndexOf(':');
+            if (kolon >= 0) { user = userinfo[..kolon]; pass = userinfo[(kolon + 1)..]; }
+
+            // vert:port/db
+            var hostPort = vertDb; var db = "postgres";
+            var slash = vertDb.IndexOf('/');
+            if (slash >= 0) { hostPort = vertDb[..slash]; db = vertDb[(slash + 1)..]; }
+            var host = hostPort; var port = 5432;
+            var hk = hostPort.LastIndexOf(':');
+            if (hk >= 0 && int.TryParse(hostPort[(hk + 1)..], out var p)) { host = hostPort[..hk]; port = p; }
+
+            static string Avkod(string s) => s.Contains('%') ? Uri.UnescapeDataString(s) : s;
             var sb = new NpgsqlConnectionStringBuilder
             {
-                Host = uri.Host,
-                Port = uri.Port > 0 ? uri.Port : 5432,
-                Database = string.IsNullOrEmpty(db) ? "postgres" : Uri.UnescapeDataString(db),
-                Username = Uri.UnescapeDataString(deler[0]),
-                Password = deler.Length > 1 ? Uri.UnescapeDataString(deler[1]) : "",
+                Host = Avkod(host),
+                Port = port > 0 ? port : 5432,
+                Database = string.IsNullOrEmpty(db) ? "postgres" : Avkod(db),
+                Username = Avkod(user),
+                Password = Avkod(pass),
                 SslMode = SslMode.Require,
             };
             return sb.ConnectionString;

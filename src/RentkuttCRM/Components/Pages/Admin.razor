@@ -11,6 +11,7 @@
 @inject RentkuttCRM.Services.PartnerProduktService Produkter
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.InstabankService Instabank
+@inject RentkuttCRM.Services.GjeldsregisterService Gjeld
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.BeregningService Beregning
@@ -794,11 +795,69 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
     }
     else if (_apiTab == "Gjeldsregisteret")
     {
-        @IntegrasjonsKort(
-            "Gjeldsregisteret",
-            "Sanntidsoppslag mot Gjeldsregisteret for søkers usikrede gjeld (forbrukslån, kredittkort) — brukes i finansieringsevne-beregningen.",
-            new[] { "Hent samlet usikret gjeld per person", "Automatisk utfylling av gjeld i kundekort", "Oppdatert gjeldsgrad i beregningsmodellen" },
-            "Gjeldsregisteret__ClientId      = <klient-ID>\nGjeldsregisteret__ClientSecret  = <hemmelighet>\nGjeldsregisteret__ApiUrl        = <endepunkt>")
+        <div class="bank-widget @(_grKonfigurert && _grEnabled ? "aktiv" : "")">
+            <div class="bw-head">
+                <div class="bw-logo">GR</div>
+                <div class="bw-titles">
+                    <div class="bw-title">Gjeldsregisteret <span class="ww-tag">via Infotorg</span></div>
+                    <div class="bw-sub">Oppslag på usikret gjeld — mutual-TLS med virksomhetssertifikat. Kun på fnr med gyldig 2FA-samtykke.</div>
+                </div>
+                <span class="bw-status status @(_grKonfigurert && _grEnabled ? "on" : "off")">@(_grKonfigurert && _grEnabled ? "Aktiv" : "Av")</span>
+            </div>
+
+            <div class="kv-list" style="margin-bottom:16px">
+                <span class="k">Søkeavtale</span>
+                <span class="v">Signert ✓</span>
+                <span class="k">Virksomhetssertifikat (mTLS)</span>
+                <span class="v">@(_grKonfigurert ? "Lastet ✓" : "Venter på sertifikat — sett Gjeldsregisteret__CertPath/CertPassword")</span>
+                <span class="k">Miljø</span>
+                <span class="v">@(_grMiljo == "prod" ? "Produksjon" : "Test")</span>
+                <span class="k">Base-URL</span>
+                <span class="v mono">@_grBaseUrl</span>
+                <span class="k">Samtykke-sperre</span>
+                <span class="v">Oppslag krever gyldig 2FA-samtykke på kundekortet (teknisk barriere)</span>
+            </div>
+
+            <h3 class="ww-h">Styring</h3>
+            <div class="rule-builder" style="margin-bottom:8px; align-items:flex-end">
+                <div class="rb-field" style="max-width:180px">
+                    <label>Integrasjon</label>
+                    <div class="seg onoff">
+                        <button class="@(!_grEnabled ? "active av" : "")" @onclick="() => SettGjeldAktivert(false)">AV</button>
+                        <button class="@(_grEnabled ? "active" : "")" @onclick="() => SettGjeldAktivert(true)">PÅ</button>
+                    </div>
+                </div>
+                <div class="rb-field rb-op" style="max-width:150px">
+                    <label>Miljø</label>
+                    <div class="seg onoff">
+                        <button class="@(_grMiljo == "test" ? "active" : "")" @onclick='() => SettGjeldMiljo("test")'>Test</button>
+                        <button class="@(_grMiljo == "prod" ? "active" : "")" @onclick='() => SettGjeldMiljo("prod")'>Produksjon</button>
+                    </div>
+                </div>
+            </div>
+            @if (!_grKonfigurert)
+            {
+                <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:var(--danger, #b42318)">Venter på virksomhetssertifikat. Oppslag er klart til å aktiveres så snart sertifikatet er lagt inn i Azure.</p>
+            }
+
+            <h3 class="ww-h">Rate-grenser</h3>
+            <div class="rule-builder" style="margin-bottom:8px; align-items:flex-end">
+                <div class="rb-field rb-op" style="max-width:150px"><label>Maks oppslag per time</label><input class="rb-input" type="number" min="0" @bind="_grMaxTime" /></div>
+                <div class="rb-field rb-op" style="max-width:150px"><label>Maks oppslag per døgn</label><input class="rb-input" type="number" min="0" @bind="_grMaxDogn" /></div>
+                <button class="btn-primary rb-add" @onclick="SaveGjeldGrenser">Lagre grenser</button>
+            </div>
+            <p class="page-sub" style="margin:0 0 16px; font-size:12px">0 = ingen grense. @(string.IsNullOrEmpty(_grGrenseMsg) ? "" : _grGrenseMsg)</p>
+
+            <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+            <pre class="code-block">Gjeldsregisteret__ApiUrlTest    = &lt;test-endepunkt, standard https://ws-test.infotorg.no&gt;
+Gjeldsregisteret__ApiUrlProd    = &lt;prod-endepunkt, standard https://ws.infotorg.no&gt;
+Gjeldsregisteret__CertPath      = &lt;sti til virksomhetssertifikat (.p12/.pfx, Buypass/Commfides)&gt;
+Gjeldsregisteret__CertPassword  = &lt;sertifikatpassord&gt;</pre>
+            <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+                🔒 Autentisering er mutual-TLS (sertifikat), ikke passord/token. Miljø og på/av lagres i innstillinger; sertifikat leses kun fra server-config.
+                Oppslag skjer <strong>kun</strong> på fnr fra kundekort med gyldig 2FA-samtykke — ellers avvises og logges det.
+            </p>
+        </div>
     }
     else if (_apiTab == "Eiendomsverdi")
     {
@@ -1422,6 +1481,12 @@ else if (_active == "GDPR")
         _ibEnabled = await Instabank.AktivertAsync();
         _ibMiljo = await Instabank.MiljoAsync();
         _ibKonfigurert = await Instabank.ErKonfigurertAsync();
+        _grEnabled = await Gjeld.AktivertAsync();
+        _grMiljo = await Gjeld.MiljoAsync();
+        _grKonfigurert = Gjeld.ErKonfigurert;
+        _grBaseUrl = Gjeld.BaseUrl(_grMiljo);
+        _grMaxTime = await Gjeld.MaxPerTimeAsync();
+        _grMaxDogn = await Gjeld.MaxPerDognAsync();
         _sisteSendinger = await BankSending.SisteAsync(25);
         _rules = await Ruting.ListAsync();
         var bp = await Beregning.HentParametreAsync();
@@ -1641,6 +1706,35 @@ else if (_active == "GDPR")
     private bool _ibEnabled, _ibKonfigurert, _ibTester, _ibOk;
     private string _ibMiljo = "test";
     private string? _ibMsg;
+
+    // ---- Gjeldsregisteret (miljøbryter + status + rate-grenser) ----
+    private bool _grEnabled, _grKonfigurert;
+    private string _grMiljo = "test";
+    private string _grBaseUrl = "";
+    private int _grMaxTime = GjeldsregisterService.StandardMaxTime;
+    private int _grMaxDogn = GjeldsregisterService.StandardMaxDogn;
+    private string? _grGrenseMsg;
+
+    private async Task SettGjeldAktivert(bool paa)
+    {
+        _grEnabled = paa;
+        await Gjeld.SettAktivertAsync(paa);
+    }
+
+    private async Task SaveGjeldGrenser()
+    {
+        if (_grMaxTime < 0) _grMaxTime = 0;
+        if (_grMaxDogn < 0) _grMaxDogn = 0;
+        await Gjeld.SettGrenserAsync(_grMaxTime, _grMaxDogn);
+        _grGrenseMsg = "Lagret ✓";
+    }
+
+    private async Task SettGjeldMiljo(string env)
+    {
+        _grMiljo = env;
+        await Gjeld.SettMiljoAsync(env);
+        _grBaseUrl = Gjeld.BaseUrl(env);
+    }
 
     // Siste søknader sendt til bank.
     private List<BankSending> _sisteSendinger = new();
