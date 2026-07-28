@@ -295,11 +295,12 @@
         }
         else
         {
-            <div class="samtykke-status mangler">⚠ Mangler samtykke. Søknaden kan ikke sendes til bank før samtykke er registrert.</div>
-            @if (_isEdit)
-            {
-                <button type="button" class="btn-sec" style="margin-top:10px" @onclick="RegistrerSamtykke">Registrer samtykke</button>
-            }
+            <div class="samtykke-status mangler">⚠ Mangler samtykke. Søknaden kan ikke sendes til bank.</div>
+            <p class="page-sub" style="margin:10px 0 0; font-size:12px">
+                Samtykke kan <strong>ikke</strong> registreres manuelt. Det oppstår kun når kunden selv har
+                signert — via Vipps med 2FA, eller ved å avgi samtykke i søknadsskjemaet på rentekutt.no.
+                Be kunden fullføre signeringen for å gi samtykke.
+            </p>
         }
     </div>
 }
@@ -792,15 +793,9 @@
     }
 
     // ---- Samtykke ----
+    // Samtykke kan IKKE registreres manuelt (teknisk barriere). Det oppstår kun når kunden selv har
+    // signert — via Vipps 2FA eller søknadsskjemaet — og registreres da av webhook-mottaket.
     private bool _harSamtykke;
-    private async Task RegistrerSamtykke()
-    {
-        await Samtykke.RegistrerAsync(_k.Id, SamtykkeService.FormaalKreditt,
-            Session.UserName ?? Session.Email, tekstversjon: SamtykkeService.SamtykketekstVersjon);
-        _harSamtykke = true;
-        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, "Registrerte samtykke (Gjeldsregister og kredittsjekk)");
-        _endringslogg = await Logg.ForKundeAsync(_k.Id);
-    }
 
     // ---- Endringslogg + auto-lagring ----
     private List<KundekortLogg> _endringslogg = new();
