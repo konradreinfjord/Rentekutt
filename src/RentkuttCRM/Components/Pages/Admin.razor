@@ -349,22 +349,25 @@ else if (_active == "API og Data")
 
             <h3 class="stat-subhead">Utility</h3>
             <table class="data-table" style="margin-bottom:20px">
-                <thead><tr><th>Helse</th><th>Tilkobling</th><th>Type</th><th>Siste status</th></tr></thead>
+                <thead><tr><th>Helse</th><th>Tilkobling</th><th>Type</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
                 <tbody>
                     <tr>
                         <td><span class="lampe @(_apiOk ? "on" : "off")"></span></td>
                         <td>Database — Supabase API (PostgREST)</td><td>Kjerne</td>
                         <td>@(_apiDetalj ?? (Users.IsConfigured ? "Tester…" : "Ikke konfigurert"))</td>
+                        @SisteOppdatertCelle(_apiOk ? DateTime.UtcNow : (DateTime?)null)
                     </tr>
                     <tr>
                         <td><span class="lampe @(_dbOk ? "on" : "off")"></span></td>
                         <td>Database — direkte Postgres <span class="muted" style="font-weight:400; font-size:11px">(migrasjoner / GDPR)</span></td><td>Kjerne</td>
                         <td>@(_dbDetalj ?? (Migrator.IsConfigured ? "Tester…" : "Ikke konfigurert"))</td>
+                        @SisteOppdatertCelle(_dbOk ? DateTime.UtcNow : (DateTime?)null)
                     </tr>
                     <tr>
                         <td><span class="lampe @(LinkMobility.ErKonfigurert ? "on" : "off")"></span></td>
                         <td>LinkMobility</td><td>SMS / 2FA</td>
                         <td>@(LinkMobility.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</td>
+                        @SisteOppdatertCelle(null)
                     </tr>
                     @foreach (var w in _inboundWebhooks)
                     {
@@ -372,6 +375,7 @@ else if (_active == "API og Data")
                             <td><span class="lampe @(DataSiste3Dogn(w.LastReceivedAt) ? "on" : "off")"></span></td>
                             <td>@w.Name</td><td>Kanal</td>
                             <td>@(w.LastReceivedAt is { } t ? $"Sist mottatt {t.TilOslo():dd.MM HH:mm}" : "Ingen data mottatt")</td>
+                            @SisteOppdatertCelle(w.LastReceivedAt)
                         </tr>
                     }
                     @foreach (var d in _dataTjenester)
@@ -380,6 +384,7 @@ else if (_active == "API og Data")
                             <td><span class="lampe off"></span></td>
                             <td>@d</td><td>Datatjeneste</td>
                             <td>Ikke tilkoblet</td>
+                            @SisteOppdatertCelle(null)
                         </tr>
                     }
                 </tbody>
@@ -387,18 +392,20 @@ else if (_active == "API og Data")
 
             <h3 class="stat-subhead">Banker</h3>
             <table class="data-table">
-                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Siste status</th></tr></thead>
+                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
                 <tbody>
                     @if (_banks.Count == 0)
                     {
-                        <tr><td colspan="4" class="empty-row">Ingen bankpartnere ennå.</td></tr>
+                        <tr><td colspan="5" class="empty-row">Ingen bankpartnere ennå.</td></tr>
                     }
                     @foreach (var b in _banks)
                     {
+                        var sisteSendt = SisteSendtBank(b.Navn);
                         <tr>
-                            <td><span class="lampe off"></span></td>
+                            <td><span class="lampe @(DataSiste3Dogn(sisteSendt) ? "on" : "off")"></span></td>
                             <td>@b.Navn</td><td>Bank API</td>
-                            <td>Ikke tilkoblet</td>
+                            <td>@(sisteSendt is { } t ? $"Sist sendt {t.TilOslo():dd.MM HH:mm}" : "Ingen sendinger")</td>
+                            @SisteOppdatertCelle(sisteSendt)
                         </tr>
                     }
                 </tbody>
@@ -1613,6 +1620,27 @@ else if (_active == "GDPR")
     private static bool WebhookFresh(Webhook w) => w.Active && w.LastReceivedAt is { } t && t > DateTime.UtcNow.AddDays(-7);
     // Lampe: grønn hvis det er mottatt data siste 3 døgn.
     private static bool DataSiste3Dogn(DateTime? last) => last is { } t && t > DateTime.UtcNow.AddDays(-3);
+
+    // Siste gang det ble utvekslet data med en bank (siste sending). null = ingen sendinger i utvalget.
+    private DateTime? SisteSendtBank(string bankNavn)
+    {
+        var tider = _sisteSendinger
+            .Where(s => string.Equals(s.Bank, bankNavn, StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.SendtAt).ToList();
+        return tider.Count == 0 ? (DateTime?)null : tider.Max();
+    }
+
+    // «Siste oppdatert»-celle: tidspunkt for siste datautveksling. Rød hvis over 3 døgn, ellers grønn.
+    private RenderFragment SisteOppdatertCelle(DateTime? t) =>@<td>
+        @if (t is null)
+        {
+            <span class="muted">—</span>
+        }
+        else
+        {
+            <span style="font-weight:600; color:@((DateTime.UtcNow - t.Value.ToUniversalTime()).TotalDays > 3 ? "var(--danger,#c0392b)" : "var(--green-dark,#15803d)")">@t.Value.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
+        }
+    </td>;
 
     // ---- Brukeradministrasjon ----
     private List<UserRow> _userRows = new();
