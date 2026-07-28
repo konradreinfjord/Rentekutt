@@ -130,6 +130,26 @@ public class Kundekort : BaseModel
     [Column("eiendom_forsikret")] public bool EiendomForsikret { get; set; }
     [Column("eiendom_forsikringsselskap")] public string? EiendomForsikringsselskap { get; set; }
 
+    // Bedriftslån (B2B) — kreves av Instabank company loan (produkt 2001). Brukes kun for B2B-kunder.
+    [Column("bedrift_ansatt_i_selskapet")] public bool BedriftAnsattISelskapet { get; set; }
+    [Column("bedrift_eierandel_over_25")] public bool BedriftEierandelOver25 { get; set; }
+    [Column("bedrift_annen_selskapsgjeld")] public bool BedriftAnnenSelskapsgjeld { get; set; }
+    [Column("bedrift_omsetning_i_aar")] public decimal? BedriftOmsetningIAar { get; set; }
+    [Column("bedrift_omsetning_neste_aar")] public decimal? BedriftOmsetningNesteAar { get; set; }
+    [Column("bedrift_ny_gjeld_12mnd")] public bool BedriftNyGjeld12Mnd { get; set; }
+    [Column("bedrift_beskrivelse")] public string? BedriftBeskrivelse { get; set; }
+    [Column("bedrift_markedsbeskrivelse")] public string? BedriftMarkedsbeskrivelse { get; set; }
+    [Column("bedrift_laaneformaal")] public string? BedriftLaaneformaal { get; set; }         // Investment|Liquidity|Other
+    [Column("bedrift_laaneformaal_beskrivelse")] public string? BedriftLaaneformaalBeskrivelse { get; set; }
+    [Column("bedrift_laaneformaal_annet")] public string? BedriftLaaneformaalAnnet { get; set; }
+    [Column("bedrift_kredittbruk")] public string? BedriftKredittbruk { get; set; }           // AllAtOnce|RegularWithdrawals|DuringSeasonalVariations|SporadicUse
+    [Column("bedrift_midlenes_opprinnelse")] public string? BedriftMidlenesOpprinnelse { get; set; } // Savings|ProfitFrom...|Inheritance|Other
+    [Column("bedrift_midlenes_opprinnelse_annet")] public string? BedriftMidlenesOpprinnelseAnnet { get; set; }
+    [Column("bedrift_stiller_sikkerhet")] public bool BedriftStillerSikkerhet { get; set; }
+    [Column("bedrift_sikkerhet_beskrivelse")] public string? BedriftSikkerhetBeskrivelse { get; set; }
+    /// <summary>Kontaktperson (signer) for B2B — personen bak firmaet. For B2B er FulltNavn firmanavnet.</summary>
+    [Column("kontaktperson_navn")] public string? KontaktpersonNavn { get; set; }
+
     [Column("notater")] public string? Notater { get; set; }
     [Column("kilde")] public string? Kilde { get; set; }
 

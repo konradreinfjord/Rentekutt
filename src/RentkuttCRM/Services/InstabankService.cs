@@ -343,34 +343,51 @@ public class InstabankService
         if (string.IsNullOrWhiteSpace(ssn)) mangler.Add("signers " + FnrManglerGrunn(k.Foedselsnummer));
         if (string.IsNullOrWhiteSpace(mobil)) mangler.Add("mobilnummer");
         if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
-        if ((k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
+        // Merk: bedriftslån (company loan) bruker IKKE DurationInMonths — løpetid kreves derfor ikke.
         if (string.IsNullOrWhiteSpace(agentEpost)) mangler.Add("agent-e-post (sakseier eller Instabank__AgentEmail)");
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende bedriftslån — mangler: " + string.Join(", ", mangler));
 
+        static object? Tekst(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        // Låneformål: bruk B2B-feltet (Investment/Liquidity/Other) hvis satt, ellers utled fra lånetype.
+        var formaal = !string.IsNullOrWhiteSpace(k.BedriftLaaneformaal) ? k.BedriftLaaneformaal! : BedriftFormaal(k.Laaneformal);
+
         var application = new Dictionary<string, object?>
         {
             ["Product"] = new { Code = ProduktBedriftslaan },
-            ["Calculation"] = k.OnsketLopetidMnd is int lm && lm > 0
-                ? new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop, ["DurationInMonths"] = lm }
-                : new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop },
+            ["Calculation"] = new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop },
             ["Company"] = new Dictionary<string, object?>
             {
                 ["OrganizationNumber"] = orgnr,
-                ["Email"] = k.Epost,
+                ["EMail"] = k.Epost,
                 ["MobilePhoneNumber"] = mobil,
             },
             ["Applicant"] = new Dictionary<string, object?>
             {
                 ["SocialSecurityNumber"] = ssn,
-                ["EMail"] = k.Epost,
-                ["MobilePhoneNumber"] = mobil,
+                ["IsEmployedByCompany"] = k.BedriftAnsattISelskapet,
+                ["HasOwnerShipInCompany"] = k.BedriftEierandelOver25,
+                ["HasAnyOtherCompanyDebt"] = k.BedriftAnnenSelskapsgjeld,
             },
             ["Agent"] = new { Email = agentEpost },
-            ["PurposeForLoan"] = new[] { BedriftFormaal(k.Laaneformal) },
+            ["PurposeForLoan"] = new[] { formaal },
+            ["AnyNewDebtLast12Months"] = k.BedriftNyGjeld12Mnd,
+            ["CompanyProvideCollateral"] = k.BedriftStillerSikkerhet,
             ["IsPreOffer"] = preOffer,
             ["Reference"] = k.Id.ToString(),
         };
+        // Valgfrie/utfyllende B2B-felt — utelat tomme.
+        if (k.BedriftOmsetningIAar is > 0) application["EstimatedTurnOverThisYear"] = k.BedriftOmsetningIAar;
+        if (k.BedriftOmsetningNesteAar is > 0) application["EstimatedTurnOverNextYear"] = k.BedriftOmsetningNesteAar;
+        if (Tekst(k.BedriftBeskrivelse) is { } cd) application["CompanyDescription"] = cd;
+        if (Tekst(k.BedriftMarkedsbeskrivelse) is { } md) application["MarketDescription"] = md;
+        if (Tekst(k.BedriftLaaneformaalBeskrivelse) is { } pd) application["PurposeForLoanDescription"] = pd;
+        if (Tekst(k.BedriftLaaneformaalAnnet) is { } pod) application["PurposeForLoanOtherDescription"] = pod;
+        if (Tekst(k.BedriftKredittbruk) is { } cu) application["CreditUsage"] = cu;
+        if (Tekst(k.BedriftMidlenesOpprinnelse) is { } oo) application["OriginOfFunds"] = new[] { oo };
+        if (Tekst(k.BedriftMidlenesOpprinnelseAnnet) is { } ood) application["OriginOfFundsOtherDescription"] = ood;
+        if (Tekst(k.BedriftSikkerhetBeskrivelse) is { } ccd) application["CompanyCollateralDescription"] = ccd;
+
         var r = await PostAsync("create", new { Application = application, DoSetAccepted = false });
         return r.Ok ? r : r with { Detalj = $"{r.Detalj} [sendt: beløp={k.OnsketLaanebelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]" };
     }

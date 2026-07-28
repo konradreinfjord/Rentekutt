@@ -36,6 +36,10 @@
         <div class="kk-avatar">@Forbokstaver(_k.FulltNavn)</div>
         <div class="kk-head-id">
             <div class="kk-head-name">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</div>
+            @if (_k.KundeType == "B2B" && !string.IsNullOrWhiteSpace(_k.KontaktpersonNavn))
+            {
+                <div class="kk-head-sub" style="font-size:13px; color:var(--muted,#64748b); margin:-2px 0 4px">Kontaktperson: <strong>@_k.KontaktpersonNavn</strong></div>
+            }
             <div class="kk-head-chips">
                 @if (_isEdit)
                 {
@@ -426,6 +430,86 @@
 {
     <div class="felt-laas-hint"><span class="auto-lagret @(_autoOk ? "ok" : "err")">@_autoMsg</span></div>
 }
+
+@* Bedriftslån — B2B-spesifikke felt (Instabank company loan 2001). Vises KUN for bedriftskunder. *@
+@if (_k.KundeType == "B2B")
+{
+    <div class="form-card">
+        <h2>Bedriftslån <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(kreves for bedriftssøknad til Instabank)</span></h2>
+
+        <h3 style="margin:6px 0 8px; font-size:13px">Søker og selskap</h3>
+        <div class="form-grid">
+            <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.BedriftAnsattISelskapet" /> Jobber &gt; 50 % i selskapet</label></div>
+            <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.BedriftEierandelOver25" /> Eier &gt; 25 % av selskapet</label></div>
+            <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.BedriftAnnenSelskapsgjeld" /> Har annen selskapsgjeld</label></div>
+            <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.BedriftNyGjeld12Mnd" /> Ny gjeld siste 12 mnd</label></div>
+        </div>
+
+        <h3 style="margin:14px 0 8px; font-size:13px">Selskapsøkonomi</h3>
+        <div class="form-grid">
+            <div class="ff"><label>Estimert omsetning i år (kr)</label><input type="number" @bind="_k.BedriftOmsetningIAar" /></div>
+            <div class="ff"><label>Estimert omsetning neste år (kr)</label><input type="number" @bind="_k.BedriftOmsetningNesteAar" /></div>
+        </div>
+
+        <h3 style="margin:14px 0 8px; font-size:13px">Formål og bruk</h3>
+        <div class="form-grid">
+            <div class="ff"><label>Låneformål</label>
+                <select @bind="_k.BedriftLaaneformaal">
+                    <option value="">— velg —</option>
+                    <option value="Investment">Investering</option>
+                    <option value="Liquidity">Likviditet</option>
+                    <option value="Other">Annet</option>
+                </select>
+            </div>
+            <div class="ff"><label>Kredittbruk</label>
+                <select @bind="_k.BedriftKredittbruk">
+                    <option value="">— velg —</option>
+                    <option value="AllAtOnce">Alt på én gang</option>
+                    <option value="RegularWithdrawals">Jevnlige uttak</option>
+                    <option value="DuringSeasonalVariations">Ved sesongvariasjoner</option>
+                    <option value="SporadicUse">Sporadisk bruk</option>
+                </select>
+            </div>
+            <div class="ff" style="grid-column:1/-1"><label>Beskrivelse av låneformålet</label><input @bind="_k.BedriftLaaneformaalBeskrivelse" /></div>
+            @if (_k.BedriftLaaneformaal == "Other")
+            {
+                <div class="ff" style="grid-column:1/-1"><label>Låneformål «Annet» — utdyp</label><input @bind="_k.BedriftLaaneformaalAnnet" /></div>
+            }
+        </div>
+
+        <h3 style="margin:14px 0 8px; font-size:13px">Midlenes opprinnelse (hvitvasking/KYC)</h3>
+        <div class="form-grid">
+            <div class="ff"><label>Opprinnelse</label>
+                <select @bind="_k.BedriftMidlenesOpprinnelse">
+                    <option value="">— velg —</option>
+                    <option value="Savings">Sparing</option>
+                    <option value="ProfitFromOtherInvestments">Gevinst fra andre investeringer</option>
+                    <option value="ProfitFromSaleOfRealEstate">Gevinst fra salg av eiendom</option>
+                    <option value="ProfitFromSaleOfOtherProperties">Gevinst fra salg av annet</option>
+                    <option value="OwnerHasLentTheMoney">Eier har lånt ut midlene</option>
+                    <option value="Inheritance">Arv</option>
+                    <option value="Other">Annet</option>
+                </select>
+            </div>
+            @if (_k.BedriftMidlenesOpprinnelse == "Other")
+            {
+                <div class="ff"><label>Opprinnelse «Annet» — utdyp</label><input @bind="_k.BedriftMidlenesOpprinnelseAnnet" /></div>
+            }
+        </div>
+
+        <h3 style="margin:14px 0 8px; font-size:13px">Beskrivelser og sikkerhet</h3>
+        <div class="form-grid">
+            <div class="ff" style="grid-column:1/-1"><label>Beskrivelse av selskapet</label><input @bind="_k.BedriftBeskrivelse" /></div>
+            <div class="ff" style="grid-column:1/-1"><label>Beskrivelse av markedet</label><input @bind="_k.BedriftMarkedsbeskrivelse" /></div>
+            <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.BedriftStillerSikkerhet" /> Selskapet stiller sikkerhet</label></div>
+            @if (_k.BedriftStillerSikkerhet)
+            {
+                <div class="ff" style="grid-column:1/-1"><label>Sikkerhet — beskrivelse</label><input @bind="_k.BedriftSikkerhetBeskrivelse" /></div>
+            }
+        </div>
+    </div>
+}
+
 @* G. Lånedetaljer *@
 <div class="form-card">
     <h2>Lånedetaljer</h2>
@@ -459,38 +543,64 @@
     </div>
 </div>
 
-@* A. Søker *@
-<div class="form-card">
-    <h2>A · Søker</h2>
-    <div class="form-grid">
-        <div class="ff wide"><label>Fullt navn</label><input @bind="_k.FulltNavn" placeholder="Hentes ev. fra Vipps" /></div>
-        <div class="ff">
-            <label>@(_k.KundeType == "B2B" ? "Organisasjonsnummer" : "Fødselsnummer") <span class="muted">(blank for Prismatch-leads)</span></label>
-            @if (_k.KundeType == "B2B")
-            {
-                <input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" />
-            }
-            else
-            {
-                <input @bind="_k.Foedselsnummer" placeholder="11 siffer" />
-            }
+@if (_k.KundeType == "B2B")
+{
+    @* Firma (bedrift) — erstatter «Søker». Orgnr som identifikator + kontaktperson/signer. *@
+    <div class="form-card">
+        <h2>Firma</h2>
+        <h3 style="margin:6px 0 8px; font-size:13px">Firmaopplysninger</h3>
+        <div class="form-grid">
+            <div class="ff wide"><label>Firmanavn</label><input @bind="_k.FulltNavn" placeholder="Selskapets navn" /></div>
+            <div class="ff"><label>Organisasjonsnummer</label><input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" /></div>
+            <div class="ff wide"><label>Forretningsadresse</label><input @bind="_k.Adresse" /></div>
+            <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
+            <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
+            <div class="ff"><label>Kommune</label><input @bind="_k.Kommune" /></div>
         </div>
-        <div class="ff">
-            <label>Kilde fnr (sikkerhetsnivå)</label>
-            <select @bind="_k.FnrKilde">
-                <option value="">— ukjent —</option>
-                @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
-            </select>
-        </div>
-        <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
-        <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
-        <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>
-        <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
-        <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
-        <div class="ff"><label>Kommune</label><input @bind="_k.Kommune" /></div>
-    </div>
-</div>
 
+        <h3 style="margin:14px 0 8px; font-size:13px">Kontaktperson / signer</h3>
+        <div class="form-grid">
+            <div class="ff wide"><label>Kontaktperson (navn)</label><input @bind="_k.KontaktpersonNavn" placeholder="Personen bak firmaet" /></div>
+            <div class="ff"><label>Fødselsnummer (signer)</label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
+            <div class="ff"><label>Kilde fnr (sikkerhetsnivå)</label>
+                <select @bind="_k.FnrKilde">
+                    <option value="">— ukjent —</option>
+                    @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
+                </select>
+            </div>
+            <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
+            <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
+        </div>
+    </div>
+}
+else
+{
+    @* A. Søker (privat) *@
+    <div class="form-card">
+        <h2>A · Søker</h2>
+        <div class="form-grid">
+            <div class="ff wide"><label>Fullt navn</label><input @bind="_k.FulltNavn" placeholder="Hentes ev. fra Vipps" /></div>
+            <div class="ff"><label>Fødselsnummer <span class="muted">(blank for Prismatch-leads)</span></label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
+            <div class="ff">
+                <label>Kilde fnr (sikkerhetsnivå)</label>
+                <select @bind="_k.FnrKilde">
+                    <option value="">— ukjent —</option>
+                    @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
+                </select>
+            </div>
+            <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
+            <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
+            <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>
+            <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
+            <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
+            <div class="ff"><label>Kommune</label><input @bind="_k.Kommune" /></div>
+        </div>
+    </div>
+}
+
+@* B–G vises kun for privatkunder (ikke relevant for bedrift). *@
+@if (_k.KundeType != "B2B")
+{
 @* B. Medsøker *@
 <div class="form-card">
     <h2>B · Medsøker</h2>
@@ -618,6 +728,7 @@
         Restgjeld på eiendommen («Debt») hentes fra <strong>Boliggjeld / restgjeld boliglån</strong> i F · Gjeld.
     </p>
 </div>
+}@* /B–G kun privat *@
 
 @* H. Utbetaling *@
 <div class="form-card">

@@ -451,6 +451,14 @@ public class WebhookController : ControllerBase
         var lopetidMnd = GetInt(f, "onsket_lopetid_mnd", "lopetid", "nedbetalingstid", "term")
                          ?? (GetInt(f, "onsket_nedbetalingstid_aar") is { } na ? na * 12 : (int?)null);
 
+        // Navn: for B2B er firmanavnet det primære (vises øverst), og personnavnet blir kontaktperson.
+        // Fremtidige prismatch-payloads sender både company_name (firma) og fullt_navn (person) + orgnr.
+        var personNavn = Get(f, "fullt_navn", "navn", "name", "fullname", "kundenavn");
+        var firmaNavn = Get(f, "company_name", "companyname", "firmanavn", "selskapsnavn", "bedriftsnavn");
+        var fulltNavn = type == "B2B" ? (firmaNavn ?? personNavn) : personNavn;
+        // Kontaktperson kun for B2B, og kun når vi faktisk har et firmanavn å skille personen fra.
+        var kontaktperson = type == "B2B" && !string.IsNullOrWhiteSpace(firmaNavn) ? personNavn : null;
+
         var medsokerFnr = Get(f, "medsoeker_fodselsnummer", "medsoker_fodselsnummer");
         var harMedsoker = GetBool(f, "medsoeker_har_medsoeker", "har_medsoeker", "har_medsoker")
                           || !string.IsNullOrWhiteSpace(medsokerFnr)
@@ -462,7 +470,8 @@ public class WebhookController : ControllerBase
             KundeId = id,
             Orgnr = orgnr,
             Foedselsnummer = fnr,
-            FulltNavn = Get(f, "fullt_navn", "navn", "name", "fullname", "kundenavn", "company_name", "companyname"),
+            FulltNavn = fulltNavn,
+            KontaktpersonNavn = kontaktperson,
             Mobilnummer = mobil,
             Epost = Get(f, "epost", "email", "mail", "e_post"),
             Adresse = Get(f, "adresse", "address", "gateadresse"),
