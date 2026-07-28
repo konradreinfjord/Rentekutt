@@ -13,7 +13,31 @@
 
 <div class="wide-page">
 
-<h1 class="page-title">@Tittel</h1>
+<h1 class="page-title" style="display:inline-flex; align-items:center; gap:8px">
+    @Tittel
+    <span style="position:relative; display:inline-flex">
+        <button type="button"
+                style="width:22px; height:22px; border-radius:50%; border:1px solid var(--border,#cbd5e1); background:var(--card,#fff); color:var(--muted,#64748b); font-size:13px; font-weight:700; cursor:pointer; line-height:1; padding:0"
+                title="Hva betyr statusene?" @onclick="() => _visStatusInfo = !_visStatusInfo">i</button>
+        @if (_visStatusInfo)
+        {
+            <div @onclick:stopPropagation="true"
+                 style="position:absolute; top:28px; left:0; z-index:50; width:400px; max-width:88vw; background:var(--card,#fff); border:1px solid var(--border,#e2e8f0); border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:14px 16px; font-weight:400; text-align:left">
+                <div style="font-size:14px; font-weight:700; margin-bottom:8px">Hva betyr statusene?</div>
+                <ul style="margin:0; padding-left:16px; font-size:12.5px; line-height:1.65; color:var(--text,#334155)">
+                    <li><strong>Påbegynt søknad</strong> — forenklet lead (f.eks. Prismatch) eller Vipps-utkast som <strong>ikke er komplett</strong>. Mangler 2FA-signert samtykke til gjeldsregister og kredittsjekk. Kan ikke sendes til bank før kunden fullfører signeringen.</li>
+                    <li><strong>Åpen</strong> — komplett søknad (rentekutt.no / Vipps, 2FA-signert med samtykke). Klar til behandling og sending.</li>
+                    <li><strong>Sendt bank</strong> — videresendt til bankpartner.</li>
+                    <li><strong>Feilet i sending</strong> — sending til bank feilet (se detaljer på kortet).</li>
+                    <li><strong>Avslått</strong> — søknaden er avslått.</li>
+                    <li><strong>Fullført og utbetalt</strong> — lånet er innvilget og utbetalt.</li>
+                </ul>
+                <p style="margin:10px 0 0; font-size:11.5px; color:var(--muted,#64748b)">Alle søknader fra <strong>rentekutt.no</strong> er signert med 2FA og har gyldig samtykke. <strong>Prismatch</strong> er kun forenklede leads — derfor «Påbegynt søknad» til kunden fullfører.</p>
+                <div style="text-align:right; margin-top:8px"><button type="button" style="border:none; background:none; color:var(--muted,#64748b); font-size:12px; cursor:pointer" @onclick="() => _visStatusInfo = false">Lukk</button></div>
+            </div>
+        }
+    </span>
+</h1>
 <p class="page-sub">@(ErBedrift ? "Bedriftskunder (B2B)." : "Privatkunder (B2C).") Plukk en sak for å ta eierskap — den flyttes til «Mine søknader» og åpnes. Tatte saker vises fortsatt her, men låst 🔒 (kan ses, ikke tas).</p>
 
 @if (_copied is not null)
@@ -174,6 +198,7 @@ else
     private List<Kundekort> _rows = new();
     private bool _loading = true;
     private bool _skjulTatte;
+    private bool _visStatusInfo;   // info-popover som forklarer statusene
 
     private string _search = "";
     private string _statusFilter = "";

@@ -40,6 +40,13 @@
                 }
                 @if (_isEdit)
                 {
+                    <span class="kk-chip" style="@ChipStyle(_harSamtykke ? "#16a34a" : "#dc2626")"
+                          title="@(_harSamtykke ? "Kunden har signert med 2FA og samtykket til gjeldsregister og kredittsjekk. Søknaden kan sendes til bank." : "Ingen 2FA-signert samtykke til gjeldsregister/kredittsjekk. Påbegynt lead (f.eks. Prismatch) — kan ikke sendes til bank før kunden fullfører signeringen.")">
+                        @(_harSamtykke ? "🔐 Samtykke + 2FA" : "⚠ Uten 2FA-samtykke")
+                    </span>
+                }
+                @if (_isEdit)
+                {
                     <span class="kk-chip" style="@ChipStyle("#475569")">👤 @(string.IsNullOrWhiteSpace(_k.Eier) ? "Ueid" : (_k.EierNavn ?? _k.Eier))</span>
                 }
             </div>

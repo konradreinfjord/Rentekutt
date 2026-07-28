@@ -92,6 +92,12 @@ public class WebhookController : ControllerBase
                 var k = MapFlexible(flat);
                 k.Kilde = KildeLabel(hook.Name);
 
+                // Prismatch-leads er forenklede (kontakt + grunnleggende lånedata) uten samtykke til
+                // gjeldsregister/kredittsjekk og uten 2FA-signering. De er derfor et PÅBEGYNT lead som
+                // ikke er komplett — settes i status «Påbegynt søknad» til kunden fullfører på rentekutt.no.
+                if (hook.Name == WebhookService.PrismatchName)
+                    k.Status = KundekortService.StatusPaabegynt;
+
                 // MOD11-sjekk ved mottak brukes KUN til å flagge — vi avviser ALDRI leadet på grunn av
                 // fødselsnummeret, så ingen søknad går tapt. Fnr lagres uansett som det er; bank-sending
                 // validerer MOD11 og blokkerer der (med tydelig melding), så rådgiver kan rette først.
