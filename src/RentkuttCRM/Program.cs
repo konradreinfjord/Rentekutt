@@ -76,6 +76,7 @@ builder.Services.AddSingleton<CryptoService>();
 
 // Kundekort (lånesøknader).
 builder.Services.AddScoped<KundekortService>();
+builder.Services.AddScoped<OppfolgingService>();
 
 // Tidsstemplede saksnotater.
 builder.Services.AddScoped<NotatService>();

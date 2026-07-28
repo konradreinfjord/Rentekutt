@@ -89,6 +89,7 @@ else
                 @Header("belaning", "Belåningsgrad")
                 @Header("likviditet", "Likviditet")
                 @Header("opprettet", "Opprettet")
+                <th>Oppfølgingsdato</th>
                 @Header("eier", "Eier")
                 <th></th>
             </tr>
@@ -96,7 +97,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="20" class="empty-row">Ingen treff.</td></tr>
+                <tr><td colspan="21" class="empty-row">Ingen treff.</td></tr>
             }
             @foreach (var k in PagedView)
             {
@@ -166,6 +167,7 @@ else
                     <td>@{ var br = Ber(k); }@(br.Belaningsgrad > 0 ? $"{br.Belaningsgrad:N1} %" : "—")</td>
                     <td class="@(Ber(k).Likviditet < 0 ? "neg-tall" : "")">@($"{Ber(k).Likviditet:N0}") kr</td>
                     <td>@Dt(k.CreatedAt)</td>
+                    <td class="mono-cell">@if (k.NesteOppfolging is { } n) { <span class="opf-date @OppfDatoKlasse(n)">@n.ToString("dd.MM.yyyy")</span> } else { <span class="muted">—</span> }</td>
                     <td>
                         @if (string.IsNullOrWhiteSpace(k.Eier))
                         {
@@ -198,6 +200,10 @@ else
 @code {
     private List<Kundekort> _rows = new();
     private bool _loading = true;
+
+    // Fargelegg oppfølgingsdato: rød hvis forfalt, gul hvis i dag.
+    private static string OppfDatoKlasse(DateTime n) =>
+        n.Date < Tid.IDag ? "opf-rod" : n.Date == Tid.IDag ? "opf-amber" : "";
 
     private string _search = "";
     private string _statusFilter = "";

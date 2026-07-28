@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.BankSendingService BankSending
+@inject RentkuttCRM.Services.OppfolgingService Oppf
 @inject NavigationManager Nav
 
 <PageTitle>Mine søknader — Rentekutt</PageTitle>
@@ -14,6 +15,49 @@
 <h1 class="page-title">Mine søknader</h1>
 <p class="page-sub">Sakene du har plukket. Følg opp i tide — fargen på oppfølgingsdatoen viser forfalt/i dag.</p>
 
+<div class="kk-tabs" style="margin-bottom:16px">
+    <button class="@(_tab == "pagar" ? "active" : "")" @onclick='() => _tab = "pagar"'>Søknader som pågår (@_rows.Count)</button>
+    <button class="@(_tab == "oppfolginger" ? "active" : "")" @onclick='() => _tab = "oppfolginger"'>Oppfølginger (@_mineOppf.Count)</button>
+</div>
+
+@if (_tab == "oppfolginger")
+{
+    <div class="section">
+        <p class="page-sub" style="margin-top:0">Dine planlagte oppfølginger på tvers av søknader — tidligste forfall først. Opprett dem på hver søknad under Oversikt → Oppfølginger.</p>
+        @if (_loading)
+        {
+            <p class="page-sub">Laster…</p>
+        }
+        else if (_mineOppf.Count == 0)
+        {
+            <p class="notat-empty">Ingen åpne oppfølginger. Opprett en på en søknad (Oversikt → Oppfølginger).</p>
+        }
+        else
+        {
+            <div class="table-scroll table-tall">
+            <table class="data-table">
+                <thead><tr><th>Forfaller</th><th>Søknad</th><th>Type</th><th>Notat</th><th>Handling</th></tr></thead>
+                <tbody>
+                    @foreach (var o in _mineOppf.OrderBy(x => x.Forfaller))
+                    {
+                        var kort = KortFor(o.KundekortId);
+                        <tr class="row-link" @onclick="() => Open(o.KundekortId)">
+                            <td @onclick:stopPropagation="true"><span class="opf-date @OppfKlasse(o)" style="font-weight:600">@o.Forfaller.ToString("dd.MM.yyyy")</span></td>
+                            <td>@(kort is null ? "—" : (string.IsNullOrWhiteSpace(kort.FulltNavn) ? "(uten navn)" : kort.FulltNavn))</td>
+                            <td>@if (kort is null) { <span class="muted">—</span> } else { <span class="type-tag @(kort.KundeType == "B2C" ? "lead" : "bank")">@kort.KundeType</span> }</td>
+                            <td>@(string.IsNullOrWhiteSpace(o.Notat) ? "—" : o.Notat)</td>
+                            <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" @onclick="() => FullforOppf(o)" title="Marker fullført">✓ Fullfør</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        }
+    </div>
+}
+
+@if (_tab == "pagar")
+{
 <div class="seg typeseg" style="margin-bottom:16px">
     <button class="@(_typeFilter == "" ? "active" : "")" @onclick='() => _typeFilter = ""'>Vis begge (@_rows.Count)</button>
     <button class="@(_typeFilter == "B2C" ? "active" : "")" @onclick='() => _typeFilter = "B2C"'>Privat · B2C (@_rows.Count(k => k.KundeType == "B2C"))</button>
@@ -54,7 +98,7 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Status</th><th>Opprettet</th><th>Neste oppfølging</th>
+                    <th>Status</th><th>Opprettet</th><th>Oppfølgingsdato</th>
                     <th>Navn</th>@if (VisEier) { <th>Rådgiver</th> }<th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th>
                     <th>Forslag til bank</th><th>Sendt til bank</th>
                 </tr>
@@ -99,10 +143,28 @@
         </div>
     }
 </div>
+}
 
 @code {
     private List<Kundekort> _rows = new();
     private bool _loading = true;
+    private string _tab = "pagar";                       // "pagar" | "oppfolginger"
+    private List<OppfolgingOppgave> _mineOppf = new();          // mine åpne oppfølginger på tvers av søknader
+
+    private Kundekort? KortFor(Guid id) => _rows.FirstOrDefault(k => k.Id == id) ?? _alleEide.FirstOrDefault(k => k.Id == id);
+
+    private static string OppfKlasse(OppfolgingOppgave o)
+    {
+        if (o.Forfaller.Date < Tid.IDag) return "opf-rod";
+        if (o.Forfaller.Date == Tid.IDag) return "opf-amber";
+        return "";
+    }
+
+    private async Task FullforOppf(OppfolgingOppgave o)
+    {
+        await Oppf.FullforAsync(o.Id, o.KundekortId);
+        _mineOppf = await Oppf.AapneForEierAsync(MittEier);
+    }
 
     // Admin kan bytte hvilken rådgivers saker som vises.
     private string _selectedEier = "__mine__";
@@ -140,6 +202,7 @@
         _partnere = await Partners.ListAsync();
         _regler = await Ruting.ListAsync();
         _sendtPerKort = await BankSending.SisteePerKundekortAsync();
+        _mineOppf = await Oppf.AapneForEierAsync(MittEier);
 
         _loading = false;
     }

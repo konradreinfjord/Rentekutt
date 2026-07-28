@@ -11,6 +11,7 @@
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.LoggService Logg
 @inject RentkuttCRM.Services.SamtykkeService Samtykke
+@inject RentkuttCRM.Services.OppfolgingService Oppf
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -253,6 +254,50 @@
         @if (terminalStatus)
         {
             <p class="flyt-terminal-tekst">Søknaden er avsluttet med status <strong>@_k.Status</strong>.</p>
+        }
+    </div>
+
+    <div class="form-card">
+        <h2>Oppfølginger</h2>
+        <p class="page-sub" style="margin:-4px 0 12px">Planlagte oppfølginger på denne søknaden. Vises i «Mine søknader» → Oppfølginger for eieren, og styrer «Oppfølgingsdato» i søknadstabellene.</p>
+        @if (_isEdit)
+        {
+            <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px">
+                <div class="ff" style="max-width:170px"><label>Forfallsdato</label><input type="date" @bind="_nyOppfDato" /></div>
+                <div class="ff" style="flex:1; min-width:200px"><label>Notat (valgfritt)</label><input @bind="_nyOppfNotat" placeholder="Hva skal følges opp?" /></div>
+                <button class="btn-primary btn-sm" @onclick="LeggTilOppfolging" disabled="@(_oppfLagrer || _nyOppfDato is null || !KanEndre)">@(_oppfLagrer ? "Lagrer…" : "+ Legg til")</button>
+            </div>
+            @if (_oppfolginger.Count == 0)
+            {
+                <p class="notat-empty">Ingen oppfølginger ennå.</p>
+            }
+            else
+            {
+                <div class="logg-liste">
+                    @foreach (var o in _oppfolginger)
+                    {
+                        <div class="notat-item" style="display:flex; align-items:center; gap:12px; @(o.Fullfort ? "opacity:.55" : "")">
+                            <span class="opf-date @OppfKlasse(o)" style="font-weight:600; min-width:96px">@o.Forfaller.ToString("dd.MM.yyyy")</span>
+                            <div style="flex:1">
+                                <div>@(string.IsNullOrWhiteSpace(o.Notat) ? "—" : o.Notat)</div>
+                                @if (o.Fullfort) { <div class="page-sub" style="margin:0; font-size:11px">Fullført @(o.FullfortAt?.TilOslo().ToString("dd.MM.yyyy"))</div> }
+                            </div>
+                            @if (!o.Fullfort && KanEndre)
+                            {
+                                <button class="btn-sec btn-sm" @onclick="() => FullforOppf(o)" title="Marker fullført">✓ Fullfør</button>
+                            }
+                            @if (KanEndre)
+                            {
+                                <button class="btn-logout btn-sm" @onclick="() => SlettOppf(o)" title="Slett">✕</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            <p class="page-sub" style="margin:0; font-size:12px">Lagre kundekortet først for å legge til oppfølginger.</p>
         }
     </div>
 
@@ -794,6 +839,7 @@
             _sendinger = sendTask.Result;
             _endringslogg = loggTask.Result;
             _harSamtykke = await Samtykke.HarGyldigEllerLegacyAsync(_k.Id, SamtykkeService.FormaalKreditt, _k.SamtykkeGjeldsregisterKredittsjekk);
+            _oppfolginger = await Oppf.ForKundekortAsync(_k.Id);
             // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
             await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");
         }
@@ -803,6 +849,54 @@
     // Samtykke kan IKKE registreres manuelt (teknisk barriere). Det oppstår kun når kunden selv har
     // signert — via Vipps 2FA eller søknadsskjemaet — og registreres da av webhook-mottaket.
     private bool _harSamtykke;
+
+    // ---- Oppfølginger (pipeline) ----
+    private List<OppfolgingOppgave> _oppfolginger = new();
+    private DateTime? _nyOppfDato;
+    private string? _nyOppfNotat;
+    private bool _oppfLagrer;
+
+    private static string OppfKlasse(OppfolgingOppgave o)
+    {
+        if (o.Fullfort) return "";
+        if (o.Forfaller.Date < Tid.IDag) return "opf-rod";
+        if (o.Forfaller.Date == Tid.IDag) return "opf-amber";
+        return "";
+    }
+
+    private async Task LeggTilOppfolging()
+    {
+        if (!KanEndre || _nyOppfDato is null || _k.Id == Guid.Empty) return;
+        _oppfLagrer = true;
+        // Eier = sakseier hvis satt, ellers innlogget rådgiver (så oppfølgingen havner i «Mine søknader»).
+        var eier = !string.IsNullOrWhiteSpace(_k.Eier) ? _k.Eier : (Session.Email ?? Session.UserName);
+        var opprettetAv = Session.UserName ?? Session.Email;
+        var ny = await Oppf.OpprettAsync(_k.Id, eier, _nyOppfDato.Value, _nyOppfNotat, opprettetAv);
+        if (ny is not null)
+        {
+            await Logg.LoggAsync(_k.Id, opprettetAv, $"Opprettet oppfølging {_nyOppfDato:dd.MM.yyyy}{(string.IsNullOrWhiteSpace(_nyOppfNotat) ? "" : $": {_nyOppfNotat}")}");
+            _oppfolginger = await Oppf.ForKundekortAsync(_k.Id);
+            _k.NesteOppfolging = _oppfolginger.Where(o => !o.Fullfort).Select(o => (DateTime?)o.Forfaller).Min();
+            _nyOppfDato = null; _nyOppfNotat = null;
+        }
+        _oppfLagrer = false;
+    }
+
+    private async Task FullforOppf(OppfolgingOppgave o)
+    {
+        if (!KanEndre) return;
+        await Oppf.FullforAsync(o.Id, _k.Id);
+        _oppfolginger = await Oppf.ForKundekortAsync(_k.Id);
+        _k.NesteOppfolging = _oppfolginger.Where(x => !x.Fullfort).Select(x => (DateTime?)x.Forfaller).Min();
+    }
+
+    private async Task SlettOppf(OppfolgingOppgave o)
+    {
+        if (!KanEndre) return;
+        await Oppf.SlettAsync(o.Id, _k.Id);
+        _oppfolginger = await Oppf.ForKundekortAsync(_k.Id);
+        _k.NesteOppfolging = _oppfolginger.Where(x => !x.Fullfort).Select(x => (DateTime?)x.Forfaller).Min();
+    }
 
     // ---- Endringslogg + auto-lagring ----
     private List<KundekortLogg> _endringslogg = new();

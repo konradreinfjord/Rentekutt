@@ -94,6 +94,7 @@ else
         <thead>
             <tr>
                 @Header("opprettet", "Opprettet")
+                <th>Oppfølgingsdato</th>
                 @Header("status", "Status")
                 @Header("delegert", "Delegert til bank")
                 @Header("navn", "Navn")
@@ -114,7 +115,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="16" class="empty-row">@(_skjulTatte ? "Ingen utatte saker her akkurat nå 🎉" : "Ingen treff.")</td></tr>
+                <tr><td colspan="17" class="empty-row">@(_skjulTatte ? "Ingen utatte saker her akkurat nå 🎉" : "Ingen treff.")</td></tr>
             }
             @foreach (var k in PagedView)
             {
@@ -122,6 +123,7 @@ else
                 var mine = tatt && k.Eier == (Session.Email ?? Session.UserName);
                 <tr class="row-link @(tatt ? "row-locked" : "")" @onclick="() => Open(k.Id)">
                     <td class="mono-cell" title="@OpprettetTittel(k.CreatedAt)">@OpprettetTekst(k.CreatedAt)</td>
+                    <td class="mono-cell">@if (k.NesteOppfolging is { } n) { <span class="opf-date @OppfDatoKlasse(n)">@n.ToString("dd.MM.yyyy")</span> } else { <span class="muted">—</span> }</td>
                     <td @onclick:stopPropagation="true">
                         <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "")" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
@@ -199,6 +201,10 @@ else
     private bool _loading = true;
     private bool _skjulTatte;
     private bool _visStatusInfo;   // info-popover som forklarer statusene
+
+    // Fargelegg oppfølgingsdato: rød hvis forfalt, gul hvis i dag.
+    private static string OppfDatoKlasse(DateTime n) =>
+        n.Date < Tid.IDag ? "opf-rod" : n.Date == Tid.IDag ? "opf-amber" : "";
 
     private string _search = "";
     private string _statusFilter = "";
