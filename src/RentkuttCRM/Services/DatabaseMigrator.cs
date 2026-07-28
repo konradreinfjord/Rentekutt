@@ -45,6 +45,24 @@ public class DatabaseMigrator
         _log = log;
     }
 
+    /// <summary>Ber PostgREST laste skjema-cachen på nytt. Brukes selvhelbredende ved PGRST204/205
+    /// (kolonne/tabell finnes i DB, men REST-laget kjenner den ikke ennå) og fra Admin manuelt.</summary>
+    public async Task<bool> ReloadSchemaCacheAsync()
+    {
+        if (!IsConfigured) return false;
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                await conn.OpenAsync(cts.Token);
+            await using var cmd = new NpgsqlCommand("notify pgrst, 'reload schema';", conn);
+            await cmd.ExecuteNonQueryAsync();
+            _log.LogInformation("Ba PostgREST laste skjema-cachen på nytt (reload)");
+            return true;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke reloade PostgREST skjema-cache"); return false; }
+    }
+
     public async Task MigrateAsync()
     {
         var status = new MigrasjonStatus { Konfigurert = IsConfigured, KjortAt = DateTime.UtcNow };

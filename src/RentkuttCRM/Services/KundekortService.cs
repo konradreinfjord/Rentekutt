@@ -55,22 +55,44 @@ public class KundekortService
     private readonly LoggService _logg;
     private readonly CryptoService _krypto;
     private readonly AlarmService _alarm;
+    private readonly DatabaseMigrator _migrator;
     private readonly ILogger<KundekortService> _log;
     public bool IsConfigured { get; }
 
     private static readonly List<Kundekort> _staging = new();
     private bool _initialized;
 
-    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, AlarmService alarm, IConfiguration cfg, ILogger<KundekortService> log)
+    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, AlarmService alarm, DatabaseMigrator migrator, IConfiguration cfg, ILogger<KundekortService> log)
     {
         _client = client;
         _postnr = postnr;
         _logg = logg;
         _krypto = krypto;
         _alarm = alarm;
+        _migrator = migrator;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
+    }
+
+    // Selvhelbredende mot PGRST204/205: PostgREST kjenner ikke en kolonne/tabell som finnes i DB
+    // (stale skjema-cache, typisk rett etter en migrasjon). Ber PostgREST reloade og prøver på nytt,
+    // så innkommende payloads ikke feiler på en fersk kolonne.
+    private static bool ErSkjemaCacheFeil(Exception ex) =>
+        ex.Message.Contains("PGRST204", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("PGRST205", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("schema cache", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<T> MedSkjemaRetry<T>(Func<Task<T>> op)
+    {
+        try { return await op(); }
+        catch (Exception ex) when (ErSkjemaCacheFeil(ex))
+        {
+            _log.LogWarning(ex, "PostgREST skjema-cache-feil — ber om reload og prøver på nytt");
+            await _migrator.ReloadSchemaCacheAsync();
+            await Task.Delay(1500);   // gi PostgREST et øyeblikk til å laste skjemaet
+            return await op();
+        }
     }
 
     // ---- Feltnivåkryptering (fødselsnummer m.m.) ----
@@ -233,7 +255,7 @@ public class KundekortService
             // Tom Id = ny sak (DB genererer id). Ellers oppdater eksisterende sak.
             if (k.Id == Guid.Empty)
             {
-                var resp = await _client.From<Kundekort>().Insert(ForDb(k));
+                var resp = await MedSkjemaRetry(() => _client.From<Kundekort>().Insert(ForDb(k)));
                 InvaliderCache();
                 var nyId = resp.Models.FirstOrDefault()?.Id ?? Guid.Empty;
                 if (nyId != Guid.Empty)
@@ -246,7 +268,7 @@ public class KundekortService
             else
             {
                 var gammel = await GetAsync(k.Id);
-                var resp = await _client.From<Kundekort>().Update(ForDb(k));
+                var resp = await MedSkjemaRetry(() => _client.From<Kundekort>().Update(ForDb(k)));
                 // Avslør stille feil: en oppdatering som treffer 0 rader (RLS/ukjent id)
                 // returnerer ingen modeller — ikke meld suksess da.
                 if (resp.Models.Count == 0)
