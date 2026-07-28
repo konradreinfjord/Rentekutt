@@ -196,6 +196,10 @@ public class WebhookController : ControllerBase
             var el = body.ValueKind == JsonValueKind.Array ? body.EnumerateArray().FirstOrDefault() : body;
             var flat = Flatten(el);
             var k = MapVipps(flat);
+            // Søknaden opprettes via Vipps-webhook (status «Påbegynt søknad») → kunden er autentisert
+            // med Vipps og 2FA. Vipps-autentiseringen ER samtykkegrunnlaget for gjeldsregister/kredittsjekk,
+            // så samtykke settes alltid — uavhengig av payload-flagget.
+            k.SamtykkeGjeldsregisterKredittsjekk = true;
             // Vipps subjekt-/sesjons-ID for revisjonssporet (ingen fnr).
             var vippsRef = Get(flat, "ordernumber", "sub", "subject", "sessionid", "session_id", "sid", "referanse") ?? "—";
             if (string.IsNullOrWhiteSpace(k.Mobilnummer) && string.IsNullOrWhiteSpace(k.Epost) && string.IsNullOrWhiteSpace(k.FulltNavn))
@@ -213,8 +217,9 @@ public class WebhookController : ControllerBase
                 else
                 {
                     id = k.Id;
-                    if (k.SamtykkeGjeldsregisterKredittsjekk && k.Id != Guid.Empty)
-                        await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, "Vipps", tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
+                    // Alltid gyldig samtykke for Vipps-utkast — Vipps + 2FA er samtykkegrunnlaget.
+                    if (k.Id != Guid.Empty)
+                        await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, "Vipps 2FA", tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
                     // Revisjonsspor: knytt Vipps-sesjonen til saken ved opprettelse (ingen fnr i teksten).
                     await _logg.LoggAsync(k.Id, "Vipps",
                         $"Påbegynt søknad opprettet via Vipps-autentisering — subjekt/sesjon: {vippsRef}", kategori: "kobling");
