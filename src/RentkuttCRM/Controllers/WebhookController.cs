@@ -157,9 +157,17 @@ public class WebhookController : ControllerBase
             feil ?? (opprettet == 0 ? "Ingen gyldige leads i payload." : null), forsteId);
 
         if (!vellykket)
-            await _alarm.RaiseAsync("Webhook", $"Søknad mottatt men ikke korrekt opprettet ({hook.Name})",
-                feil ?? "Ingen gyldige leads i payload — se siste payloads i Admin → Kanaler.",
-                AlarmService.Alvorlighet.Advarsel, "Webhook", $"webhook-feil-{hook.Name}");
+        {
+            // Teknisk API-feil (unntak/DB-feil som PGRST204) er kritisk og skal synes tydelig.
+            // «Ingen gyldige leads» er en advarsel. Begge får tidspunkt + detaljer i alarmen.
+            var teknisk = feil is not null;
+            var naa = DateTime.UtcNow.TilOslo().ToString("dd.MM.yyyy HH:mm:ss");
+            await _alarm.RaiseAsync("API",
+                teknisk ? $"API-feil ved mottak av søknad ({hook.Name})" : $"Søknad mottatt uten gyldige leads ({hook.Name})",
+                $"Tidspunkt: {naa}. {(feil ?? "Ingen gyldige leads i payload.")} — full payload i Admin → Kanaler.",
+                teknisk ? AlarmService.Alvorlighet.Kritisk : AlarmService.Alvorlighet.Advarsel,
+                "API", teknisk ? $"api-feil-inbound-{hook.Name}" : $"webhook-tomt-{hook.Name}");
+        }
 
         if (opprettet == 0)
             return BadRequest(new { error = feil ?? "Ingen gyldige leads i payload." });
@@ -241,9 +249,10 @@ public class WebhookController : ControllerBase
         await _payloads.LagreAsync(hook.Name, raw, feil is null, feil, id);
         if (feil is not null)
         {
-            await _alarm.RaiseAsync("Vipps", "Vipps-bekreftelse ikke korrekt opprettet",
-                feil + " — se siste payloads i Admin → Kanaler.",
-                AlarmService.Alvorlighet.Advarsel, "Webhook", "vipps-feil");
+            var naa = DateTime.UtcNow.TilOslo().ToString("dd.MM.yyyy HH:mm:ss");
+            await _alarm.RaiseAsync("API", "API-feil ved Vipps-bekreftelse",
+                $"Tidspunkt: {naa}. {feil} — full payload i Admin → Kanaler.",
+                AlarmService.Alvorlighet.Kritisk, "API", "api-feil-vipps");
             return StatusCode(StatusCodes.Status422UnprocessableEntity, new { error = feil });
         }
         return Ok(new { status = "påbegynt", id });
