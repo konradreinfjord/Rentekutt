@@ -24,7 +24,14 @@
 {
     <button class="kk-back" @onclick="Tilbake" title="Lukk sak og gå tilbake">← Tilbake til oversikten</button>
 }
-<div class="kk-head">
+<div class="kk-head" style="position:relative">
+    @if (_isEdit)
+    {
+        <span class="kk-chip" style="position:absolute; top:14px; right:16px; z-index:2; @ChipStyle(_harSamtykke ? "#16a34a" : "#dc2626")"
+              title="@(_harSamtykke ? "Kunden har signert med 2FA og samtykket til gjeldsregister og kredittsjekk. Søknaden kan sendes til bank." : "Ingen 2FA-signert samtykke til gjeldsregister/kredittsjekk. Påbegynt lead (f.eks. Prismatch) — kan ikke sendes til bank før kunden fullfører signeringen.")">
+            @(_harSamtykke ? "🔐 Samtykke + 2FA" : "⚠ Uten 2FA-samtykke")
+        </span>
+    }
     <div class="kk-head-top">
         <div class="kk-avatar">@Forbokstaver(_k.FulltNavn)</div>
         <div class="kk-head-id">
@@ -38,13 +45,6 @@
                 @if (!string.IsNullOrWhiteSpace(_k.Kilde))
                 {
                     <span class="kk-chip" style="@ChipStyle(KildeFarge(_k.Kilde))">@_k.Kilde</span>
-                }
-                @if (_isEdit)
-                {
-                    <span class="kk-chip" style="@ChipStyle(_harSamtykke ? "#16a34a" : "#dc2626")"
-                          title="@(_harSamtykke ? "Kunden har signert med 2FA og samtykket til gjeldsregister og kredittsjekk. Søknaden kan sendes til bank." : "Ingen 2FA-signert samtykke til gjeldsregister/kredittsjekk. Påbegynt lead (f.eks. Prismatch) — kan ikke sendes til bank før kunden fullfører signeringen.")">
-                        @(_harSamtykke ? "🔐 Samtykke + 2FA" : "⚠ Uten 2FA-samtykke")
-                    </span>
                 }
                 @if (_isEdit)
                 {
