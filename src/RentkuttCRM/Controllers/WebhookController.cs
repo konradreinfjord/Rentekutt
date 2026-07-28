@@ -92,12 +92,11 @@ public class WebhookController : ControllerBase
                 var k = MapFlexible(flat);
                 k.Kilde = KildeLabel(hook.Name);
 
-                // Valider kontrollsiffer (MOD11) ved mottak når fnr er oppgitt. Avvises generisk —
-                // responsen røper aldri om nummeret finnes fra før (ikke et oppslagsverktøy).
-                if (!string.IsNullOrWhiteSpace(k.Foedselsnummer) && !Fnr.ErGyldig(k.Foedselsnummer))
-                { feil = "Ugyldig fødselsnummer."; continue; }
-                if (!string.IsNullOrWhiteSpace(k.MedsokerFoedselsnummer) && !Fnr.ErGyldig(k.MedsokerFoedselsnummer))
-                { feil = "Ugyldig fødselsnummer (medsøker)."; continue; }
+                // MOD11-sjekk ved mottak brukes KUN til å flagge — vi avviser ALDRI leadet på grunn av
+                // fødselsnummeret, så ingen søknad går tapt. Fnr lagres uansett som det er; bank-sending
+                // validerer MOD11 og blokkerer der (med tydelig melding), så rådgiver kan rette først.
+                var fnrUgyldig = !string.IsNullOrWhiteSpace(k.Foedselsnummer) && !Fnr.ErGyldig(k.Foedselsnummer);
+                var medsokerFnrUgyldig = !string.IsNullOrWhiteSpace(k.MedsokerFoedselsnummer) && !Fnr.ErGyldig(k.MedsokerFoedselsnummer);
 
                 // Match mot et påbegynt Vipps-utkast: KUN entydige kriterier (mobil → e-post; navn
                 // brukes ikke). Treff = komplettér utkastet (samme rad) og løft status til «Åpen».
@@ -107,11 +106,13 @@ public class WebhookController : ControllerBase
                 if (utkast is not null)
                 {
                     k.Id = utkast.Id;
-                    // Behold Vipps/BankID-verifisert identitet + sikkerhetsnivå dersom søknaden mangler den.
-                    if (string.IsNullOrWhiteSpace(k.Foedselsnummer))
+                    // Foretrekk Vipps/BankID-verifisert fnr når søknadens eget mangler ELLER er ugyldig —
+                    // et verifisert nummer skal alltid vinne over et ugyldig fra skjemaet.
+                    if ((string.IsNullOrWhiteSpace(k.Foedselsnummer) || fnrUgyldig) && !string.IsNullOrWhiteSpace(utkast.Foedselsnummer))
                     {
                         k.Foedselsnummer = utkast.Foedselsnummer;
                         if (!string.IsNullOrWhiteSpace(utkast.FnrKilde)) k.FnrKilde = utkast.FnrKilde;
+                        fnrUgyldig = !Fnr.ErGyldig(k.Foedselsnummer);   // re-vurder etter overstyring
                     }
                     if (string.IsNullOrWhiteSpace(k.FulltNavn)) k.FulltNavn = utkast.FulltNavn;
                     if (string.IsNullOrWhiteSpace(k.Mobilnummer)) k.Mobilnummer = utkast.Mobilnummer;
@@ -121,6 +122,13 @@ public class WebhookController : ControllerBase
 
                 var (ok, error) = await _kundekort.SaveAsync(k, aktor: aktor);
                 if (!ok) { feil = error; _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
+
+                // Flagg ugyldig fnr som et notat (uten selve nummeret) — leadet er lagret, men må rettes
+                // før sending til bank. Bank-sending blokkerer uansett på MOD11.
+                if (fnrUgyldig || medsokerFnrUgyldig)
+                    await _logg.LoggAsync(k.Id, "System",
+                        $"Fødselsnummer med feil kontrollsiffer mottatt{(medsokerFnrUgyldig ? " (medsøker)" : "")} — lagret som mottatt, må rettes før sending til bank.",
+                        kategori: "advarsel");
 
                 // Revisjonsspor per kobling: hvilket felt matchet (tidspunkt er automatisk). Ingen fnr i teksten.
                 // Vipps-sesjon/ref er logget på samme sak ved opprettelse av utkastet.
@@ -205,10 +213,6 @@ public class WebhookController : ControllerBase
             if (string.IsNullOrWhiteSpace(k.Mobilnummer) && string.IsNullOrWhiteSpace(k.Epost) && string.IsNullOrWhiteSpace(k.FulltNavn))
             {
                 feil = "Vipps-bekreftelsen mangler både mobil, e-post og navn — kan verken opprette eller matche.";
-            }
-            else if (!string.IsNullOrWhiteSpace(k.Foedselsnummer) && !Fnr.ErGyldig(k.Foedselsnummer))
-            {
-                feil = "Ugyldig fødselsnummer.";
             }
             else
             {
