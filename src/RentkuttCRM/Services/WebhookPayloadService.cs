@@ -80,6 +80,36 @@ public class WebhookPayloadService
         catch (Exception ex) { _log.LogError(ex, "Henting av webhook-payloads feilet"); return new(); }
     }
 
+    /// <summary>Hent én payload (for re-kjøring).</summary>
+    public async Task<WebhookPayload?> HentAsync(Guid id)
+    {
+        if (!IsConfigured) return _staging.FirstOrDefault(x => x.Id == id);
+        try
+        {
+            await EnsureInitAsync();
+            return (await _client.From<WebhookPayload>().Where(x => x.Id == id).Get()).Models.FirstOrDefault();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av payload feilet"); return null; }
+    }
+
+    /// <summary>Marker en payload som vellykket etter re-kjøring (setter ok=true, fjerner feil, kobler til lead).</summary>
+    public async Task MarkerOkAsync(Guid id, Guid? kundekortId)
+    {
+        if (!IsConfigured)
+        {
+            var r = _staging.FirstOrDefault(x => x.Id == id);
+            if (r is not null) { r.Ok = true; r.Feil = null; r.KundekortId = kundekortId; }
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<WebhookPayload>().Where(x => x.Id == id)
+                .Set(x => x.Ok, true).Set(x => x.Feil!, (string?)null).Set(x => x.KundekortId!, kundekortId).Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Marker payload OK feilet"); }
+    }
+
     /// <summary>Slett payloads eldre enn <paramref name="dager"/> dager. Returnerer antall slettet.</summary>
     public async Task<int> SlettEldreEnnAsync(int dager)
     {

@@ -85,13 +85,19 @@ public class KundekortService
 
     private async Task<T> MedSkjemaRetry<T>(Func<Task<T>> op)
     {
-        try { return await op(); }
-        catch (Exception ex) when (ErSkjemaCacheFeil(ex))
+        // Skjema-cache-feil (PGRST204/205) er trygg å prøve på nytt — skrivingen ble AVVIST, aldri
+        // utført, så ingen fare for dublett. Supabase kan kjøre flere PostgREST-instanser med ujevn
+        // cache; vi ber om reload og prøver på nytt med økende pause til en frisk instans svarer.
+        const int maksForsok = 5;
+        for (var forsok = 1; ; forsok++)
         {
-            _log.LogWarning(ex, "PostgREST skjema-cache-feil — ber om reload og prøver på nytt");
-            await _migrator.ReloadSchemaCacheAsync();
-            await Task.Delay(1500);   // gi PostgREST et øyeblikk til å laste skjemaet
-            return await op();
+            try { return await op(); }
+            catch (Exception ex) when (ErSkjemaCacheFeil(ex) && forsok < maksForsok)
+            {
+                _log.LogWarning(ex, "PostgREST skjema-cache-feil (forsøk {Forsok}/{Maks}) — reload + retry", forsok, maksForsok);
+                await _migrator.ReloadSchemaCacheAsync();
+                await Task.Delay(TimeSpan.FromMilliseconds(800 * forsok));  // 0.8s, 1.6s, 2.4s, 3.2s
+            }
         }
     }
 

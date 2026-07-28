@@ -68,6 +68,7 @@ public class WebhookController : ControllerBase
         var opprettet = 0;
         string? sisteInfo = null;
         string? feil = null;
+        string? feiletKontakt = null;   // navn/mobil på et lead som feilet — så det kan følges opp
         Guid? forsteId = null;
 
         try
@@ -127,7 +128,17 @@ public class WebhookController : ControllerBase
                 }
 
                 var (ok, error) = await _kundekort.SaveAsync(k, aktor: aktor);
-                if (!ok) { feil = error; _log.LogWarning("Webhook-lead avvist: {Error}", error); continue; }
+                if (!ok)
+                {
+                    feil = error;
+                    // Fang kontaktinfo (uten fnr) så alarmen viser HVEM som feilet og kan følges opp manuelt.
+                    var navn = string.IsNullOrWhiteSpace(k.FulltNavn) ? "(uten navn)" : k.FulltNavn;
+                    var mob = string.IsNullOrWhiteSpace(k.Mobilnummer) ? "" : $" · {k.Mobilnummer}";
+                    var ep = string.IsNullOrWhiteSpace(k.Epost) ? "" : $" · {k.Epost}";
+                    feiletKontakt = $"{navn}{mob}{ep}";
+                    _log.LogWarning("Webhook-lead avvist: {Error}", error);
+                    continue;
+                }
 
                 // Flagg ugyldig fnr som et notat (uten selve nummeret) — leadet er lagret, men må rettes
                 // før sending til bank. Bank-sending blokkerer uansett på MOD11.
@@ -168,9 +179,10 @@ public class WebhookController : ControllerBase
             // «Ingen gyldige leads» er en advarsel. Begge får tidspunkt + detaljer i alarmen.
             var teknisk = feil is not null;
             var naa = DateTime.UtcNow.TilOslo().ToString("dd.MM.yyyy HH:mm:ss");
+            var hvem = string.IsNullOrWhiteSpace(feiletKontakt) ? "" : $" Kunde: {feiletKontakt}.";
             await _alarm.RaiseAsync("API",
                 teknisk ? $"API-feil ved mottak av søknad ({hook.Name})" : $"Søknad mottatt uten gyldige leads ({hook.Name})",
-                $"Tidspunkt: {naa}. {(feil ?? "Ingen gyldige leads i payload.")} — full payload i Admin → Kanaler.",
+                $"Tidspunkt: {naa}.{hvem} {(feil ?? "Ingen gyldige leads i payload.")} — kjør på nytt fra Admin → Kanaler → siste payloads.",
                 teknisk ? AlarmService.Alvorlighet.Kritisk : AlarmService.Alvorlighet.Advarsel,
                 "API", teknisk ? $"api-feil-inbound-{hook.Name}" : $"webhook-tomt-{hook.Name}");
         }
@@ -264,7 +276,7 @@ public class WebhookController : ControllerBase
         return Ok(new { status = "påbegynt", id });
     }
 
-    private static Kundekort MapVipps(Dictionary<string, string> f)
+    internal static Kundekort MapVipps(Dictionary<string, string> f)
     {
         // Vipps-payload bruker CellPhone/FullName/Email/CustomerType/Address/ZipCode/CompanyName.
         var typeRaw = Get(f, "customertype", "kunde_type", "type", "kundetype") ?? "B2C";
@@ -310,7 +322,7 @@ public class WebhookController : ControllerBase
         };
     }
 
-    private static string KildeLabel(string hookName) => hookName switch
+    internal static string KildeLabel(string hookName) => hookName switch
     {
         WebhookService.PrismatchName => "Prismatch",
         WebhookService.InboundName => "Rentekutt.no",
@@ -335,7 +347,7 @@ public class WebhookController : ControllerBase
     /// OG den bare nøkkelen (fodselsnummer). Første bare-verdi vinner, så toppnivå/søker beholdes
     /// mens medsøker-felt fortsatt er tilgjengelig via prefikset nøkkel (unngår kollisjon).
     /// </summary>
-    private static Dictionary<string, string> Flatten(JsonElement el)
+    internal static Dictionary<string, string> Flatten(JsonElement el)
     {
         var dict = new Dictionary<string, string>();
         void Walk(JsonElement e, string prefix)
@@ -371,7 +383,7 @@ public class WebhookController : ControllerBase
     }
 
     /// <summary>Normaliserer feltnavn: folder æøå, lowercaser, fjerner ikke-alfanumeriske.</summary>
-    private static string Norm(string s)
+    internal static string Norm(string s)
     {
         var sb = new StringBuilder();
         foreach (var c in s.ToLowerInvariant())
@@ -387,7 +399,7 @@ public class WebhookController : ControllerBase
         return sb.ToString();
     }
 
-    private static string? Get(Dictionary<string, string> f, params string[] keys)
+    internal static string? Get(Dictionary<string, string> f, params string[] keys)
     {
         foreach (var k in keys)
             if (f.TryGetValue(Norm(k), out var v) && !string.IsNullOrWhiteSpace(v) && v.ToLowerInvariant() != "null")
@@ -395,7 +407,7 @@ public class WebhookController : ControllerBase
         return null;
     }
 
-    private static decimal? GetDec(Dictionary<string, string> f, params string[] keys)
+    internal static decimal? GetDec(Dictionary<string, string> f, params string[] keys)
     {
         var v = Get(f, keys);
         if (v is null) return null;
@@ -405,18 +417,18 @@ public class WebhookController : ControllerBase
         return decimal.TryParse(clean, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
     }
 
-    private static int? GetInt(Dictionary<string, string> f, params string[] keys)
+    internal static int? GetInt(Dictionary<string, string> f, params string[] keys)
         => GetDec(f, keys) is { } d ? (int)d : null;
 
-    private static bool GetBool(Dictionary<string, string> f, params string[] keys)
+    internal static bool GetBool(Dictionary<string, string> f, params string[] keys)
     {
         var v = Get(f, keys)?.ToLowerInvariant();
         return v is "true" or "ja" or "yes" or "1";
     }
 
-    private static string Digits(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
+    internal static string Digits(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
 
-    private static Kundekort MapFlexible(Dictionary<string, string> f)
+    internal static Kundekort MapFlexible(Dictionary<string, string> f)
     {
         var typeRaw = Get(f, "kunde_type", "lead_type", "type", "kundetype") ?? "B2C";
         var type = typeRaw.ToUpperInvariant().Contains("B2B") ? "B2B" : "B2C";
