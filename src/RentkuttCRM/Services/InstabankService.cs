@@ -264,9 +264,11 @@ public class InstabankService
         if (k.AntallBarnUnder18 is int barn && barn >= 0) applicant["NumberOfChildren"] = barn;
         var eier = EierBolig(k.Boforhold);
         if (eier is not null) applicant["OwnsHouse"] = eier.Value;
-        if (k.AntallBiler is int biler && biler > 0) applicant["OwnsCar"] = true;
+        // OwnsCar/IsCitizen sendes EKSPLISITT true/false når vi kjenner verdien (Instabank etterlyser
+        // dem — å utelate ved «false» leses som «mangler»). Er kilden ukjent (tom), utelates feltet.
+        if (k.AntallBiler is int biler) applicant["OwnsCar"] = biler > 0;
         if (eier == false && k.BoligkostnadMnd is > 0) applicant["MonthlyRent"] = k.BoligkostnadMnd;
-        if (ErNorsk(k.Statsborgerskap)) applicant["IsCitizen"] = true;
+        if (!string.IsNullOrWhiteSpace(k.Statsborgerskap)) applicant["IsCitizen"] = ErNorsk(k.Statsborgerskap);
         if (k.AarsinntektBrutto is > 0) applicant["YearlyIncome"] = k.AarsinntektBrutto;
         if (k.AndreInntekter is > 0) applicant["YearlyIncomeOther"] = k.AndreInntekter;
         if (k.EktefelleInntekt is > 0) applicant["YearlyIncomeSpouse"] = k.EktefelleInntekt;

@@ -84,19 +84,25 @@ public class GjeldsregisterService
         ? (_config["Gjeldsregisteret:ApiUrlProd"] ?? StandardProd)
         : (_config["Gjeldsregisteret:ApiUrlTest"] ?? StandardTest);
 
+    private string? CertBase64 => _config["Gjeldsregisteret:CertBase64"];
     private string? CertPath => _config["Gjeldsregisteret:CertPath"];
     private string? CertPassword => _config["Gjeldsregisteret:CertPassword"];
 
     /// <summary>Virksomhetssertifikatet er tilgjengelig og lastbart (mTLS mulig).</summary>
     public bool ErKonfigurert => LastSertifikat() is not null;
 
+    /// <summary>Last Buypass-virksomhetssertifikatet (.p12/.pfx). I Azure legges det inn base64-kodet i
+    /// app-innstillingen Gjeldsregisteret__CertBase64 (anbefalt) — alternativt en filsti via __CertPath.</summary>
     private X509Certificate2? LastSertifikat()
     {
-        if (string.IsNullOrWhiteSpace(CertPath) || !File.Exists(CertPath)) return null;
         try
         {
-            // .NET 10: X509CertificateLoader (ikke-obsolete) laster PKCS#12 (.p12/.pfx).
-            return X509CertificateLoader.LoadPkcs12FromFile(CertPath, CertPassword);
+            // .NET 10: X509CertificateLoader (ikke-obsolete) laster PKCS#12.
+            if (!string.IsNullOrWhiteSpace(CertBase64))
+                return X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(CertBase64.Trim()), CertPassword);
+            if (!string.IsNullOrWhiteSpace(CertPath) && File.Exists(CertPath))
+                return X509CertificateLoader.LoadPkcs12FromFile(CertPath, CertPassword);
+            return null;
         }
         catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke laste virksomhetssertifikat for Gjeldsregisteret"); return null; }
     }
