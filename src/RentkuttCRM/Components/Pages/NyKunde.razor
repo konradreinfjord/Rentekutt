@@ -36,9 +36,13 @@
         <div class="kk-avatar">@Forbokstaver(_k.FulltNavn)</div>
         <div class="kk-head-id">
             <div class="kk-head-name">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</div>
-            @if (_k.KundeType == "B2B" && !string.IsNullOrWhiteSpace(_k.KontaktpersonNavn))
+            @if (_k.KundeType == "B2B")
             {
-                <div class="kk-head-sub" style="font-size:13px; color:var(--muted,#64748b); margin:-2px 0 4px">Kontaktperson: <strong>@_k.KontaktpersonNavn</strong></div>
+                <div class="kk-head-sub" style="font-size:13px; color:var(--muted,#64748b); margin:-2px 0 4px">
+                    @if (!string.IsNullOrWhiteSpace(_k.Orgnr)) { <span>Org.nr <strong>@_k.Orgnr</strong></span> }
+                    @if (!string.IsNullOrWhiteSpace(_k.Orgnr) && !string.IsNullOrWhiteSpace(_k.KontaktpersonNavn)) { <span> · </span> }
+                    @if (!string.IsNullOrWhiteSpace(_k.KontaktpersonNavn)) { <span>Kontaktperson: <strong>@_k.KontaktpersonNavn</strong></span> }
+                </div>
             }
             <div class="kk-head-chips">
                 @if (_isEdit)
@@ -58,7 +62,6 @@
             <div class="kk-head-contact">
                 <span>📞 @Vis(_k.Mobilnummer)</span>
                 <span>✉ @Vis(_k.Epost)</span>
-                @if (_k.KundeType == "B2B" && !string.IsNullOrWhiteSpace(_k.Orgnr)) { <span>Orgnr @_k.Orgnr</span> }
             </div>
         </div>
     </div>
