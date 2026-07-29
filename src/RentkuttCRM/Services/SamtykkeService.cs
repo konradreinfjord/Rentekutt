@@ -19,6 +19,17 @@ public class Samtykke : BaseModel
     [Column("created_at", ignoreOnInsert: true)] public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>Admin-godkjenning av samtykke (fireøyne). To ulike admins → gyldig samtykke.</summary>
+[Table("samtykke_godkjenning")]
+public class SamtykkeGodkjenning : BaseModel
+{
+    [PrimaryKey("id", false)] public Guid Id { get; set; }
+    [Column("kundekort_id")] public Guid KundekortId { get; set; }
+    [Column("godkjent_av")] public string GodkjentAv { get; set; } = "";
+    [Column("godkjent_navn")] public string? GodkjentNavn { get; set; }
+    [Column("godkjent_at")] public DateTime GodkjentAt { get; set; }
+}
+
 /// <summary>Samtykke-håndtering (GDPR). Registrering, gyldighetssjekk og oppslag.</summary>
 public class SamtykkeService
 {
@@ -114,6 +125,54 @@ public class SamtykkeService
                 .Get()).Models;
         }
         catch (Exception ex) { _log.LogError(ex, "Henting av samtykke feilet"); return new(); }
+    }
+
+    // ---- Admin-godkjenning (fireøyne): to ulike admins → gyldig samtykke ----
+    private static readonly List<SamtykkeGodkjenning> _godkjStaging = new();
+
+    /// <summary>Admin-godkjenninger av samtykke på et kundekort.</summary>
+    public async Task<List<SamtykkeGodkjenning>> GodkjenningerAsync(Guid kundekortId)
+    {
+        if (!IsConfigured) return _godkjStaging.Where(x => x.KundekortId == kundekortId).ToList();
+        try
+        {
+            await EnsureInitAsync();
+            return (await _client.From<SamtykkeGodkjenning>().Where(x => x.KundekortId == kundekortId).Get()).Models;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av samtykke-godkjenninger feilet"); return new(); }
+    }
+
+    /// <summary>Registrer denne adminens godkjenning (fireøyne). Når TO ULIKE admins har godkjent,
+    /// opprettes et gyldig samtykke (kilde «Admin dobbeltgodkjenning»). Returnerer distinkte
+    /// godkjennere, om det nettopp ble aktivert, og full liste.</summary>
+    public async Task<(int antall, bool aktivertNaa, List<SamtykkeGodkjenning> godkjenninger)> AdminGodkjennAsync(
+        Guid kundekortId, string adminEpost, string? adminNavn)
+    {
+        adminEpost = (adminEpost ?? "").Trim();
+        if (kundekortId == Guid.Empty || string.IsNullOrWhiteSpace(adminEpost))
+            return (0, false, new());
+
+        var eksisterende = await GodkjenningerAsync(kundekortId);
+        var alleredeGodkjent = eksisterende.Any(g => string.Equals(g.GodkjentAv, adminEpost, StringComparison.OrdinalIgnoreCase));
+
+        if (!alleredeGodkjent)
+        {
+            var ny = new SamtykkeGodkjenning { KundekortId = kundekortId, GodkjentAv = adminEpost, GodkjentNavn = adminNavn, GodkjentAt = DateTime.UtcNow };
+            if (!IsConfigured) { ny.Id = Guid.NewGuid(); _godkjStaging.Insert(0, ny); }
+            else { try { await EnsureInitAsync(); await _client.From<SamtykkeGodkjenning>().Insert(ny); } catch (Exception ex) { _log.LogError(ex, "Lagring av admin-godkjenning feilet"); } }
+            eksisterende = await GodkjenningerAsync(kundekortId);
+        }
+
+        var distinkte = eksisterende.Select(g => g.GodkjentAv.Trim().ToLowerInvariant()).Distinct().Count();
+
+        // To ulike admins → opprett gyldig samtykke (hvis ikke allerede gyldig).
+        var aktivertNaa = false;
+        if (distinkte >= 2 && !await HarGyldigAsync(kundekortId, FormaalKreditt))
+        {
+            await RegistrerAsync(kundekortId, FormaalKreditt, "Admin dobbeltgodkjenning", tekstversjon: SamtykketekstVersjon);
+            aktivertNaa = true;
+        }
+        return (distinkte, aktivertNaa, eksisterende);
     }
 
     private async Task EnsureInitAsync()
