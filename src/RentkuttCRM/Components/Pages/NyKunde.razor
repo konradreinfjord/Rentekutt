@@ -742,20 +742,27 @@
     </div>
 </div>
 
-@* Koder & metadata (fylles vanligvis automatisk fra søknad) *@
+@* Koder & metadata — sammenleggbart, skjult som standard (teknisk feilsøking, ikke daglig bruk) *@
 <div class="form-card">
-    <h2>Koder & metadata <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(fylles vanligvis automatisk fra søknad)</span></h2>
-    <div class="form-grid">
-        <div class="ff"><label>Skjema-versjon</label><input type="number" @bind="_k.SkjemaVersjon" /></div>
-        <div class="ff"><label>Tjeneste-kode</label><input @bind="_k.TjenesteKode" /></div>
-        <div class="ff"><label>Låneformål-kode</label><input @bind="_k.LaaneformalKode" /></div>
-        <div class="ff"><label>Statsborgerskap-kode</label><input @bind="_k.StatsborgerskapKode" /></div>
-        <div class="ff"><label>Sivilstatus-kode</label><input @bind="_k.SivilstatusKode" /></div>
-        <div class="ff"><label>Boforhold-kode</label><input @bind="_k.BoforholdKode" /></div>
-        <div class="ff"><label>Arbeidssituasjon-kode</label><input @bind="_k.ArbeidssituasjonKode" /></div>
-        <div class="ff"><label>Utdanning-kode</label><input @bind="_k.UtdanningKode" /></div>
-        <div class="ff"><label>Medsøker arbeidssituasjon-kode</label><input @bind="_k.MedsokerArbeidssituasjonKode" /></div>
-    </div>
+    <h2 style="display:flex; align-items:center; gap:10px; cursor:pointer; margin:0" @onclick="() => _visKoder = !_visKoder">
+        <span style="font-size:12px; width:14px; display:inline-block">@(_visKoder ? "▾" : "▸")</span>
+        Koder &amp; metadata
+        <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(fylles automatisk fra søknad — for feilsøking)</span>
+    </h2>
+    @if (_visKoder)
+    {
+        <div class="form-grid" style="margin-top:12px">
+            <div class="ff"><label>Skjema-versjon</label><input type="number" @bind="_k.SkjemaVersjon" /></div>
+            <div class="ff"><label>Tjeneste-kode</label><input @bind="_k.TjenesteKode" /></div>
+            <div class="ff"><label>Låneformål-kode</label><input @bind="_k.LaaneformalKode" /></div>
+            <div class="ff"><label>Statsborgerskap-kode</label><input @bind="_k.StatsborgerskapKode" /></div>
+            <div class="ff"><label>Sivilstatus-kode</label><input @bind="_k.SivilstatusKode" /></div>
+            <div class="ff"><label>Boforhold-kode</label><input @bind="_k.BoforholdKode" /></div>
+            <div class="ff"><label>Arbeidssituasjon-kode</label><input @bind="_k.ArbeidssituasjonKode" /></div>
+            <div class="ff"><label>Utdanning-kode</label><input @bind="_k.UtdanningKode" /></div>
+            <div class="ff"><label>Medsøker arbeidssituasjon-kode</label><input @bind="_k.MedsokerArbeidssituasjonKode" /></div>
+        </div>
+    }
 </div>
 </div>@* /kort-felter *@
 
@@ -1032,6 +1039,7 @@
 
     // ---- Interne faner ----
     private string _fane = "oversikt";
+    private bool _visKoder;   // «Koder & metadata» — skjult som standard, sammenleggbart
     private List<Rutingsregel> _regler = new();
     private static readonly string[] FlytSteg = { "Åpen", "Pågår", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt" };
 
