@@ -516,9 +516,15 @@ ConnectionStrings__Postgres = &lt;session pooler-streng&gt;</pre>
         <WebhookWidget Hook="_webhookPrismatch" Url="@WebhookUrl" Name="@WebhookService.PrismatchName" />
         <div class="section" style="margin:18px 0 6px">
             <h2 style="font-size:15px">Vipps-bekreftelse (påbegynt søknad)</h2>
-            <p class="page-sub" style="margin:-2px 0 0">Egen Rentekutt-kanal som kun mottar Vipps/BankID-bekreftelser. Oppretter et utkast med status «Påbegynt søknad» som kompletteres når søknadsskjemaet kommer inn (match på mobil → e-post → navn).</p>
+            <p class="page-sub" style="margin:-2px 0 0">Egen Rentekutt-kanal som kun mottar Vipps-bekreftelser. Oppretter et utkast med status «Påbegynt søknad» som kompletteres når søknadsskjemaet kommer inn (match på mobil → e-post → navn).</p>
         </div>
         <WebhookWidget Hook="_webhookVipps" Url="@WebhookUrlVipps" Name="@WebhookService.VippsName" ErVipps="true" />
+
+        <div class="section" style="margin:18px 0 6px">
+            <h2 style="font-size:15px">Bank ID (påbegynt søknad)</h2>
+            <p class="page-sub" style="margin:-2px 0 0">Egen Rentekutt-kanal som kun mottar BankID-bekreftelser. Oppretter et utkast med status «Påbegynt søknad» som kompletteres/matches når søknadsskjemaet kommer inn (match på mobil → e-post → navn).</p>
+        </div>
+        <WebhookWidget Hook="_webhookBankId" Url="@WebhookUrlBankId" Name="@WebhookService.BankIdName" ErVipps="true" />
 
         <div class="form-card" style="margin-top:16px">
             <div style="display:flex; justify-content:space-between; align-items:center">
@@ -1463,8 +1469,9 @@ else if (_active == "GDPR")
         var webhookTask = Webhooks.GetInboundAsync();
         var webhookPrismatchTask = Webhooks.GetByNameAsync(WebhookService.PrismatchName);
         var webhookVippsTask = Webhooks.GetByNameAsync(WebhookService.VippsName);
+        var webhookBankIdTask = Webhooks.GetByNameAsync(WebhookService.BankIdName);
         var eventsTask = Events.ListAsync(100);
-        await Task.WhenAll(usersTask, banksTask, produktTask, webhookTask, webhookPrismatchTask, webhookVippsTask, eventsTask);
+        await Task.WhenAll(usersTask, banksTask, produktTask, webhookTask, webhookPrismatchTask, webhookVippsTask, webhookBankIdTask, eventsTask);
         _userRows = usersTask.Result;
         _banks = banksTask.Result;
         _produkter = produktTask.Result;
@@ -1478,7 +1485,8 @@ else if (_active == "GDPR")
         _webhook = webhookTask.Result;
         _webhookPrismatch = webhookPrismatchTask.Result;
         _webhookVipps = webhookVippsTask.Result;
-        _inboundWebhooks = new[] { _webhook, _webhookPrismatch, _webhookVipps }.Where(w => w is not null).Select(w => w!).ToList();
+        _webhookBankId = webhookBankIdTask.Result;
+        _inboundWebhooks = new[] { _webhook, _webhookPrismatch, _webhookVipps, _webhookBankId }.Where(w => w is not null).Select(w => w!).ToList();
         _events = eventsTask.Result;
         await SjekkTilkoblingerAsync();   // live-test API + direkte Postgres, alarm ved manglende kontakt
         // Innstillingene deler én cachet bulk-henting (første kall laster alt).
@@ -1598,10 +1606,12 @@ else if (_active == "GDPR")
     private Webhook? _webhook;
     private Webhook? _webhookPrismatch;
     private Webhook? _webhookVipps;
+    private Webhook? _webhookBankId;
     private List<Webhook> _inboundWebhooks = new();
     private List<Hendelse> _events = new();
     private string WebhookUrl => $"{Nav.BaseUri}api/webhook/soknad";
     private string WebhookUrlVipps => $"{Nav.BaseUri}api/webhook/vipps";
+    private string WebhookUrlBankId => $"{Nav.BaseUri}api/webhook/bankid";
 
     private bool _visPayloads;
     private bool _payloadsLaster;

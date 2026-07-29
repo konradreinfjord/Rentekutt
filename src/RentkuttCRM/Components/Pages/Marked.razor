@@ -54,7 +54,7 @@
 </div>
 
 <div class="db-toolbar">
-    <button class="btn-add" title="Opprett kunde" @onclick='() => Nav.NavigateTo("/crm/ny-kunde")'>+</button>
+    <button class="btn-add" title="@(ErBedrift ? "Opprett bedriftskunde" : "Opprett privatkunde")" @onclick='() => Nav.NavigateTo($"/crm/ny-kunde?type={KundeType}")'>+</button>
     <input class="db-search" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" placeholder="Søk — navn, bank, kommune, adresse, postnr, telefon …" />
     <select class="db-select" @bind="_statusFilter" @bind:after="ResetPage">
         <option value="">Alle statuser</option>
@@ -408,7 +408,7 @@ else
 
     private static string StatusKlasse(string s) => s switch
     {
-        "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
+        "Nytt lead" => "st-nytt", "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
         "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
         "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
     };

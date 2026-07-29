@@ -7,7 +7,9 @@ namespace RentkuttCRM.Services;
 public class KundekortService
 {
     public static readonly string[] Statuser =
-        { "Påbegynt søknad", "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+        { "Nytt lead", "Påbegynt søknad", "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+    /// <summary>Nytt, ueid lead (f.eks. fra Prismatch) som ikke er plukket/behandlet ennå.</summary>
+    public const string StatusNyttLead = "Nytt lead";
     /// <summary>Utkast opprettet fra Vipps/BankID-bekreftelse, før kunden har fullført skjemaet.</summary>
     public const string StatusPaabegynt = "Påbegynt søknad";
     public const string StatusAapen = "Åpen";
@@ -28,6 +30,7 @@ public class KundekortService
     /// ble fastslått): BankID (høyest), Vipps, eller Skjema (kunden oppga selv i skjema).</summary>
     public static readonly string[] FnrKilder = { "BankID", "Vipps", "Skjema" };
     public const string FnrKildeVipps = "Vipps";
+    public const string FnrKildeBankId = "BankID";
     public const string FnrKildeSkjema = "Skjema";
 
     /// <summary>Rettslig grunnlag (GDPR art. 6). «Samtykke» er standard for innkommende leads.</summary>

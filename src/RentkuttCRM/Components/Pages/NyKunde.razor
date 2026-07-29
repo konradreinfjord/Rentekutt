@@ -796,6 +796,8 @@
 
 @code {
     [SupplyParameterFromQuery] public string? Id { get; set; }
+    /// <summary>Kundetype for et NYTT lead — «B2B» fra bedriftsmarked, ellers B2C. Ignoreres ved redigering.</summary>
+    [SupplyParameterFromQuery(Name = "type")] public string? Type { get; set; }
 
     private Kundekort _k = new();
     private bool _isEdit;
@@ -831,6 +833,7 @@
     // Farge på status-chip i topp-kortet.
     private static string StatusFarge(string? s) => s switch
     {
+        "Nytt lead" => "#0891b2",
         "Fullført og utbetalt" => "#2f8a3e",
         "Sendt bank" => "#2f8a3e",
         "Tilbud utsendt" => "#1f5fc4",
@@ -964,6 +967,11 @@
             _oppfolginger = await Oppf.ForKundekortAsync(_k.Id);
             // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
             await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");
+        }
+        else
+        {
+            // Nytt lead: sett kundetype fra markedet det opprettes i (B2B fra bedriftsmarked, ellers B2C).
+            _k.KundeType = string.Equals(Type, "B2B", StringComparison.OrdinalIgnoreCase) ? "B2B" : "B2C";
         }
     }
 

@@ -93,11 +93,10 @@ public class WebhookController : ControllerBase
                 var k = MapFlexible(flat);
                 k.Kilde = KildeLabel(hook.Name);
 
-                // Prismatch-leads er forenklede (kontakt + grunnleggende lånedata) uten samtykke til
-                // gjeldsregister/kredittsjekk og uten 2FA-signering. De er derfor et PÅBEGYNT lead som
-                // ikke er komplett — settes i status «Påbegynt søknad» til kunden fullfører på rentekutt.no.
+                // Prismatch-leads er forenklede, ueide leads (kontakt + grunnleggende lånedata) uten
+                // samtykke/2FA. De settes i status «Nytt lead» til en rådgiver plukker dem.
                 if (hook.Name == WebhookService.PrismatchName)
-                    k.Status = KundekortService.StatusPaabegynt;
+                    k.Status = KundekortService.StatusNyttLead;
 
                 // MOD11-sjekk ved mottak brukes KUN til å flagge — vi avviser ALDRI leadet på grunn av
                 // fødselsnummeret, så ingen søknad går tapt. Fnr lagres uansett som det er; bank-sending
@@ -203,16 +202,31 @@ public class WebhookController : ControllerBase
     /// </summary>
     [HttpPost("vipps")]
     [EnableRateLimiting("webhook")]
-    public async Task<IActionResult> Vipps([FromBody] JsonElement body)
+    public Task<IActionResult> Vipps([FromBody] JsonElement body)
+        => HandleBekreftelseAsync(body, WebhookService.VippsName, "Vipps", KundekortService.FnrKildeVipps, "Vipps 2FA");
+
+    /// <summary>
+    /// BankID-bekreftelse. Samme oppbygning som Vipps: kunden autentiserer seg med BankID, det
+    /// opprettes et utkast (status «Påbegynt søknad») med navn/mobil/e-post (+ ev. fnr fra BankID).
+    /// Kompletteres/matches når selve søknadsskjemaet kommer inn på /soknad (mobil → e-post).
+    /// Egen kanal/token/URL — aksepterer KUN BankID-webhooken.
+    /// </summary>
+    [HttpPost("bankid")]
+    [EnableRateLimiting("webhook")]
+    public Task<IActionResult> BankId([FromBody] JsonElement body)
+        => HandleBekreftelseAsync(body, WebhookService.BankIdName, "BankID", KundekortService.FnrKildeBankId, "BankID 2FA");
+
+    /// <summary>Felles behandling for Vipps- og BankID-bekreftelser (påbegynt søknad + samtykke via 2FA).</summary>
+    private async Task<IActionResult> HandleBekreftelseAsync(JsonElement body, string webhookNavn, string kildeLabel, string fnrKilde, string samtykkeKilde)
     {
         if (!Request.IsHttps && !_env.IsDevelopment())
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "HTTPS påkrevd." });
 
         var token = ExtractToken();
         var hook = await _hooks.ValidateTokenAsync(token);
-        if (hook is null || hook.Name != WebhookService.VippsName)
+        if (hook is null || hook.Name != webhookNavn)
         {
-            _log.LogWarning("Vipps-webhook avvist: ugyldig/manglende token fra {IP}", HttpContext.Connection.RemoteIpAddress);
+            _log.LogWarning("{Kilde}-webhook avvist: ugyldig/manglende token fra {IP}", kildeLabel, HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { error = "Ugyldig token." });
         }
 
@@ -226,51 +240,49 @@ public class WebhookController : ControllerBase
         Guid? id = null;
         try
         {
-            // Robust: tåler at Vipps sender ett objekt eller en liste; ta første objekt.
+            // Robust: tåler ett objekt eller en liste; ta første objekt.
             var el = body.ValueKind == JsonValueKind.Array ? body.EnumerateArray().FirstOrDefault() : body;
             var flat = Flatten(el);
             var k = MapVipps(flat);
-            // Søknaden opprettes via Vipps-webhook (status «Påbegynt søknad») → kunden er autentisert
-            // med Vipps og 2FA. Vipps-autentiseringen ER samtykkegrunnlaget for gjeldsregister/kredittsjekk,
-            // så samtykke settes alltid — uavhengig av payload-flagget.
+            k.FnrKilde = fnrKilde;
+            // Autentisert med Vipps/BankID + 2FA → autentiseringen ER samtykkegrunnlaget for
+            // gjeldsregister/kredittsjekk, så samtykke settes alltid (uavhengig av payload-flagget).
             k.SamtykkeGjeldsregisterKredittsjekk = true;
-            // Vipps subjekt-/sesjons-ID for revisjonssporet (ingen fnr).
-            var vippsRef = Get(flat, "ordernumber", "sub", "subject", "sessionid", "session_id", "sid", "referanse") ?? "—";
+            // Subjekt-/sesjons-ID for revisjonssporet (ingen fnr).
+            var sesjonsRef = Get(flat, "ordernumber", "sub", "subject", "sessionid", "session_id", "sid", "referanse") ?? "—";
             if (string.IsNullOrWhiteSpace(k.Mobilnummer) && string.IsNullOrWhiteSpace(k.Epost) && string.IsNullOrWhiteSpace(k.FulltNavn))
             {
-                feil = "Vipps-bekreftelsen mangler både mobil, e-post og navn — kan verken opprette eller matche.";
+                feil = $"{kildeLabel}-bekreftelsen mangler både mobil, e-post og navn — kan verken opprette eller matche.";
             }
             else
             {
-                var (ok, error) = await _kundekort.SaveAsync(k, aktor: "Vipps");
+                var (ok, error) = await _kundekort.SaveAsync(k, aktor: kildeLabel);
                 if (!ok) feil = error ?? "Lagring av utkast feilet.";
                 else
                 {
                     id = k.Id;
-                    // Alltid gyldig samtykke for Vipps-utkast — Vipps + 2FA er samtykkegrunnlaget.
                     if (k.Id != Guid.Empty)
-                        await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, "Vipps 2FA", tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
-                    // Revisjonsspor: knytt Vipps-sesjonen til saken ved opprettelse (ingen fnr i teksten).
-                    await _logg.LoggAsync(k.Id, "Vipps",
-                        $"Påbegynt søknad opprettet via Vipps-autentisering — subjekt/sesjon: {vippsRef}", kategori: "kobling");
-                    await _hooks.RecordReceiptAsync(hook, "Vipps-bekreftelse (påbegynt søknad)");
-                    await _events.LogAsync("Vipps", "Påbegynt søknad opprettet fra Vipps-bekreftelse", hook.Name);
+                        await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, samtykkeKilde, tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
+                    await _logg.LoggAsync(k.Id, kildeLabel,
+                        $"Påbegynt søknad opprettet via {kildeLabel}-autentisering — subjekt/sesjon: {sesjonsRef}", kategori: "kobling");
+                    await _hooks.RecordReceiptAsync(hook, $"{kildeLabel}-bekreftelse (påbegynt søknad)");
+                    await _events.LogAsync(kildeLabel, $"Påbegynt søknad opprettet fra {kildeLabel}-bekreftelse", hook.Name);
                 }
             }
         }
         catch (Exception ex)
         {
             feil = ex.Message;
-            _log.LogError(ex, "Vipps-behandling feilet");
+            _log.LogError(ex, "{Kilde}-behandling feilet", kildeLabel);
         }
 
         await _payloads.LagreAsync(hook.Name, raw, feil is null, feil, id);
         if (feil is not null)
         {
             var naa = DateTime.UtcNow.TilOslo().ToString("dd.MM.yyyy HH:mm:ss");
-            await _alarm.RaiseAsync("API", "API-feil ved Vipps-bekreftelse",
+            await _alarm.RaiseAsync("API", $"API-feil ved {kildeLabel}-bekreftelse",
                 $"Tidspunkt: {naa}. {feil} — full payload i Admin → Kanaler.",
-                AlarmService.Alvorlighet.Kritisk, "API", "api-feil-vipps");
+                AlarmService.Alvorlighet.Kritisk, "API", $"api-feil-{kildeLabel.ToLowerInvariant()}");
             return StatusCode(StatusCodes.Status422UnprocessableEntity, new { error = feil });
         }
         return Ok(new { status = "påbegynt", id });
