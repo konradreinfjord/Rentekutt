@@ -431,6 +431,37 @@
     <div class="felt-laas-hint"><span class="auto-lagret @(_autoOk ? "ok" : "err")">@_autoMsg</span></div>
 }
 
+@* Firma (bedrift) — øverst for B2B. Orgnr som identifikator + kontaktperson/signer. *@
+@if (_k.KundeType == "B2B")
+{
+    <div class="form-card">
+        <h2>Firma</h2>
+        <h3 style="margin:6px 0 8px; font-size:13px">Firmaopplysninger</h3>
+        <div class="form-grid">
+            <div class="ff wide"><label>Firmanavn</label><input @bind="_k.FulltNavn" placeholder="Selskapets navn" /></div>
+            <div class="ff"><label>Organisasjonsnummer</label><input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" /></div>
+            <div class="ff wide"><label>Forretningsadresse</label><input @bind="_k.Adresse" /></div>
+            <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
+            <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
+            <div class="ff"><label>Kommune</label><input @bind="_k.Kommune" /></div>
+        </div>
+
+        <h3 style="margin:14px 0 8px; font-size:13px">Kontaktperson / signer</h3>
+        <div class="form-grid">
+            <div class="ff wide"><label>Kontaktperson (navn)</label><input @bind="_k.KontaktpersonNavn" placeholder="Personen bak firmaet" /></div>
+            <div class="ff"><label>Fødselsnummer (signer)</label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
+            <div class="ff"><label>Kilde fnr (sikkerhetsnivå)</label>
+                <select @bind="_k.FnrKilde">
+                    <option value="">— ukjent —</option>
+                    @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
+                </select>
+            </div>
+            <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
+            <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
+        </div>
+    </div>
+}
+
 @* Bedriftslån — B2B-spesifikke felt (Instabank company loan 2001). Vises KUN for bedriftskunder. *@
 @if (_k.KundeType == "B2B")
 {
@@ -543,39 +574,9 @@
     </div>
 </div>
 
-@if (_k.KundeType == "B2B")
+@if (_k.KundeType != "B2B")
 {
-    @* Firma (bedrift) — erstatter «Søker». Orgnr som identifikator + kontaktperson/signer. *@
-    <div class="form-card">
-        <h2>Firma</h2>
-        <h3 style="margin:6px 0 8px; font-size:13px">Firmaopplysninger</h3>
-        <div class="form-grid">
-            <div class="ff wide"><label>Firmanavn</label><input @bind="_k.FulltNavn" placeholder="Selskapets navn" /></div>
-            <div class="ff"><label>Organisasjonsnummer</label><input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" /></div>
-            <div class="ff wide"><label>Forretningsadresse</label><input @bind="_k.Adresse" /></div>
-            <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
-            <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
-            <div class="ff"><label>Kommune</label><input @bind="_k.Kommune" /></div>
-        </div>
-
-        <h3 style="margin:14px 0 8px; font-size:13px">Kontaktperson / signer</h3>
-        <div class="form-grid">
-            <div class="ff wide"><label>Kontaktperson (navn)</label><input @bind="_k.KontaktpersonNavn" placeholder="Personen bak firmaet" /></div>
-            <div class="ff"><label>Fødselsnummer (signer)</label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
-            <div class="ff"><label>Kilde fnr (sikkerhetsnivå)</label>
-                <select @bind="_k.FnrKilde">
-                    <option value="">— ukjent —</option>
-                    @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
-                </select>
-            </div>
-            <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
-            <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
-        </div>
-    </div>
-}
-else
-{
-    @* A. Søker (privat) *@
+    @* A. Søker (privat) — Firma-widgeten vises i stedet øverst for B2B. *@
     <div class="form-card">
         <h2>A · Søker</h2>
         <div class="form-grid">
