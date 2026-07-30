@@ -100,10 +100,12 @@ public class GjeldsregisterService
     /// med brukernavn/passord). Returnerer (token, feil). Standardmønster — bekreftes mot partner-doc.</summary>
     private async Task<(string? token, string? feil)> HentTokenAsync()
     {
+        if (!Uri.TryCreate(TokenUrl?.Trim(), UriKind.Absolute, out var tokenUri) || tokenUri.Scheme != Uri.UriSchemeHttps)
+            return (null, $"Gjeldsregisteret__TokenUrl er ikke en gyldig absolutt https-URL (fikk: «{TokenUrl}»). Rett verdien, eller la den stå tom for Basic auth.");
         try
         {
             var http = _httpFactory.CreateClient();
-            var req = new HttpRequestMessage(HttpMethod.Post, TokenUrl);
+            var req = new HttpRequestMessage(HttpMethod.Post, tokenUri);
             var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{ClientId}:{ClientSecret}"));
             req.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
             req.Content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -147,10 +149,15 @@ public class GjeldsregisterService
         }
 
         var pingUrl = BaseUrl!.TrimEnd('/') + "/ping/hello";
+        if (!Uri.TryCreate(pingUrl, UriKind.Absolute, out var pingUri) || pingUri.Scheme != Uri.UriSchemeHttps)
+        {
+            sb.AppendLine($"Gjeldsregisteret__BaseUrl er ikke en gyldig absolutt https-URL (fikk: «{BaseUrl}»).");
+            return (false, sb.ToString());
+        }
         try
         {
             var http = _httpFactory.CreateClient();
-            var req = new HttpRequestMessage(HttpMethod.Get, pingUrl);
+            var req = new HttpRequestMessage(HttpMethod.Get, pingUri);
             req.Headers.Authorization = auth;
             using var resp = await http.SendAsync(req);
             var body = await resp.Content.ReadAsStringAsync();
