@@ -831,12 +831,12 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
             <div class="kv-list" style="margin-bottom:16px">
                 <span class="k">Søkeavtale</span>
                 <span class="v">Signert ✓</span>
-                <span class="k">Virksomhetssertifikat (mTLS)</span>
-                <span class="v">@(_grKonfigurert ? "Lastet ✓" : "Venter på sertifikat — sett Gjeldsregisteret__CertPath/CertPassword")</span>
+                <span class="k">OAuth2-legitimasjon</span>
+                <span class="v">@(_grKonfigurert ? "Satt ✓" : "Mangler — sett Gjeldsregisteret__TokenUrl/BaseUrl/ClientId/ClientSecret/Username/Password")</span>
                 <span class="k">Miljø</span>
                 <span class="v">@(_grMiljo == "prod" ? "Produksjon" : "Test")</span>
                 <span class="k">Base-URL</span>
-                <span class="v mono">@_grBaseUrl</span>
+                <span class="v mono">@(string.IsNullOrWhiteSpace(_grBaseUrl) ? "—" : _grBaseUrl)</span>
                 <span class="k">Samtykke-sperre</span>
                 <span class="v">Oppslag krever gyldig 2FA-samtykke på kundekortet (teknisk barriere)</span>
             </div>
@@ -857,10 +857,15 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
                         <button class="@(_grMiljo == "prod" ? "active" : "")" @onclick='() => SettGjeldMiljo("prod")'>Produksjon</button>
                     </div>
                 </div>
+                <button class="btn-primary rb-add" @onclick="TestGjeld" disabled="@_grTester">@(_grTester ? "Tester…" : "Test tilkobling")</button>
             </div>
+            @if (!string.IsNullOrEmpty(_grTestResultat))
+            {
+                <pre class="code-block" style="margin:0 0 16px; white-space:pre-wrap; max-height:260px; overflow:auto; border-left:3px solid @(_grTestOk ? "var(--green,#16a34a)" : "var(--danger,#b42318)")">@_grTestResultat</pre>
+            }
             @if (!_grKonfigurert)
             {
-                <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:var(--danger, #b42318)">Venter på virksomhetssertifikat. Oppslag er klart til å aktiveres så snart sertifikatet er lagt inn i Azure.</p>
+                <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:var(--danger, #b42318)">Mangler konfigurasjon — sett minst BaseUrl + Username + Password i Azure.</p>
             }
 
             <h3 class="ww-h">Rate-grenser</h3>
@@ -872,10 +877,14 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
             <p class="page-sub" style="margin:0 0 16px; font-size:12px">0 = ingen grense. @(string.IsNullOrEmpty(_grGrenseMsg) ? "" : _grGrenseMsg)</p>
 
             <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
-            <pre class="code-block">Gjeldsregisteret__ApiUrlTest    = &lt;test-endepunkt, standard https://ws-test.infotorg.no&gt;
-Gjeldsregisteret__ApiUrlProd    = &lt;prod-endepunkt, standard https://ws.infotorg.no&gt;
-Gjeldsregisteret__CertBase64    = &lt;Buypass-sertifikatet (.p12) base64-kodet&gt;
-Gjeldsregisteret__CertPassword  = &lt;sertifikatpassord&gt;</pre>
+            <pre class="code-block">Gjeldsregisteret__TokenUrl      = &lt;OAuth2 token-endepunkt&gt;
+Gjeldsregisteret__BaseUrl       = &lt;API-base for oppslaget&gt;
+Gjeldsregisteret__ClientId      = &lt;client-id&gt;
+Gjeldsregisteret__ClientSecret  = &lt;client-secret&gt;
+Gjeldsregisteret__Username      = &lt;partner-brukernavn&gt;
+Gjeldsregisteret__Password      = &lt;partner-passord&gt;
+
+# Samtykkebasert innsynstjeneste (OAuth2) — ikke sertifikat/mTLS.</pre>
             <p class="page-sub" style="margin:12px 0 0; font-size:12px">
                 🔒 Autentisering er mutual-TLS (sertifikat), ikke passord/token. Miljø og på/av lagres i innstillinger; sertifikat leses kun fra server-config.
                 Oppslag skjer <strong>kun</strong> på fnr fra kundekort med gyldig 2FA-samtykke — ellers avvises og logges det.
@@ -1509,7 +1518,7 @@ else if (_active == "GDPR")
         _grEnabled = await Gjeld.AktivertAsync();
         _grMiljo = await Gjeld.MiljoAsync();
         _grKonfigurert = Gjeld.ErKonfigurert;
-        _grBaseUrl = Gjeld.BaseUrl(_grMiljo);
+        _grBaseUrl = Gjeld.BaseUrl ?? "";
         _grMaxTime = await Gjeld.MaxPerTimeAsync();
         _grMaxDogn = await Gjeld.MaxPerDognAsync();
         _sisteSendinger = await BankSending.SisteAsync(25);
@@ -1778,6 +1787,17 @@ else if (_active == "GDPR")
     private int _grMaxTime = GjeldsregisterService.StandardMaxTime;
     private int _grMaxDogn = GjeldsregisterService.StandardMaxDogn;
     private string? _grGrenseMsg;
+    private bool _grTester;
+    private bool _grTestOk;
+    private string? _grTestResultat;
+
+    private async Task TestGjeld()
+    {
+        _grTester = true; _grTestResultat = null;
+        var (ok, detalj) = await Gjeld.TestTilkoblingAsync();
+        _grTestOk = ok; _grTestResultat = detalj;
+        _grTester = false;
+    }
 
     private async Task SettGjeldAktivert(bool paa)
     {
@@ -1797,7 +1817,7 @@ else if (_active == "GDPR")
     {
         _grMiljo = env;
         await Gjeld.SettMiljoAsync(env);
-        _grBaseUrl = Gjeld.BaseUrl(env);
+        _grBaseUrl = Gjeld.BaseUrl ?? "";
     }
 
     // Siste søknader sendt til bank.
