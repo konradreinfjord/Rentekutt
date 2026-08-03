@@ -415,7 +415,7 @@ else
 
     // ---- Opprettet-dato ----
     private static string OpprettetTekst(DateTime created)
-        => created == default ? "—" : created.TilOslo().ToString("dd.MM.yyyy");
+        => created == default ? "—" : created.TilOslo().ToString("dd.MM.yyyy HH:mm");
     private static string OpprettetTittel(DateTime created)
         => created == default ? "" : created.TilOslo().ToString("dd.MM.yyyy HH:mm");
 
