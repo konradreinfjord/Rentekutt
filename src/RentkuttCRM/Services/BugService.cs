@@ -18,6 +18,17 @@ public class Bug : BaseModel
     [Column("info_fra_ks")] public string? InfoFraKs { get; set; }
 }
 
+/// <summary>Bildevedlegg til én bug-sak (én rad per bug). Bildet ligger som data:-URL i <see cref="Data"/>.</summary>
+[Table("bug_bilde")]
+public class BugBilde : BaseModel
+{
+    [PrimaryKey("bug_id", true)] public Guid BugId { get; set; }
+    [Column("data")] public string Data { get; set; } = "";
+    [Column("navn")] public string? Navn { get; set; }
+    [Column("type")] public string? Type { get; set; }
+    [Column("opprettet_at", ignoreOnInsert: true, ignoreOnUpdate: true)] public DateTime OpprettetAt { get; set; }
+}
+
 /// <summary>Tjenestelag for Bugs-fanen. Ingen forretningslogikk utover trimming og null-håndtering.</summary>
 public class BugService
 {
@@ -55,6 +66,7 @@ public class BugService
     private readonly ILogger<BugService> _log;
     public bool IsConfigured { get; }
     private static readonly List<Bug> _staging = new();
+    private static readonly Dictionary<Guid, BugBilde> _bildeStaging = new();
 
     public BugService(Supabase.Client client, IConfiguration cfg, ILogger<BugService> log)
     {
@@ -81,6 +93,49 @@ public class BugService
             catch (Exception ex) { _log.LogWarning(ex, "Henting av bugs feilet"); return new(); }
         }
         return alle.OrderBy(b => SortRang(b.Status)).ThenByDescending(b => b.OpprettetAt).ToList();
+    }
+
+    /// <summary>Lett oppslag: id-ene til saker som har et bildevedlegg (henter kun nøkkelen, ikke selve
+    /// bildet, så bug-lista holder seg lett). Tåler at bug_bilde-tabellen ennå ikke finnes.</summary>
+    public async Task<HashSet<Guid>> HentBildeIderAsync()
+    {
+        if (!IsConfigured) return _bildeStaging.Keys.ToHashSet();
+        try
+        {
+            return (await _client.From<BugBilde>().Select("bug_id").Get()).Models.Select(x => x.BugId).ToHashSet();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Oppslag av bilde-id-er feilet"); return new(); }
+    }
+
+    /// <summary>Lagrer (eller erstatter) bildevedlegget for en sak. <paramref name="dataUrl"/> er en data:-URL.</summary>
+    public async Task LastOppBildeAsync(Guid bugId, string dataUrl, string? navn, string? type)
+    {
+        if (!IsConfigured)
+        {
+            _bildeStaging[bugId] = new BugBilde { BugId = bugId, Data = dataUrl, Navn = navn, Type = type, OpprettetAt = DateTime.UtcNow };
+            return;
+        }
+        try
+        {
+            // Én rad per bug (PK = bug_id): fjern ev. eksisterende og sett inn på nytt.
+            await _client.From<BugBilde>().Where(x => x.BugId == bugId).Delete();
+            await _client.From<BugBilde>().Insert(new BugBilde { BugId = bugId, Data = dataUrl, Navn = navn, Type = type });
+        }
+        catch (Exception ex) { _log.LogError(ex, "Opplasting av bug-bilde feilet"); }
+    }
+
+    public async Task<BugBilde?> HentBildeAsync(Guid bugId)
+    {
+        if (!IsConfigured) return _bildeStaging.TryGetValue(bugId, out var s) ? s : null;
+        try { return (await _client.From<BugBilde>().Where(x => x.BugId == bugId).Get()).Models.FirstOrDefault(); }
+        catch (Exception ex) { _log.LogError(ex, "Henting av bug-bilde feilet"); return null; }
+    }
+
+    public async Task SlettBildeAsync(Guid bugId)
+    {
+        if (!IsConfigured) { _bildeStaging.Remove(bugId); return; }
+        try { await _client.From<BugBilde>().Where(x => x.BugId == bugId).Delete(); }
+        catch (Exception ex) { _log.LogError(ex, "Sletting av bug-bilde feilet"); }
     }
 
     public async Task<Bug?> OpprettBugAsync(string? kategori, string beskrivelse, string? opprettetAv)
@@ -123,7 +178,8 @@ public class BugService
 
     public async Task SlettBugAsync(Guid id)
     {
-        if (!IsConfigured) { _staging.RemoveAll(x => x.Id == id); return; }
+        if (!IsConfigured) { _staging.RemoveAll(x => x.Id == id); _bildeStaging.Remove(id); return; }
+        // I DB rydder «on delete cascade» bug_bilde automatisk.
         try { await _client.From<Bug>().Where(x => x.Id == id).Delete(); }
         catch (Exception ex) { _log.LogError(ex, "Sletting av bug feilet"); }
     }

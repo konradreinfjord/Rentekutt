@@ -65,6 +65,11 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents(o => o.DetailedErrors = builder.Environment.IsDevelopment());
 
+// Hev SignalR-meldingsgrensen for Blazor-circuiten fra standarden på 32 KB slik at
+// bildeopplasting via <InputFile> (bug-vedlegg) ikke sprenger grensen. 10 MB gir god
+// margin for skjermbilder; selve filstørrelsen valideres i tillegg i UI (maks 6 MB).
+builder.Services.Configure<Microsoft.AspNetCore.SignalR.HubOptions>(o => o.MaximumReceiveMessageSize = 10 * 1024 * 1024);
+
 // Innloggings-tilstand per økt (staging).
 builder.Services.AddScoped<SessionState>();
 

@@ -20,9 +20,27 @@
         </div>
         <div class="rb-field" style="flex:1; min-width:240px">
             <label>Beskrivelse</label>
-            <textarea class="rb-input" rows="2" @bind="_nyBeskrivelse" placeholder="Hva er feil / hva ønskes forbedret?"></textarea>
+            <textarea class="rb-input" rows="6" style="min-height:130px; resize:vertical" @bind="_nyBeskrivelse" placeholder="Hva er feil / hva ønskes forbedret?"></textarea>
         </div>
         <button class="btn-primary rb-add" @onclick="MeldInn" disabled="@(_sender || string.IsNullOrWhiteSpace(_nyBeskrivelse))">@(_sender ? "Melder inn…" : "Meld inn")</button>
+    </div>
+
+    @* Bildevedlegg (valgfritt) *@
+    <div style="display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap">
+        <label style="cursor:pointer; display:inline-flex; align-items:center; gap:7px; padding:8px 14px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-weight:600; background:var(--surface)">
+            <InputFile OnChange="VelgBilde" accept="image/*" style="display:none" />
+            📷 Legg ved bilde
+        </label>
+        @if (!string.IsNullOrEmpty(_nyBildeData))
+        {
+            <img src="@_nyBildeData" alt="forhåndsvisning" style="height:46px; border-radius:6px; border:1px solid var(--border)" />
+            <span style="font-size:12px; color:var(--text-2)">@_nyBildeNavn</span>
+            <button class="btn-logout btn-sm" @onclick="FjernBilde" title="Fjern bilde">✕</button>
+        }
+        @if (!string.IsNullOrEmpty(_bildeFeil))
+        {
+            <span style="color:#b42318; font-size:12px">@_bildeFeil</span>
+        }
     </div>
 </div>
 
@@ -47,9 +65,9 @@ else
         @{ var vist = string.IsNullOrEmpty(_filter) ? Aktive : Aktive.Where(b => b.Status == _filter).ToList(); }
         <div class="table-scroll">
         <table class="data-table">
-            <thead><tr><th>Kategori</th><th>Beskrivelse</th><th>Meldt av</th><th>Status</th><th>Info fra KS</th><th>Teknisk kommentar</th><th></th></tr></thead>
+            <thead><tr><th>Kategori</th><th>Beskrivelse</th><th>Meldt av</th><th>Status</th><th>Info fra KS</th><th>Teknisk kommentar</th><th>Bilde</th><th></th></tr></thead>
             <tbody>
-                @if (vist.Count == 0) { <tr><td colspan="7" class="empty-row">Ingen saker.</td></tr> }
+                @if (vist.Count == 0) { <tr><td colspan="8" class="empty-row">Ingen saker.</td></tr> }
                 @foreach (var b in vist) { @BugRad(b) }
             </tbody>
         </table>
@@ -66,9 +84,9 @@ else
         {
             <div class="table-scroll" style="margin-top:12px">
             <table class="data-table">
-                <thead><tr><th>Kategori</th><th>Beskrivelse</th><th>Meldt av</th><th>Status</th><th>Info fra KS</th><th>Teknisk kommentar</th><th></th></tr></thead>
+                <thead><tr><th>Kategori</th><th>Beskrivelse</th><th>Meldt av</th><th>Status</th><th>Info fra KS</th><th>Teknisk kommentar</th><th>Bilde</th><th></th></tr></thead>
                 <tbody>
-                    @if (Arkiverte.Count == 0) { <tr><td colspan="7" class="empty-row">Ingen arkiverte saker.</td></tr> }
+                    @if (Arkiverte.Count == 0) { <tr><td colspan="8" class="empty-row">Ingen arkiverte saker.</td></tr> }
                     @foreach (var b in Arkiverte) { @BugRad(b) }
                 </tbody>
             </table>
@@ -88,6 +106,13 @@ else
     private string _nyBeskrivelse = "";
     private bool _sender;
 
+    // Bildevedlegg
+    private const long MaxBilde = 6 * 1024 * 1024; // 6 MB
+    private string? _nyBildeData, _nyBildeNavn, _nyBildeType, _bildeFeil;
+    private string? _visBilde, _visBildeNavn;
+    private readonly Dictionary<Guid, BugBilde> _bildeCache = new();
+    private HashSet<Guid> _medBilde = new();
+
     private List<Bug> Aktive => _alle.Where(b => b.Status != BugService.StatusUtfortArkivert).ToList();
     private List<Bug> Arkiverte => _alle.Where(b => b.Status == BugService.StatusUtfortArkivert).ToList();
     private int _ubehandlet => _alle.Count(b => b.Status == BugService.StatusIkkeRegistrert);
@@ -102,6 +127,7 @@ else
     {
         _laster = true;
         _alle = await BugSvc.GetBugsAsync();
+        _medBilde = await BugSvc.HentBildeIderAsync();
         _laster = false;
     }
 
@@ -109,10 +135,73 @@ else
     {
         if (string.IsNullOrWhiteSpace(_nyBeskrivelse)) return;
         _sender = true;
-        await BugSvc.OpprettBugAsync(_nyKategori, _nyBeskrivelse, Session.UserName ?? Session.Email);
+        var bug = await BugSvc.OpprettBugAsync(_nyKategori, _nyBeskrivelse, Session.UserName ?? Session.Email);
+        if (bug is not null && !string.IsNullOrEmpty(_nyBildeData))
+            await BugSvc.LastOppBildeAsync(bug.Id, _nyBildeData, _nyBildeNavn, _nyBildeType);
         _nyBeskrivelse = "";   // kategori beholdes
+        FjernBilde();
         await Last();
         _sender = false;
+    }
+
+    // ---- Bildevedlegg ----
+
+    // Leser en valgt bildefil til en data:-URL. Returnerer feilmelding ved avvist/feilet fil.
+    private async Task<(string? data, string? navn, string? type, string? feil)> LesBilde(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f is null) return (null, null, null, "Ingen fil valgt.");
+        if (!(f.ContentType?.StartsWith("image/") ?? false)) return (null, null, null, "Kun bildefiler er tillatt.");
+        if (f.Size > MaxBilde) return (null, null, null, $"Bildet er for stort (maks {MaxBilde / 1024 / 1024} MB).");
+        try
+        {
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(MaxBilde).CopyToAsync(ms);
+            var b64 = Convert.ToBase64String(ms.ToArray());
+            return ($"data:{f.ContentType};base64,{b64}", f.Name, f.ContentType, null);
+        }
+        catch (Exception ex) { return (null, null, null, "Kunne ikke lese bildet: " + ex.Message); }
+    }
+
+    private async Task VelgBilde(InputFileChangeEventArgs e)
+    {
+        _bildeFeil = null;
+        var (data, navn, type, feil) = await LesBilde(e);
+        if (feil is not null) { _bildeFeil = feil; return; }
+        _nyBildeData = data; _nyBildeNavn = navn; _nyBildeType = type;
+    }
+
+    private void FjernBilde()
+    {
+        _nyBildeData = _nyBildeNavn = _nyBildeType = _bildeFeil = null;
+    }
+
+    private async Task VelgBildeForRad(Guid id, InputFileChangeEventArgs e)
+    {
+        _bildeFeil = null;
+        var (data, navn, type, feil) = await LesBilde(e);
+        if (feil is not null) { _bildeFeil = feil; return; }
+        await BugSvc.LastOppBildeAsync(id, data!, navn, type);
+        _bildeCache.Remove(id);
+        await Last();
+    }
+
+    private async Task VisBilde(Guid id)
+    {
+        if (!_bildeCache.TryGetValue(id, out var b))
+        {
+            var hentet = await BugSvc.HentBildeAsync(id);
+            if (hentet is null) { _bildeFeil = "Fant ikke bildet."; return; }
+            b = hentet; _bildeCache[id] = b;
+        }
+        _visBilde = b.Data; _visBildeNavn = b.Navn;
+    }
+
+    private async Task FjernBildeFraRad(Guid id)
+    {
+        await BugSvc.SlettBildeAsync(id);
+        _bildeCache.Remove(id);
+        await Last();
     }
 
     private async Task SettStatus(Bug b, ChangeEventArgs e)
@@ -160,6 +249,36 @@ else
                 <span style="white-space:pre-wrap">@(string.IsNullOrWhiteSpace(b.TekniskKommentar) ? "—" : b.TekniskKommentar)</span>
             }
         </td>
+        <td style="white-space:nowrap">
+            @if (_medBilde.Contains(b.Id))
+            {
+                <button class="btn-primary btn-sm" @onclick="() => VisBilde(b.Id)">Vis</button>
+                <button class="btn-logout btn-sm" title="Fjern bilde" @onclick="() => FjernBildeFraRad(b.Id)">✕</button>
+            }
+            else
+            {
+                <label style="cursor:pointer; display:inline-flex; align-items:center; padding:5px 9px; border:1px solid var(--border-strong); border-radius:6px; font-size:13px; background:var(--surface)" title="Legg ved bilde">
+                    <InputFile OnChange="e => VelgBildeForRad(b.Id, e)" accept="image/*" style="display:none" />
+                    📷
+                </label>
+            }
+        </td>
         <td><button class="btn-logout btn-sm" title="Slett" @onclick="() => Slett(b)">✕</button></td>
     </tr>;
+}
+
+@* Bildevisning (modal) *@
+@if (_visBilde is not null)
+{
+    <div @onclick="() => _visBilde = null"
+         style="position:fixed; inset:0; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; z-index:1000; padding:24px">
+        <div @onclick:stopPropagation="true"
+             style="max-width:92vw; max-height:92vh; background:var(--surface); border-radius:12px; padding:16px; overflow:auto; box-shadow:0 10px 40px rgba(0,0,0,.35)">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:10px">
+                <span style="font-weight:600">@(_visBildeNavn ?? "Bilde")</span>
+                <button class="btn-logout btn-sm" @onclick="() => _visBilde = null">Lukk ✕</button>
+            </div>
+            <img src="@_visBilde" alt="@_visBildeNavn" style="max-width:100%; max-height:78vh; border-radius:6px; display:block" />
+        </div>
+    </div>
 }
