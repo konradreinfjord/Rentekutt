@@ -126,28 +126,6 @@ else
     </div>
 
     <div class="section">
-        <h2>Eierskap tatt siste 30 dager</h2>
-        <p class="page-sub">Hvor mange saker en rådgiver tok eierskap til per dag.</p>
-        <div class="daybar-wrap">
-            <div class="daybar-chart daybar-30">
-                @foreach (var dag in _eierDager)
-                {
-                    <div class="daybar-col" title="@dag.Label — @dag.Antall eierskap tatt">
-                        <div class="daybar-total">@(dag.Antall > 0 ? dag.Antall.ToString() : "")</div>
-                        <div class="daybar-stack">
-                            @if (dag.Antall > 0)
-                            {
-                                <div class="daybar-seg" style="height:@(((double)dag.Antall / _maxEierDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:#1f5fc4" title="@dag.Antall"></div>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-            <div class="daybar-axis"><span>@_eierDager.FirstOrDefault()?.Label</span><span>I dag</span></div>
-        </div>
-    </div>
-
-    <div class="section">
         <h2>Leads siste 30 dager</h2>
         <div class="daybar-wrap">
             <div class="daybar-chart daybar-30">
@@ -210,6 +188,28 @@ else
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Eierskap tatt siste 30 dager</h2>
+        <p class="page-sub">Hvor mange saker en rådgiver tok eierskap til per dag.</p>
+        <div class="daybar-wrap">
+            <div class="daybar-chart daybar-30">
+                @foreach (var dag in _eierDager)
+                {
+                    <div class="daybar-col" title="@dag.Label — @dag.Antall eierskap tatt">
+                        <div class="daybar-total">@(dag.Antall > 0 ? dag.Antall.ToString() : "")</div>
+                        <div class="daybar-stack">
+                            @if (dag.Antall > 0)
+                            {
+                                <div class="daybar-seg" style="height:@(((double)dag.Antall / _maxEierDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:#1f5fc4" title="@dag.Antall"></div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="daybar-axis"><span>@_eierDager.FirstOrDefault()?.Label</span><span>I dag</span></div>
         </div>
     </div>
 }

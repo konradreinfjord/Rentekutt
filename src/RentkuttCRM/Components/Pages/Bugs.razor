@@ -1,0 +1,165 @@
+@page "/crm/bugs"
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.BugService BugSvc
+@inject NavigationManager Nav
+
+<PageTitle>Bugs — Rentekutt</PageTitle>
+
+<div class="wide-page">
+<h1 class="page-title">Bugs@(_ubehandlet > 0 ? $" ({_ubehandlet})" : "")</h1>
+<p class="page-sub">Internt meldingsspor mellom kundeservice og admin. Meld inn feil/forbedringer — lav terskel, ingen tildeling eller frister.</p>
+
+@* 5.1 Innmeldingsboks *@
+<div class="form-card">
+    <div class="rule-builder" style="align-items:flex-end">
+        <div class="rb-field" style="max-width:190px">
+            <label>Kategori</label>
+            <select class="rb-input" @bind="_nyKategori">
+                @foreach (var k in BugService.Kategorier) { <option value="@k">@k</option> }
+            </select>
+        </div>
+        <div class="rb-field" style="flex:1; min-width:240px">
+            <label>Beskrivelse</label>
+            <textarea class="rb-input" rows="2" @bind="_nyBeskrivelse" placeholder="Hva er feil / hva ønskes forbedret?"></textarea>
+        </div>
+        <button class="btn-primary rb-add" @onclick="MeldInn" disabled="@(_sender || string.IsNullOrWhiteSpace(_nyBeskrivelse))">@(_sender ? "Melder inn…" : "Meld inn")</button>
+    </div>
+</div>
+
+@if (_laster)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    @* 5.2 Statusfilter (unntatt arkivert) *@
+    <div class="seg typeseg" style="margin:16px 0; flex-wrap:wrap; gap:8px">
+        <button class="@(_filter == "" ? "active" : "")" @onclick='() => _filter = ""'>Alle (@Aktive.Count)</button>
+        @foreach (var s in BugService.Statuser.Where(s => s.Kode != BugService.StatusUtfortArkivert))
+        {
+            var n = Aktive.Count(b => b.Status == s.Kode);
+            <button class="@(_filter == s.Kode ? "active" : "")" style="border-left:4px solid @BugService.Farge(s.Kode)" @onclick="() => _filter = s.Kode">@s.Etikett (@n)</button>
+        }
+    </div>
+
+    @* 5.3 Arbeidsliste *@
+    <div class="section">
+        @{ var vist = string.IsNullOrEmpty(_filter) ? Aktive : Aktive.Where(b => b.Status == _filter).ToList(); }
+        <div class="table-scroll">
+        <table class="data-table">
+            <thead><tr><th>Kategori</th><th>Beskrivelse</th><th>Meldt av</th><th>Status</th><th>Info fra KS</th><th>Teknisk kommentar</th><th></th></tr></thead>
+            <tbody>
+                @if (vist.Count == 0) { <tr><td colspan="7" class="empty-row">Ingen saker.</td></tr> }
+                @foreach (var b in vist) { @BugRad(b) }
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    @* 5.4 Arkiv (lukket som standard) *@
+    <div class="section">
+        <h2 style="cursor:pointer; display:flex; align-items:center; gap:8px; margin:0" @onclick="() => _visArkiv = !_visArkiv">
+            <span style="font-size:12px; width:14px">@(_visArkiv ? "▾" : "▸")</span>
+            Arkiv (@Arkiverte.Count)
+        </h2>
+        @if (_visArkiv)
+        {
+            <div class="table-scroll" style="margin-top:12px">
+            <table class="data-table">
+                <thead><tr><th>Kategori</th><th>Beskrivelse</th><th>Meldt av</th><th>Status</th><th>Info fra KS</th><th>Teknisk kommentar</th><th></th></tr></thead>
+                <tbody>
+                    @if (Arkiverte.Count == 0) { <tr><td colspan="7" class="empty-row">Ingen arkiverte saker.</td></tr> }
+                    @foreach (var b in Arkiverte) { @BugRad(b) }
+                </tbody>
+            </table>
+            </div>
+        }
+    </div>
+}
+</div>
+
+@code {
+    private List<Bug> _alle = new();
+    private bool _laster = true;
+    private string _filter = "";
+    private bool _visArkiv;
+
+    private string _nyKategori = BugService.Kategorier[0];
+    private string _nyBeskrivelse = "";
+    private bool _sender;
+
+    private List<Bug> Aktive => _alle.Where(b => b.Status != BugService.StatusUtfortArkivert).ToList();
+    private List<Bug> Arkiverte => _alle.Where(b => b.Status == BugService.StatusUtfortArkivert).ToList();
+    private int _ubehandlet => _alle.Count(b => b.Status == BugService.StatusIkkeRegistrert);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        await Last();
+    }
+
+    private async Task Last()
+    {
+        _laster = true;
+        _alle = await BugSvc.GetBugsAsync();
+        _laster = false;
+    }
+
+    private async Task MeldInn()
+    {
+        if (string.IsNullOrWhiteSpace(_nyBeskrivelse)) return;
+        _sender = true;
+        await BugSvc.OpprettBugAsync(_nyKategori, _nyBeskrivelse, Session.UserName ?? Session.Email);
+        _nyBeskrivelse = "";   // kategori beholdes
+        await Last();
+        _sender = false;
+    }
+
+    private async Task SettStatus(Bug b, ChangeEventArgs e)
+    {
+        var ny = e.Value?.ToString() ?? b.Status;
+        await BugSvc.OppdaterBugStatusAsync(b.Id, ny);
+        await Last();
+    }
+
+    private async Task SettInfoFraKs(Bug b, ChangeEventArgs e)
+    {
+        await BugSvc.OppdaterBugInfoFraKsAsync(b.Id, e.Value?.ToString());
+        await Last();
+    }
+
+    private async Task SettTekniskKommentar(Bug b, ChangeEventArgs e)
+    {
+        await BugSvc.OppdaterBugTekniskKommentarAsync(b.Id, e.Value?.ToString());
+        await Last();
+    }
+
+    private async Task Slett(Bug b)
+    {
+        await BugSvc.SlettBugAsync(b.Id);
+        await Last();
+    }
+
+    private RenderFragment BugRad(Bug b) =>@<tr>
+        <td><span class="kilde-badge">@(b.Kategori ?? "—")</span></td>
+        <td style="max-width:320px; white-space:pre-wrap">@b.Beskrivelse</td>
+        <td class="mono-cell" style="white-space:nowrap">@(b.OpprettetAv ?? "—")<br/><span class="muted" style="font-size:11px">@b.OpprettetAt.TilOslo().ToString("dd.MM.yy")</span></td>
+        <td>
+            <select class="inline-select stsel" style="border-left:4px solid @BugService.Farge(b.Status)" @onchange="e => SettStatus(b, e)">
+                @foreach (var s in BugService.Statuser) { <option value="@s.Kode" selected="@(s.Kode == b.Status)">@s.Etikett</option> }
+            </select>
+        </td>
+        <td><textarea class="note-area" style="min-height:44px; width:200px" @onchange="e => SettInfoFraKs(b, e)" placeholder="KS: hva ble sett?">@b.InfoFraKs</textarea></td>
+        <td>
+            @if (Session.IsAdmin)
+            {
+                <textarea class="note-area" style="min-height:44px; width:200px" @onchange="e => SettTekniskKommentar(b, e)" placeholder="Admin: svar/status">@b.TekniskKommentar</textarea>
+            }
+            else
+            {
+                <span style="white-space:pre-wrap">@(string.IsNullOrWhiteSpace(b.TekniskKommentar) ? "—" : b.TekniskKommentar)</span>
+            }
+        </td>
+        <td><button class="btn-logout btn-sm" title="Slett" @onclick="() => Slett(b)">✕</button></td>
+    </tr>;
+}

@@ -79,6 +79,7 @@ builder.Services.AddScoped<KundekortService>();
 builder.Services.AddScoped<OppfolgingService>();
 builder.Services.AddScoped<GjeldsregisterService>();
 builder.Services.AddScoped<LeadMottakService>();
+builder.Services.AddScoped<BugService>();
 
 // Tidsstemplede saksnotater.
 builder.Services.AddScoped<NotatService>();
