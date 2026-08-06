@@ -1,0 +1,246 @@
+@page "/crm/kommunikasjon"
+@inject RentkuttCRM.Services.SessionState Session
+@inject NavigationManager Nav
+@inject RentkuttCRM.Services.SettingsService Settings
+@inject RentkuttCRM.Services.SmsMalService SmsMaler
+@inject RentkuttCRM.Services.SmsUtsendingService SmsLogg
+@inject RentkuttCRM.Services.KlaviyoService Klaviyo
+@inject RentkuttCRM.Services.LinkMobilityService LinkMobility
+
+<PageTitle>Kommunikasjon — Rentekutt</PageTitle>
+
+<div class="wide-page">
+<h1 class="page-title">Kommunikasjon</h1>
+<p class="page-sub">Utgående kommunikasjon til kunder — Klaviyo-hendelser og automatiske SMS-løp.</p>
+
+@if (_laster)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    @* ============ KLAVIYO ============ *@
+    <div class="section">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+            <h2 style="margin:0">Klaviyo <span class="ww-tag">Hendelser</span></h2>
+            <span class="status @(Klaviyo.ErKonfigurert ? "on" : "off")">@(Klaviyo.ErKonfigurert ? "Konfigurert" : "Ikke konfigurert")</span>
+        </div>
+        <p class="page-sub" style="margin:8px 0 16px">
+            Send hendelser (events) fra portalen til Klaviyo for e-post-/markedsføringsflyt. Profiler knyttes på e-post.
+        </p>
+
+        <div class="kv-list" style="margin-bottom:16px">
+            <span class="k">Status</span>
+            <span class="v">@(Klaviyo.ErKonfigurert ? "API-nøkkel satt ✓" : "Mangler Klaviyo__ApiKey")</span>
+            <span class="k">API-revisjon</span><span class="v">@Klaviyo.Revisjon</span>
+        </div>
+
+        <label class="ff-check" style="margin-bottom:12px">
+            <input type="checkbox" @bind="_klaviyoEnabled" /> Aktivér utsending av hendelser til Klaviyo
+        </label>
+        <div class="rule-builder" style="margin-bottom:6px">
+            <button class="btn-primary rb-add" @onclick="LagreKlaviyo">Lagre</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_klaviyoMsg)) { <p class="page-sub" style="margin:0 0 14px; font-size:12px">@_klaviyoMsg</p> }
+
+        <h3 class="ww-h">Hendelser som er klargjort for Klaviyo</h3>
+        <table class="data-table" style="margin-bottom:16px">
+            <thead><tr><th>Hendelse (metric)</th><th>Utløses når</th></tr></thead>
+            <tbody>
+                @foreach (var e in RentkuttCRM.Services.KlaviyoService.Eventtyper)
+                {
+                    <tr><td><strong>@e.Metric</strong></td><td class="brk-kilde">@e.Beskrivelse</td></tr>
+                }
+            </tbody>
+        </table>
+
+        <h3 class="ww-h">Test</h3>
+        <div class="rule-builder" style="align-items:flex-end; margin-bottom:6px">
+            <button class="btn-sm" @onclick="TestKlaviyo" disabled="@_klaviyoJobber">Test tilkobling</button>
+            <div class="rb-field" style="max-width:260px"><label>Send testevent til e-post</label><input class="rb-input" @bind="_testEpost" placeholder="navn@eksempel.no" /></div>
+            <button class="btn-sm" @onclick="SendTestEvent" disabled="@_klaviyoJobber">Send testevent</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_testMsg)) { <p class="page-sub" style="margin:0 0 14px; font-size:12px">@_testMsg</p> }
+
+        <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
+        <pre class="code-block">Klaviyo__ApiKey    = &lt;privat API-nøkkel (pk_...)&gt;
+Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
+        <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+            🔒 API-nøkkelen leses kun fra server-config (Azure), aldri fra databasen.
+        </p>
+    </div>
+
+    @* ============ SMS-LØP: 24-TIMERS PÅMINNELSE ============ *@
+    <div class="section">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+            <h2 style="margin:0">SMS-løp · 24-timers påminnelse <span class="ww-tag">LinkMobility</span></h2>
+            <span class="status @(LinkMobility.ErKonfigurert ? "on" : "off")">@(LinkMobility.ErKonfigurert ? "SMS aktiv" : "SMS av")</span>
+        </div>
+        <p class="page-sub" style="margin:8px 0 16px">
+            Sender automatisk en SMS til kunden ~24 timer etter at søknaden ble registrert, dersom den fortsatt
+            står i status <strong>«Påbegynt søknad»</strong>. Sendes kun én gang per sak. Avsender: <strong>@LinkMobility.Sender</strong>.
+        </p>
+
+        @if (!LinkMobility.ErKonfigurert)
+        {
+            <p class="page-sub" style="color:#b42318; margin:0 0 14px">⚠️ LinkMobility er ikke konfigurert (ClientId/secret mangler). Løpet sender ingenting før dette er på plass. Sett det opp under Admin → API og Data → LinkMobility.</p>
+        }
+
+        <label class="ff-check" style="margin-bottom:12px">
+            <input type="checkbox" @bind="_smsEnabled" /> Aktivér 24-timers påminnelse
+        </label>
+
+        <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap">
+            <div class="rb-field" style="max-width:280px">
+                <label>Mal som sendes</label>
+                <select class="rb-input" @bind="_smsMal">
+                    <option value="">— velg mal —</option>
+                    @foreach (var m in _maler) { <option value="@m.Navn">@m.Navn</option> }
+                </select>
+            </div>
+            <div class="rb-field rb-op" style="max-width:150px"><label>Send etter (timer)</label><input class="rb-input" type="number" min="1" @bind="_minTimer" /></div>
+            <div class="rb-field rb-op" style="max-width:170px"><label>Ikke eldre enn (timer)</label><input class="rb-input" type="number" min="2" @bind="_maksTimer" /></div>
+            <div class="rb-field rb-op" style="max-width:150px"><label>Skann hvert (min)</label><input class="rb-input" type="number" min="5" @bind="_intervall" /></div>
+            <button class="btn-primary rb-add" @onclick="LagreSms">Lagre</button>
+        </div>
+        <p class="page-sub" style="margin:8px 0 0; font-size:12px">
+            «Ikke eldre enn» hindrer masseutsending til gamle leads når løpet skrus på. Bruk <code>{navn}</code> i malen for kundens fornavn.
+            Maler opprettes under Admin → API og Data → LinkMobility.
+        </p>
+        @if (!string.IsNullOrEmpty(_smsMsg)) { <p class="page-sub" style="margin:6px 0 0; font-size:12px">@_smsMsg</p> }
+
+        <h3 class="ww-h" style="margin-top:20px">Send test-SMS</h3>
+        <p class="page-sub" style="margin:-4px 0 10px; font-size:12px">
+            Send en test til deg selv. Avsender blir <strong>@LinkMobility.Sender</strong>. La meldingsfeltet stå tomt for å bruke malen valgt ovenfor. <code>{navn}</code> blir «Test».
+        </p>
+        <div class="rule-builder" style="align-items:flex-start; flex-wrap:wrap">
+            <div class="rb-field" style="max-width:180px"><label>Mobilnummer</label><input class="rb-input" @bind="_testMobil" placeholder="F.eks. 99887766" /></div>
+            <div class="rb-field" style="flex:1; min-width:260px"><label>Melding (valgfri)</label><textarea class="rb-input" rows="2" @bind="_testSmsTekst" placeholder="Tom = bruk valgt mal ovenfor"></textarea></div>
+            <button class="btn-primary rb-add" @onclick="SendTestSms" disabled="@(_testSender || !LinkMobility.ErKonfigurert)">@(_testSender ? "Sender…" : "Send test-SMS")</button>
+        </div>
+        @if (!LinkMobility.ErKonfigurert) { <p class="page-sub" style="margin:6px 0 0; font-size:12px; color:#b42318">LinkMobility er ikke konfigurert — kan ikke sende test.</p> }
+        @if (!string.IsNullOrEmpty(_testSmsMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_testSmsMsg</p> }
+
+        <h3 class="ww-h" style="margin-top:20px">Siste utsendinger</h3>
+        <div class="table-scroll">
+        <table class="data-table">
+            <thead><tr><th>Tidspunkt</th><th>Type</th><th>Mobil</th><th>Resultat</th><th>Detalj</th></tr></thead>
+            <tbody>
+                @if (_sisteSms.Count == 0) { <tr><td colspan="5" class="empty-row">Ingen utsendinger ennå.</td></tr> }
+                @foreach (var s in _sisteSms)
+                {
+                    <tr>
+                        <td style="white-space:nowrap">@s.SendtAt.TilOslo().ToString("dd.MM.yy HH:mm")</td>
+                        <td>@(s.Type == RentkuttCRM.Services.SmsUtsendingService.TypePaamindelse24t ? "24t-påminnelse" : s.Type)</td>
+                        <td class="mono-cell">@(s.Mobil ?? "—")</td>
+                        <td><span class="status @(s.Ok ? "on" : "off")">@(s.Ok ? "Sendt" : "Feilet")</span></td>
+                        <td class="brk-kilde">@(string.IsNullOrWhiteSpace(s.Detalj) ? "—" : s.Detalj)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    </div>
+}
+</div>
+
+@code {
+    private bool _laster = true;
+
+    // Klaviyo
+    private bool _klaviyoEnabled;
+    private string _testEpost = "";
+    private bool _klaviyoJobber;
+    private string? _klaviyoMsg, _testMsg;
+
+    // SMS-løp
+    private bool _smsEnabled;
+    private string _smsMal = "";
+    private int _minTimer = RentkuttCRM.Services.Paamindelse24tWorker.StandardMinTimer;
+    private int _maksTimer = RentkuttCRM.Services.Paamindelse24tWorker.StandardMaksTimer;
+    private int _intervall = RentkuttCRM.Services.Paamindelse24tWorker.StandardIntervallMin;
+    private string? _smsMsg;
+    private string _testMobil = "";
+    private string _testSmsTekst = "";
+    private bool _testSender;
+    private string? _testSmsMsg;
+    private List<RentkuttCRM.Services.SmsMal> _maler = new();
+    private List<RentkuttCRM.Services.SmsUtsending> _sisteSms = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!Session.IsAdmin) { Nav.NavigateTo("/crm"); return; }
+        await Last();
+    }
+
+    private async Task Last()
+    {
+        _laster = true;
+        _maler = await SmsMaler.ListAsync();
+        _klaviyoEnabled = await Settings.GetBoolAsync(RentkuttCRM.Services.KlaviyoService.KeyEnabled, false);
+        _smsEnabled = await Settings.GetBoolAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyEnabled, false);
+        _smsMal = await Settings.GetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMal) ?? "";
+        _minTimer = await Settings.GetIntAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMinTimer, RentkuttCRM.Services.Paamindelse24tWorker.StandardMinTimer);
+        _maksTimer = await Settings.GetIntAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMaksTimer, RentkuttCRM.Services.Paamindelse24tWorker.StandardMaksTimer);
+        _intervall = await Settings.GetIntAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyIntervallMin, RentkuttCRM.Services.Paamindelse24tWorker.StandardIntervallMin);
+        _sisteSms = await SmsLogg.SisteAsync(30);
+        _laster = false;
+    }
+
+    private async Task LagreKlaviyo()
+    {
+        await Settings.SetAsync(RentkuttCRM.Services.KlaviyoService.KeyEnabled, _klaviyoEnabled ? "true" : "false");
+        _klaviyoMsg = "Lagret.";
+    }
+
+    private async Task TestKlaviyo()
+    {
+        _klaviyoJobber = true; _testMsg = "Tester …";
+        var (ok, status, detalj) = await Klaviyo.TestTilkoblingAsync();
+        _testMsg = (ok ? "✓ " : "✗ ") + detalj + (status > 0 ? $" (HTTP {status})" : "");
+        _klaviyoJobber = false;
+    }
+
+    private async Task SendTestEvent()
+    {
+        if (string.IsNullOrWhiteSpace(_testEpost)) { _testMsg = "Skriv inn en e-post først."; return; }
+        _klaviyoJobber = true; _testMsg = "Sender …";
+        var (ok, status, detalj) = await Klaviyo.SendEventAsync(
+            "Test event", _testEpost.Trim(),
+            new Dictionary<string, object?> { ["kilde"] = "admin-test" });
+        _testMsg = (ok ? "✓ " : "✗ ") + detalj + (status > 0 ? $" (HTTP {status})" : "");
+        _klaviyoJobber = false;
+    }
+
+    private async Task SendTestSms()
+    {
+        if (string.IsNullOrWhiteSpace(_testMobil)) { _testSmsMsg = "Skriv inn et mobilnummer."; return; }
+        var tekst = _testSmsTekst;
+        if (string.IsNullOrWhiteSpace(tekst))
+        {
+            var mal = _maler.FirstOrDefault(m => m.Navn == _smsMal);
+            if (mal is null) { _testSmsMsg = "Skriv en melding, eller velg en mal ovenfor."; return; }
+            tekst = mal.Tekst;
+        }
+        _testSender = true; _testSmsMsg = "Sender …";
+        var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_testMobil.Trim(), tekst, "Test");
+        _testSmsMsg = ok ? "✓ Test-SMS sendt." : "✗ Feilet: " + detalj;
+        _testSender = false;
+    }
+
+    private async Task LagreSms()
+    {
+        if (_minTimer < 1) _minTimer = 1;
+        if (_maksTimer <= _minTimer) _maksTimer = _minTimer + 1;
+        if (_intervall < 5) _intervall = 5;
+        if (_smsEnabled && string.IsNullOrWhiteSpace(_smsMal)) { _smsMsg = "Velg en mal før du aktiverer løpet."; return; }
+
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyEnabled, _smsEnabled ? "true" : "false");
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMal, _smsMal);
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMinTimer, _minTimer.ToString());
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMaksTimer, _maksTimer.ToString());
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyIntervallMin, _intervall.ToString());
+        _smsMsg = "Lagret. Løpet skanner automatisk i bakgrunnen.";
+    }
+}

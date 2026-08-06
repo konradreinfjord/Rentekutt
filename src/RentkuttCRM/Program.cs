@@ -100,6 +100,13 @@ builder.Services.AddHttpClient("linkmobility");
 builder.Services.AddSingleton<LinkMobilityService>();
 builder.Services.AddSingleton<TwoFactorService>();
 
+// Klaviyo (marketing/e-post-hendelser) — privat API-nøkkel kun fra server-config.
+builder.Services.AddHttpClient("klaviyo");
+builder.Services.AddSingleton<KlaviyoService>();
+
+// Sporing av automatiske SMS-utsendinger (dedup + logg for Kommunikasjon-fanen).
+builder.Services.AddScoped<SmsUtsendingService>();
+
 // Innstillinger (key/value).
 builder.Services.AddScoped<SettingsService>();
 
@@ -138,6 +145,9 @@ builder.Services.AddHostedService<BankSendWorker>();
 
 // GDPR-jobb: daglig anonymisering/sletting etter oppsatt oppbevaringstid.
 builder.Services.AddHostedService<GdprWorker>();
+
+// SMS-løp: 24-timers påminnelse til søknader som fortsatt står i «Påbegynt søknad».
+builder.Services.AddHostedService<Paamindelse24tWorker>();
 
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();
