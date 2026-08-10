@@ -344,7 +344,7 @@ public class KundekortService
     // Database + tredjepart-API bruker fulle rader (notater/Beregn) og går via HentAlleAsync.
     private const string LetteKolonner =
         "id,kunde_id,kunde_type,orgnr,fullt_navn,foedselsnummer,mobilnummer,epost," +
-        "adresse,postnummer,poststed,kommune,fylke,laanetype,laaneformal," +
+        "adresse,postnummer,poststed,kommune,fylke,laanetype,produktkategori,laaneformal," +
         "onsket_laanebelop,onsket_lopetid_mnd,aarsinntekt_brutto,sivilstatus," +
         "arbeidssituasjon,boforhold,naavaerende_rente,navarende_bank,boliggjeld," +
         "boligverdi,status,eier,eier_navn,eier_tatt_at,delegert_bank,kilde," +

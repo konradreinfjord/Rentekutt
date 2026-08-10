@@ -64,6 +64,13 @@
     <button class="@(_typeFilter == "B2B" ? "active" : "")" @onclick='() => _typeFilter = "B2B"'>Bedrift · B2B (@_rows.Count(k => k.KundeType == "B2B"))</button>
 </div>
 
+@* Hurtigfilter: sendt til bank vs ikke sendt *@
+<div class="seg typeseg" style="margin-bottom:16px">
+    <button class="@(_sendtFilter == "" ? "active" : "")" @onclick='() => _sendtFilter = ""'>Alle (@TypeBasis.Count())</button>
+    <button class="@(_sendtFilter == "sendt" ? "active" : "")" @onclick='() => _sendtFilter = "sendt"'>✓ Sendt til bank (@TypeBasis.Count(ErSendtTilBank))</button>
+    <button class="@(_sendtFilter == "ikke" ? "active" : "")" @onclick='() => _sendtFilter = "ikke"'>Ikke sendt (@TypeBasis.Count(k => !ErSendtTilBank(k)))</button>
+</div>
+
 @if (Session.IsAdmin)
 {
     <div class="db-toolbar" style="margin-bottom:16px">
@@ -176,7 +183,31 @@
 
     // Skille B2B/B2C: "" = begge, ellers "B2C"/"B2B".
     private string _typeFilter = "";
-    private List<Kundekort> Vist => _typeFilter.Length == 0 ? _rows : _rows.Where(k => k.KundeType == _typeFilter).ToList();
+    // Sendt-til-bank-hurtigfilter: "" = alle, "sendt" = sendt til bank, "ikke" = ikke sendt.
+    private string _sendtFilter = "";
+
+    // Type-filtrert grunnlag (før sendt-filter) — brukes til hurtigknapp-tellingene.
+    private IEnumerable<Kundekort> TypeBasis => _typeFilter.Length == 0 ? _rows : _rows.Where(k => k.KundeType == _typeFilter);
+
+    private List<Kundekort> Vist
+    {
+        get
+        {
+            var q = TypeBasis;
+            if (_sendtFilter == "sendt") q = q.Where(ErSendtTilBank);
+            else if (_sendtFilter == "ikke") q = q.Where(k => !ErSendtTilBank(k));
+            return q.ToList();
+        }
+    }
+
+    // «Sendt til bank» = det finnes en sending som er levert (Sendt) eller registrert manuelt.
+    // I kø / feilet regnes ikke som sendt.
+    private bool ErSendtTilBank(Kundekort k)
+    {
+        var s = SendtFor(k);
+        return s is not null && (s.Status == SendStatus.Sendt || s.Status == SendStatus.Manuelt);
+    }
+
     private string TypeLabel => _typeFilter switch { "B2C" => "Privatsaker", "B2B" => "Bedriftssaker", _ => VisEier ? "Saker i visning" : "Mine saker" };
 
     protected override async Task OnInitializedAsync()

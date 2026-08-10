@@ -204,29 +204,46 @@ else
         await Last();
     }
 
+    // Sorteringen speiler BugService.GetBugsAsync: ubehandlet → pågår → resten, nyeste først.
+    private static int Rang(string? s) => s switch
+    {
+        BugService.StatusIkkeRegistrert => 0,
+        BugService.StatusPaagaar => 1,
+        _ => 2,
+    };
+    private void Sorter() => _alle = _alle.OrderBy(b => Rang(b.Status)).ThenByDescending(b => b.OpprettetAt).ToList();
+
     private async Task SettStatus(Bug b, ChangeEventArgs e)
     {
         var ny = e.Value?.ToString() ?? b.Status;
-        await BugSvc.OppdaterBugStatusAsync(b.Id, ny);
-        await Last();
+        // Optimistisk: oppdater i minnet og vis umiddelbart (ingen full reload som blanker lista).
+        b.Status = ny;
+        b.OppdatertAt = DateTime.UtcNow;
+        Sorter();
+        StateHasChanged();
+        await BugSvc.OppdaterBugStatusAsync(b.Id, ny);   // persistér i bakgrunnen
     }
 
     private async Task SettInfoFraKs(Bug b, ChangeEventArgs e)
     {
-        await BugSvc.OppdaterBugInfoFraKsAsync(b.Id, e.Value?.ToString());
-        await Last();
+        var v = e.Value?.ToString();
+        b.InfoFraKs = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        await BugSvc.OppdaterBugInfoFraKsAsync(b.Id, v);
     }
 
     private async Task SettTekniskKommentar(Bug b, ChangeEventArgs e)
     {
-        await BugSvc.OppdaterBugTekniskKommentarAsync(b.Id, e.Value?.ToString());
-        await Last();
+        var v = e.Value?.ToString();
+        b.TekniskKommentar = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        await BugSvc.OppdaterBugTekniskKommentarAsync(b.Id, v);
     }
 
     private async Task Slett(Bug b)
     {
+        _alle.Remove(b);
+        _medBilde.Remove(b.Id);
+        StateHasChanged();
         await BugSvc.SlettBugAsync(b.Id);
-        await Last();
     }
 
     private RenderFragment BugRad(Bug b) =>@<tr>

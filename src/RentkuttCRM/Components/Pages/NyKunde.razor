@@ -578,6 +578,13 @@
                 @foreach (var t in KundekortService.Laanetyper) { <option value="@t">@t</option> }
             </select>
         </div>
+        <div class="ff">
+            <label>Produktkategori (Markedsinnsikt)</label>
+            <select @bind="_k.Produktkategori">
+                <option value="">Auto (@Produktkategori.Foreslaa(_k))</option>
+                @foreach (var p in Produktkategori.Alle) { <option value="@p">@p</option> }
+            </select>
+        </div>
         <div class="ff"><label>Ønsket lånebeløp (kr)</label><input type="number" @bind="_k.OnsketLaanebelop" /></div>
         <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
         <div class="ff"><label>Låneformål</label><input @bind="_k.Laaneformal" /></div>

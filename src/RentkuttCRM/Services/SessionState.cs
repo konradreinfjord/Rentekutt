@@ -47,4 +47,14 @@ public class SessionState
         UserName = null;
         Role = "Saksbehandler";
     }
+
+    /// <summary>Lagret søkefilter for Marked-sidene (per kundetype B2C/B2B), så filtre overlever
+    /// navigering inn/ut av kundekort i samme økt.</summary>
+    public class MarkedFilterState
+    {
+        public string Search = "", Status = "", Bank = "", Kommune = "", Forslag = "", SortField = "opprettet";
+        public bool SkjulTatte, SortAsc;
+    }
+
+    public Dictionary<string, MarkedFilterState> MarkedFiltre { get; } = new();
 }

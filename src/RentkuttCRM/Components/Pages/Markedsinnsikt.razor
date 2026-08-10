@@ -12,7 +12,7 @@
 <div class="wide-page"></div>
 
 <h1 class="page-title">Markedsinnsikt</h1>
-<p class="page-sub">Rentenivå kundene har oppgitt fra søknad (rentkutt.no), sammenlignet med Norges Banks styringsrente over tid.</p>
+<p class="page-sub">Rentenivå kundene har oppgitt fra søknad (rentkutt.no), sammenlignet med Norges Banks styringsrente over tid. Velg produktkategori for å se pris per produkt.</p>
 
 @if (_loading)
 {
@@ -20,6 +20,13 @@
 }
 else
 {
+    <div class="seg typeseg" style="margin-bottom:16px; flex-wrap:wrap; gap:6px">
+        @foreach (var kat in Produktkategori.Alle)
+        {
+            <button class="@(_kategori == kat ? "active" : "")" @onclick="() => VelgKategori(kat)">@kat (@_allePunkter.Count(p => p.Kategori == kat))</button>
+        }
+    </div>
+
     <div class="db-stats">
         <div class="db-box"><span class="db-box-num">@_punkter.Count</span><span class="db-box-lbl">Registrerte renter</span></div>
         <div class="db-box"><span class="db-box-num">@_banker.Count</span><span class="db-box-lbl">Banker</span></div>
@@ -142,7 +149,9 @@ else
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     private bool _loading = true;
-    private List<Punkt> _punkter = new();      // alle med bank + rente
+    private List<Punkt> _allePunkter = new();   // alle med bank + rente (alle kategorier)
+    private string _kategori = Produktkategori.Boliglaan;   // valgt fane — Boliglån default
+    private List<Punkt> _punkter = new();      // valgt kategori, med bank + rente
     private List<Punkt> _punkter12 = new();     // siste 12 måneder
     private List<BankRad> _banker = new();
     private List<Segment> _segmenter = new();
@@ -152,7 +161,7 @@ else
     private double _maxBelop;
     private int _yMaxTrend = 8, _yMaxBelop = 8;
 
-    private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, decimal? Ltv, bool Soknad);
+    private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, decimal? Ltv, bool Soknad, string Kategori);
     private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, decimal? SnittBelop, decimal? SnittLtv, DateTime Siste);
     private record Segment(string Navn, int Antall, decimal Snitt, decimal Min, decimal Max, decimal SnittBelop, decimal? SnittLtv);
 
@@ -187,44 +196,65 @@ else
         _styringKilde = StyringSvc.Kilde;
 
         var rows = await Svc.ListLettAsync();
-        _punkter = rows
+        _allePunkter = rows
             .Where(k => !string.IsNullOrWhiteSpace(k.NavarendeBank) && k.NaavaerendeRente is > 0)
             .Select(k => new Punkt(k.CreatedAt, k.NavarendeBank!.Trim(), k.NaavaerendeRente!.Value,
                 k.OnsketLaanebelop, Ltv(k),
-                !string.IsNullOrWhiteSpace(k.Kilde) && !k.Kilde.Equals("Manuell", StringComparison.OrdinalIgnoreCase)))
+                !string.IsNullOrWhiteSpace(k.Kilde) && !k.Kilde.Equals("Manuell", StringComparison.OrdinalIgnoreCase),
+                Produktkategori.Effektiv(k)))
             .OrderBy(p => p.Dato)
             .ToList();
 
         _naaStyring = (double)RentePaa(DateTime.UtcNow);
 
-        if (_punkter.Count > 0)
-        {
-            _snittRente = _punkter.Average(p => p.Rente);
-            _snittMargin = _punkter.Average(p => p.Rente - RentePaa(p.Dato));
-
-            var medLtv = _punkter.Where(p => p.Ltv is not null).ToList();
-            _antLtv = medLtv.Count;
-            if (_antLtv > 0) _snittLtv = medLtv.Average(p => p.Ltv!.Value);
-
-            _banker = _punkter
-                .GroupBy(p => p.Bank, StringComparer.OrdinalIgnoreCase)
-                .Select(g => new BankRad(g.Key, g.Count(), g.Average(x => x.Rente),
-                    g.Min(x => x.Rente), g.Max(x => x.Rente),
-                    SnittEllerNull(g.Where(x => x.Belop is > 0).Select(x => x.Belop!.Value)),
-                    SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value)),
-                    g.Max(x => x.Dato)))
-                .OrderByDescending(b => b.Antall).ThenBy(b => b.Bank)
-                .ToList();
-
-            ByggSegmenter();
-
-            _maxBelop = _punkter.Where(p => p.Belop is > 0).Select(p => (double)p.Belop!.Value).DefaultIfEmpty(0).Max();
-
-            ByggTrend();
-            ByggBelop();
-        }
+        Beregn();
 
         _loading = false;
+    }
+
+    // Bytt produktkategori-fane og regn ut aggregatene på nytt for valgt kategori.
+    private void VelgKategori(string kat)
+    {
+        if (_kategori == kat) return;
+        _kategori = kat;
+        Beregn();
+    }
+
+    // Regn ut alle aggregater/diagrammer for punktene i valgt produktkategori.
+    private void Beregn()
+    {
+        _punkter = _allePunkter.Where(p => p.Kategori == _kategori).OrderBy(p => p.Dato).ToList();
+
+        _snittRente = _snittMargin = _snittLtv = 0; _antLtv = 0;
+        _banker = new(); _segmenter = new();
+        _punkter12 = new(); _antSoknad = _antManuell = _belopPunkter = 0;
+        _svgTrend = _svgBelop = "";
+
+        if (_punkter.Count == 0) return;
+
+        _snittRente = _punkter.Average(p => p.Rente);
+        _snittMargin = _punkter.Average(p => p.Rente - RentePaa(p.Dato));
+
+        var medLtv = _punkter.Where(p => p.Ltv is not null).ToList();
+        _antLtv = medLtv.Count;
+        if (_antLtv > 0) _snittLtv = medLtv.Average(p => p.Ltv!.Value);
+
+        _banker = _punkter
+            .GroupBy(p => p.Bank, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new BankRad(g.Key, g.Count(), g.Average(x => x.Rente),
+                g.Min(x => x.Rente), g.Max(x => x.Rente),
+                SnittEllerNull(g.Where(x => x.Belop is > 0).Select(x => x.Belop!.Value)),
+                SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value)),
+                g.Max(x => x.Dato)))
+            .OrderByDescending(b => b.Antall).ThenBy(b => b.Bank)
+            .ToList();
+
+        ByggSegmenter();
+
+        _maxBelop = _punkter.Where(p => p.Belop is > 0).Select(p => (double)p.Belop!.Value).DefaultIfEmpty(0).Max();
+
+        ByggTrend();
+        ByggBelop();
     }
 
     // LTV = belåningsgrad, samme definisjon som BeregningService: (boliggjeld + ønsket lån) / boligverdi.

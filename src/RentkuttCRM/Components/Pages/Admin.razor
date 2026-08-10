@@ -672,6 +672,24 @@ Authorization: Bearer &lt;token&gt;</pre>
                 <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:@(_ibOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_ibMsg</p>
             }
 
+            <h3 class="ww-h">Verifisering — sett akseptert</h3>
+            <p class="page-sub" style="margin:0 0 8px; font-size:12px">
+                Marker en innsendt søknad som «valgt tilbud» (set accepted) hos Instabank. Kjøres i valgt miljø
+                (<strong>@(_ibMiljo == "prod" ? "Produksjon" : "Test")</strong>). Klikk «Hent status» først for å bekrefte at ref-en finnes.
+            </p>
+            <div class="rule-builder" style="align-items:flex-end; margin-bottom:8px">
+                <div class="rb-field" style="flex:1; min-width:280px">
+                    <label>Søknad-ref (ExternalReference)</label>
+                    <input class="rb-input mono" @bind="_ibRef" placeholder="f.eks. de5d55ec-ee13-4e7a-ad7c-16ceaab1caf9" />
+                </div>
+                <button class="btn-sm" @onclick="HentInstabankStatus" disabled="@_ibAksjon">Hent status</button>
+                <button class="btn-primary rb-add" @onclick="SettInstabankAkseptert" disabled="@_ibAksjon">@(_ibAksjon ? "Jobber…" : "Sett akseptert")</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_ibRefMsg))
+            {
+                <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:@(_ibRefOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_ibRefMsg</p>
+            }
+
             <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
             <pre class="code-block">Instabank__Username      = &lt;agent-brukernavn&gt;
 Instabank__PasswordTest  = &lt;passord for test (netbankpp)&gt;
@@ -1780,6 +1798,11 @@ else if (_active == "GDPR")
     private string _ibMiljo = "test";
     private string? _ibMsg;
 
+    // Verifisering: hent status / sett akseptert på en søknad-ref.
+    private string _ibRef = "";
+    private bool _ibAksjon, _ibRefOk;
+    private string? _ibRefMsg;
+
     // ---- Gjeldsregisteret (miljøbryter + status + rate-grenser) ----
     private bool _grEnabled, _grKonfigurert;
     private string _grMiljo = "test";
@@ -1848,6 +1871,30 @@ else if (_active == "GDPR")
         _ibOk = ok;
         _ibMsg = detalj;
         _ibTester = false;
+    }
+
+    private async Task HentInstabankStatus()
+    {
+        if (string.IsNullOrWhiteSpace(_ibRef)) { _ibRefOk = false; _ibRefMsg = "Skriv inn søknad-ref."; return; }
+        _ibAksjon = true; _ibRefMsg = "Henter …";
+        var r = await Instabank.HentStatusAsync(_ibRef.Trim());
+        _ibRefOk = r.Ok;
+        _ibRefMsg = r.Ok
+            ? $"✓ Funnet. Status: {r.Status ?? "(ukjent)"} · ref: {r.ExternalReference ?? _ibRef.Trim()}"
+            : $"✗ {r.Detalj}";
+        _ibAksjon = false;
+    }
+
+    private async Task SettInstabankAkseptert()
+    {
+        if (string.IsNullOrWhiteSpace(_ibRef)) { _ibRefOk = false; _ibRefMsg = "Skriv inn søknad-ref."; return; }
+        _ibAksjon = true; _ibRefMsg = "Setter akseptert …";
+        var r = await Instabank.SettAkseptertAsync(_ibRef.Trim());
+        _ibRefOk = r.Ok;
+        _ibRefMsg = r.Ok
+            ? $"✓ Søknaden er satt som akseptert (valgt tilbud). Status: {r.Status ?? "OK"}"
+            : $"✗ {r.Detalj}";
+        _ibAksjon = false;
     }
 
     // Feltoversikt for kundekort-tabellen: betydning + hva hver kanal mapper fra + manuell.

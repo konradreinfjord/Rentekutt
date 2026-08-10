@@ -80,6 +80,7 @@ public class Kundekort : BaseModel
     [Column("onsket_laanebelop")] public decimal? OnsketLaanebelop { get; set; }
     [Column("onsket_lopetid_mnd")] public int? OnsketLopetidMnd { get; set; }
     [Column("laanetype")] public string? Laanetype { get; set; }
+    [Column("produktkategori")] public string? Produktkategori { get; set; }
     [Column("laaneformal")] public string? Laaneformal { get; set; }
     [Column("laaneformal_kode")] public string? LaaneformalKode { get; set; }
     [Column("naavaerende_rente")] public decimal? NaavaerendeRente { get; set; }

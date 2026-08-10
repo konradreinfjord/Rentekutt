@@ -500,6 +500,11 @@ public class InstabankService
     public Task<Resultat> HentStatusAsync(string externalReference) =>
         PostAsync("get", new { Application = new { ExternalReference = externalReference } });
 
+    /// <summary>Marker en innsendt sak som «akseptert» (kunden har valgt dette tilbudet) hos Instabank.
+    /// Brukes bl.a. til å verifisere integrasjonen mot Instabanks tekniske avdeling.</summary>
+    public Task<Resultat> SettAkseptertAsync(string externalReference) =>
+        PostAsync("setaccepted", new { Application = new { ExternalReference = externalReference } });
+
     private static string? Finn(JsonElement el, string navn)
     {
         if (el.ValueKind == JsonValueKind.Object)

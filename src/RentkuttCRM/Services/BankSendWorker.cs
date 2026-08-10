@@ -27,12 +27,14 @@ public class BankSendWorker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BankSendWorker> _log;
     private readonly DatabaseMigrator _migrator;
+    private readonly IHostEnvironment _env;
 
-    public BankSendWorker(IServiceScopeFactory scopeFactory, ILogger<BankSendWorker> log, DatabaseMigrator migrator)
+    public BankSendWorker(IServiceScopeFactory scopeFactory, ILogger<BankSendWorker> log, DatabaseMigrator migrator, IHostEnvironment env)
     {
         _scopeFactory = scopeFactory;
         _log = log;
         _migrator = migrator;
+        _env = env;
     }
 
     // Reis en alarm i egen scope (alarmering skal aldri kunne velte workeren).
@@ -52,44 +54,57 @@ public class BankSendWorker : BackgroundService
         // La oppstart (migrasjoner m.m.) fullføre først.
         try { await Task.Delay(TimeSpan.FromSeconds(10), ct); } catch { return; }
 
-        // Alarm hvis migrasjonene ikke når prod (vanligste driftsstopp for nye funksjoner).
-        var st = _migrator.Status;
-        if (!st.Konfigurert)
-            await AlarmAsync("Migrasjon", "Databasemigrering er ikke konfigurert",
-                "ConnectionStrings:Postgres mangler i Azure — nye tabeller/kolonner når ikke prod.",
-                AlarmService.Alvorlighet.Kritisk, "migrasjon-ikke-konfigurert");
-        else if (!st.Kjort && !string.IsNullOrWhiteSpace(st.SisteFeil))
-            // Teknisk feil på DB-tilkoblingen (f.eks. 28P01 feil passord etter nøkkelrotasjon):
-            // migrasjoner OG GDPR-jobber stopper stille. Gjør det synlig som kritisk alarm.
-            await AlarmAsync("Migrasjon", "Databasetilkobling feilet — migrasjoner kjører ikke",
-                $"ConnectionStrings:Postgres virker ikke: {st.SisteFeil}. Nye kolonner (f.eks. boliglån) og GDPR-jobber stopper til passordet i tilkoblingsstrengen oppdateres.",
-                AlarmService.Alvorlighet.Kritisk, "migrasjon-tilkobling-feil");
-        else if (st.Feilet.Count > 0 || st.Utestaende.Count > 0)
-            await AlarmAsync("Migrasjon", "Databasemigrasjoner utestående/feilet",
-                $"Utestående: {(st.Utestaende.Count > 0 ? string.Join(", ", st.Utestaende) : "—")}. Feilet: {(st.Feilet.Count > 0 ? string.Join("; ", st.Feilet) : "—")}",
-                AlarmService.Alvorlighet.Kritisk, "migrasjon-feil");
-
-        // FUNN E: gjør «kryptering AV» synlig (kritisk alarm) i stedet for kun en stille loggmelding —
-        // uten nøkkel lagres nye fødselsnummer i klartekst.
-        try
+        // Infrastruktur-alarmer (migrasjon/DB/kryptering) reises KUN fra produksjon. Dev/lokale
+        // instanser mangler bevisst Gdpr__FieldKey og ConnectionStrings:Postgres, og skal derfor
+        // ikke forurense den delte alarmtabellen hver gang de restartes.
+        if (_env.IsProduction())
         {
             using var scope = _scopeFactory.CreateScope();
             var alarm = scope.ServiceProvider.GetRequiredService<AlarmService>();
-            if (!scope.ServiceProvider.GetRequiredService<CryptoService>().IsEnabled)
-            {
-                await alarm.RaiseAsync("Kryptering", "Feltnivåkryptering er AV",
-                    "Gdpr__FieldKey mangler — nye fødselsnummer lagres i KLARTEKST. Sett nøkkelen og kjør bakfylling.",
-                    AlarmService.Alvorlighet.Kritisk, "Sendekø", "kryptering-av");
-            }
+
+            // Alarm hvis migrasjonene ikke når prod (vanligste driftsstopp for nye funksjoner).
+            var st = _migrator.Status;
+            if (!st.Konfigurert)
+                await alarm.RaiseAsync("Migrasjon", "Databasemigrering er ikke konfigurert",
+                    "ConnectionStrings:Postgres mangler i Azure — nye tabeller/kolonner når ikke prod.",
+                    AlarmService.Alvorlighet.Kritisk, "Sendekø", "migrasjon-ikke-konfigurert");
+            else if (!st.Kjort && !string.IsNullOrWhiteSpace(st.SisteFeil))
+                // Teknisk feil på DB-tilkoblingen (f.eks. 28P01 feil passord etter nøkkelrotasjon):
+                // migrasjoner OG GDPR-jobber stopper stille. Gjør det synlig som kritisk alarm.
+                await alarm.RaiseAsync("Migrasjon", "Databasetilkobling feilet — migrasjoner kjører ikke",
+                    $"ConnectionStrings:Postgres virker ikke: {st.SisteFeil}. Nye kolonner (f.eks. boliglån) og GDPR-jobber stopper til passordet i tilkoblingsstrengen oppdateres.",
+                    AlarmService.Alvorlighet.Kritisk, "Sendekø", "migrasjon-tilkobling-feil");
+            else if (st.Feilet.Count > 0 || st.Utestaende.Count > 0)
+                await alarm.RaiseAsync("Migrasjon", "Databasemigrasjoner utestående/feilet",
+                    $"Utestående: {(st.Utestaende.Count > 0 ? string.Join(", ", st.Utestaende) : "—")}. Feilet: {(st.Feilet.Count > 0 ? string.Join("; ", st.Feilet) : "—")}",
+                    AlarmService.Alvorlighet.Kritisk, "Sendekø", "migrasjon-feil");
             else
             {
-                // Nøkkelen ER lastet → lukk ev. gamle «kryptering AV»-alarmer fra et tidligere
-                // deploy-vindu, så de ikke blir stående og villede når kryptering faktisk er på.
-                await alarm.LosOppNoekkelAsync("kryptering-av", "System (nøkkel lastet)");
-                await alarm.LosOppNoekkelAsync("kryptering-av-klartekst", "System (nøkkel lastet)");
+                // DB er frisk → lukk ev. gamle migrasjon/DB-alarmer fra et tidligere uheldig
+                // instans-/deploy-vindu, så de ikke blir stående og villede.
+                await alarm.LosOppNoekkelAsync("migrasjon-ikke-konfigurert", "System (DB frisk)");
+                await alarm.LosOppNoekkelAsync("migrasjon-tilkobling-feil", "System (DB frisk)");
+                await alarm.LosOppNoekkelAsync("migrasjon-feil", "System (DB frisk)");
             }
+
+            // «Kryptering AV» synlig som kritisk alarm — uten nøkkel lagres nye fnr i klartekst.
+            try
+            {
+                if (!scope.ServiceProvider.GetRequiredService<CryptoService>().IsEnabled)
+                {
+                    await alarm.RaiseAsync("Kryptering", "Feltnivåkryptering er AV",
+                        "Gdpr__FieldKey mangler — nye fødselsnummer lagres i KLARTEKST. Sett nøkkelen og kjør bakfylling.",
+                        AlarmService.Alvorlighet.Kritisk, "Sendekø", "kryptering-av");
+                }
+                else
+                {
+                    // Nøkkelen ER lastet → lukk ev. gamle «kryptering AV»-alarmer.
+                    await alarm.LosOppNoekkelAsync("kryptering-av", "System (nøkkel lastet)");
+                    await alarm.LosOppNoekkelAsync("kryptering-av-klartekst", "System (nøkkel lastet)");
+                }
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke sjekke krypteringsstatus"); }
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke sjekke krypteringsstatus"); }
 
         while (!ct.IsCancellationRequested)
         {
