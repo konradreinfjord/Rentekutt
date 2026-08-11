@@ -293,6 +293,24 @@ public class InstabankService
         };
         if (k.RefinansieresBelop is > 0) application["RefinanceAmount"] = k.RefinansieresBelop;
 
+        // Medsøker → CoApplicants[] (søsken av Applicant, samme felt-skjema i Agent API).
+        // Sendes når medsøker er markert OG har et gyldig fødselsnummer (Instabank krever SSN,
+        // samme som for hovedsøker). Kun felt med reell verdi tas med.
+        if (k.HarMedsoker)
+        {
+            var medFnr = FoerstGyldigFnr(k.MedsokerFoedselsnummer);
+            if (!string.IsNullOrWhiteSpace(medFnr) && ErGyldigFnr(medFnr))
+            {
+                var medsoker = new Dictionary<string, object?> { ["SocialSecurityNumber"] = medFnr };
+                if (!string.IsNullOrWhiteSpace(k.MedsokerEpost)) medsoker["EMail"] = k.MedsokerEpost.Trim();
+                var medMobil = new string((k.MedsokerMobil ?? "").Where(char.IsDigit).ToArray());
+                if (medMobil.Length > 0) medsoker["MobilePhoneNumber"] = medMobil;
+                Legg(medsoker, "EmploymentStatus", MapArbeid(k.MedsokerArbeidsforhold));
+                if (k.MedsokerInntekt is > 0) medsoker["YearlyIncome"] = k.MedsokerInntekt;
+                application["CoApplicants"] = new[] { medsoker };
+            }
+        }
+
         // Boliglån (180) krever eiendoms-/sikkerhetsobjekt (Items[]). Bygges fra G · Boliglån-feltene.
         // «Debt» = restgjeld på eiendommen = Boliggjeld. Matrikkel for selveier; Cooperation for andel.
         if (produkt == ProduktBoliglaan)
