@@ -864,6 +864,7 @@
         "Manuell behandling" => "#c2740a",
         "Avslått" => "#b42318",
         "Feilet i sending" => "#b42318",
+        "Sendt til bank - Timeout" => "#b42318",
         _ => "#767b84",
     };
 
@@ -885,7 +886,7 @@
     private static string StatusKlasse(string s) => s switch
     {
         "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
-        "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
+        "Sendt bank" => "st-sendt", "Sendt til bank - Timeout" => "st-avslatt", "Tilbud utsendt" => "st-tilbud",
         "Feilet i sending" => "st-avslatt",
         "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
     };

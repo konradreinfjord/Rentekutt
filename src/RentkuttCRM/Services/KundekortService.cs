@@ -7,7 +7,7 @@ namespace RentkuttCRM.Services;
 public class KundekortService
 {
     public static readonly string[] Statuser =
-        { "Nytt lead", "Påbegynt søknad", "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+        { "Nytt lead", "Påbegynt søknad", "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Sendt til bank - Timeout", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
     /// <summary>Nytt, ueid lead (f.eks. fra Prismatch) som ikke er plukket/behandlet ennå.</summary>
     public const string StatusNyttLead = "Nytt lead";
     /// <summary>Utkast opprettet fra Vipps/BankID-bekreftelse, før kunden har fullført skjemaet.</summary>
@@ -16,7 +16,12 @@ public class KundekortService
     public const string StatusFullfort = "Fullført og utbetalt";
     public const string StatusAvslatt = "Avslått";
     public const string StatusSendtBank = "Sendt bank";
+    public const string StatusSendtBankTimeout = "Sendt til bank - Timeout";
+    public const string StatusTilbudUtsendt = "Tilbud utsendt";
     public const string StatusFeiletSending = "Feilet i sending";
+
+    // Innstilling: antall dager en sak kan stå i «Sendt bank» før den auto-settes til timeout. 0 = av.
+    public const string KeySendtBankTimeoutDager = "sendt_bank_timeout_dager";
 
     /// <summary>Forenklet status for tredjeparter: åpen / utbetalt / avslått + om saken er ferdigbehandlet.</summary>
     public static (string kode, string tekst, bool ferdig) TredjepartStatus(string? status) => status switch
@@ -348,7 +353,7 @@ public class KundekortService
         "onsket_laanebelop,onsket_lopetid_mnd,aarsinntekt_brutto,sivilstatus," +
         "arbeidssituasjon,boforhold,naavaerende_rente,navarende_bank,boliggjeld," +
         "boligverdi,status,eier,eier_navn,eier_tatt_at,delegert_bank,kilde," +
-        "siste_kontakt,neste_oppfolging,created_at,updated_at";
+        "siste_kontakt,neste_oppfolging,sendt_bank_at,created_at,updated_at";
 
     private async Task<List<Kundekort>> HentAlleLettAsync()
     {
@@ -414,7 +419,7 @@ public class KundekortService
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
-            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; if (nyStatus is not null) k.Status = nyStatus; }
+            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; if (nyStatus is not null) { k.Status = nyStatus; if (nyStatus == StatusSendtBank) k.SendtBankAt = naa; } }
             return;
         }
         try
@@ -426,6 +431,7 @@ public class KundekortService
                 .Set(x => x.EierNavn!, eierNavn)
                 .Set(x => x.EierTattAt!, naa);
             if (nyStatus is not null) q = q.Set(x => x.Status, nyStatus);
+            if (nyStatus == StatusSendtBank) q = q.Set(x => x.SendtBankAt!, naa);
             await q.Update();
             InvaliderCache();
             await _logg.LoggAsync(id, eierNavn, "Tok eierskap" + (nyStatus is not null ? $" · status → {nyStatus}" : ""));
@@ -569,16 +575,20 @@ public class KundekortService
 
     public async Task SetStatusAsync(Guid id, string status, string? aktor = null)
     {
+        // Når en sak settes til «Sendt bank», stemple tidspunktet — brukes av timeout-jobben.
+        var settSendtBank = status == StatusSendtBank;
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
-            if (k is not null) k.Status = status;
+            if (k is not null) { k.Status = status; if (settSendtBank) k.SendtBankAt = DateTime.UtcNow; }
             return;
         }
         try
         {
             await EnsureReadyAsync();
-            await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.Status, status).Update();
+            var q = _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.Status, status);
+            if (settSendtBank) q = q.Set(x => x.SendtBankAt!, DateTime.UtcNow);
+            await q.Update();
             InvaliderCache();
             await _logg.LoggAsync(id, aktor, $"Endret status til {status}");
         }

@@ -152,18 +152,21 @@ public static class RutingEval
     }
 
     public static bool Matcher(Rutingsregel r, Kundekort k)
+        => r.Aktiv && Matcher(r.FeltNokkel, r.Operator, r.Verdi, k);
+
+    /// <summary>Evaluerer én betingelse (felt/operator/mål-verdi) mot et kundekort. Gjenbrukes av
+    /// både bankforslag (logikk-matrisen) og merknadsregler.</summary>
+    public static bool Matcher(string? feltNokkel, string? @operator, string? maalVerdi, Kundekort k)
     {
-        if (!r.Aktiv) return false;
-
         // Postnummer: intervall-/listeparsing («7000-8000», «5000, 7000-7099») uansett operator.
-        if (r.FeltNokkel == "postnummer")
-            return BankDekning.Dekker(r.Verdi, k.Postnummer);
+        if (feltNokkel == "postnummer")
+            return BankDekning.Dekker(maalVerdi ?? "", k.Postnummer);
 
-        var verdi = KundeVerdi(k, r.FeltNokkel);
+        var verdi = KundeVerdi(k, feltNokkel ?? "");
         if (string.IsNullOrWhiteSpace(verdi)) return false;
-        var mål = (r.Verdi ?? "").Trim();
+        var mål = (maalVerdi ?? "").Trim();
 
-        switch (r.Operator)
+        switch (@operator)
         {
             case "=": return string.Equals(verdi, mål, StringComparison.OrdinalIgnoreCase);
             case "≠": return !string.Equals(verdi, mål, StringComparison.OrdinalIgnoreCase);
@@ -176,13 +179,13 @@ public static class RutingEval
             case "<":
             case "mellom":
                 if (!TalltolkNorsk(verdi, out var v)) return false;
-                if (r.Operator == "mellom")
+                if (@operator == "mellom")
                 {
                     var deler = mål.Split('-', 2);
                     return deler.Length == 2 && TalltolkNorsk(deler[0], out var lo) && TalltolkNorsk(deler[1], out var hi) && v >= lo && v <= hi;
                 }
                 if (!TalltolkNorsk(mål, out var m)) return false;
-                return r.Operator == ">" ? v > m : v < m;
+                return @operator == ">" ? v > m : v < m;
             default: return false;
         }
     }
@@ -203,6 +206,8 @@ public static class RutingEval
         "ansettelse" => k.Arbeidssituasjon,
         "boligstatus" => Boligstatus(k.Boforhold),
         "naavaerende_bank" => k.NavarendeBank,
+        // Utledet: alder fra fødselsnummer (brukes bl.a. av «Boliglån UNG»-merknad).
+        "alder" => BeregningService.FnrInfo(k.Foedselsnummer).Alder?.ToString(Inv),
         _ => null,
     };
 

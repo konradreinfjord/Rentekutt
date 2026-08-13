@@ -5,6 +5,7 @@
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.RutingsregelService Ruting
+@inject RentkuttCRM.Services.MerknadsregelService MerknadSvc
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -105,6 +106,7 @@ else
                 @Header("personnr", ErBedrift ? "Orgnr" : "Personnr")
                 @Header("bank", "Bank")
                 @Header("forslag", "Forslag bank")
+                <th>Merknad</th>
                 @Header("belop", "Ønsket beløp")
                 @Header("kommune", "Kommune")
                 @Header("postnr", "Postnr")
@@ -117,7 +119,7 @@ else
         <tbody>
             @if (View.Count == 0)
             {
-                <tr><td colspan="@(ErBedrift ? 18 : 17)" class="empty-row">@(_skjulTatte ? "Ingen utatte saker her akkurat nå 🎉" : "Ingen treff.")</td></tr>
+                <tr><td colspan="@(ErBedrift ? 19 : 18)" class="empty-row">@(_skjulTatte ? "Ingen utatte saker her akkurat nå 🎉" : "Ingen treff.")</td></tr>
             }
             @foreach (var k in PagedView)
             {
@@ -160,6 +162,17 @@ else
                             @foreach (var navn in forslag)
                             {
                                 <span class="type-tag bank" title="Dekker postnr @k.Postnummer" style="margin:0 4px 2px 0; display:inline-block">@navn</span>
+                            }
+                        }
+                    </td>
+                    <td>
+                        @{ var merknader = Merknader(k); }
+                        @if (merknader.Count == 0) { <span class="muted">—</span> }
+                        else
+                        {
+                            @foreach (var m in merknader)
+                            {
+                                <span style="display:inline-block; margin:0 4px 2px 0; padding:2px 9px; border-radius:11px; font-size:11px; font-weight:700; color:#fff; background:@m.Hex">@m.Tekst</span>
                             }
                         }
                     </td>
@@ -234,6 +247,17 @@ else
 
     // Forslag til bank ut fra kundens postnummer mot bankenes dekning (satt i admin).
     // Cache per kort — samme postnr/partnersett gir samme svar, kjøres én gang.
+    // Merknadsregler → fargebadge per kundekort (cachet per kort).
+    private List<Merknadsregel> _merknadsregler = new();
+    private readonly Dictionary<Guid, List<MerknadEval.Merknad>> _merknadCache = new();
+    private List<MerknadEval.Merknad> Merknader(Kundekort k)
+    {
+        if (_merknadCache.TryGetValue(k.Id, out var m)) return m;
+        m = MerknadEval.MerknaderFor(_merknadsregler, k);
+        _merknadCache[k.Id] = m;
+        return m;
+    }
+
     private readonly Dictionary<Guid, List<string>> _forslagCache = new();
     private List<string> Forslag(Kundekort k)
     {
@@ -255,11 +279,13 @@ else
         var rowsTask = Svc.ListLettAsync();
         var partnereTask = Partners.ListAsync();
         var reglerTask = Ruting.ListAsync();
+        var merknadTask = MerknadSvc.ListAsync();
         var berTask = Beregning.HentParametreAsync();
-        await Task.WhenAll(rowsTask, partnereTask, reglerTask, berTask);
+        await Task.WhenAll(rowsTask, partnereTask, reglerTask, merknadTask, berTask);
         _rows = rowsTask.Result;
         _partnere = partnereTask.Result;
         _regler = reglerTask.Result;
+        _merknadsregler = merknadTask.Result;
         _berParams = berTask.Result;
         _searchCache = _rows.ToDictionary(k => k.Id, Searchable);
         RecomputeType();
@@ -430,7 +456,7 @@ else
     private static string StatusKlasse(string s) => s switch
     {
         "Nytt lead" => "st-nytt", "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
-        "Sendt bank" => "st-sendt", "Tilbud utsendt" => "st-tilbud",
+        "Sendt bank" => "st-sendt", "Sendt til bank - Timeout" => "st-avslatt", "Tilbud utsendt" => "st-tilbud",
         "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
     };
 

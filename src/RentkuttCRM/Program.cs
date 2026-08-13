@@ -140,6 +140,9 @@ builder.Services.AddScoped<SamtykkeService>();
 // Rutingsregler (logikk-matrisen) — driver «Forslag bank» i markedet.
 builder.Services.AddScoped<RutingsregelService>();
 
+// Merknadsregler — driver «Merknad»-badges i markedet (f.eks. «Boliglån UNG»).
+builder.Services.AddScoped<MerknadsregelService>();
+
 // Sikker sendekø: throttlet bakgrunnsarbeider som sender søknader til bank uten å bombardere API-et.
 builder.Services.AddHostedService<BankSendWorker>();
 
@@ -148,6 +151,12 @@ builder.Services.AddHostedService<GdprWorker>();
 
 // SMS-løp: 24-timers påminnelse til søknader som fortsatt står i «Påbegynt søknad».
 builder.Services.AddHostedService<Paamindelse24tWorker>();
+
+// Auto-timeout: «Sendt bank» → «Sendt til bank - Timeout» etter innstilt antall dager.
+builder.Services.AddHostedService<SendtBankTimeoutWorker>();
+
+// Instabank-statussynk: spør hver 60. min på uavklarte, sendte søknader og oppdaterer status.
+builder.Services.AddHostedService<InstabankStatusWorker>();
 
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();

@@ -15,6 +15,7 @@
 @inject RentkuttCRM.Services.GjeldsregisterService Gjeld
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.RutingsregelService Ruting
+@inject RentkuttCRM.Services.MerknadsregelService Merknad
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.GdprService Gdpr
 @inject RentkuttCRM.Services.KundekortService Kunder
@@ -49,6 +50,22 @@
                 }
             </tbody>
         </table>
+    </div>
+
+    <div class="section">
+        <h2>Sending til bank — timeout</h2>
+        <p class="page-sub" style="margin:-4px 0 12px">
+            Når en sak (privat eller bedrift) settes til <strong>«Sendt bank»</strong>, settes den automatisk til
+            <strong>«Sendt til bank - Timeout»</strong> etter angitt antall dager. <strong>0 = av.</strong>
+        </p>
+        <div class="rule-builder" style="align-items:flex-end">
+            <div class="rb-field rb-op" style="max-width:190px">
+                <label>Antall dager før timeout</label>
+                <input class="rb-input" type="number" min="0" @bind="_timeoutDager" />
+            </div>
+            <button class="btn-primary rb-add" @onclick="LagreTimeout">Lagre</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_timeoutMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_timeoutMsg</p> }
     </div>
 }
 else if (_active == "Partnere")
@@ -630,7 +647,10 @@ Authorization: Bearer &lt;token&gt;</pre>
             <div class="bw-head">
                 <div class="bw-logo">IB</div>
                 <div class="bw-titles">
-                    <div class="bw-title">Instabank <span class="ww-tag">Agent API</span></div>
+                    <div class="bw-title">Instabank <span class="ww-tag">Agent API</span>
+                        <span title="Statussynk: portalen spør Instabank automatisk hvert 5. minutt om status på søknader som er sendt til Instabank, men ennå ikke er avklart. Når søknaden får endelig utfall (tilbud utsendt/godkjent → «Tilbud utsendt», utbetalt → «Fullført og utbetalt», eller avslått → «Avslått») oppdateres kundekortet automatisk og vi slutter å spørre. Jobben kjører i produksjon."
+                              style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; margin-left:6px; border-radius:50%; border:1px solid var(--border-strong); color:var(--text-2); font-size:11px; font-weight:700; cursor:help">i</span>
+                    </div>
                     <div class="bw-sub">Delegerte lånesøknader — Basic Auth, kunden får SigningUrl for å fullføre</div>
                 </div>
                 <span class="bw-status status @(_ibKonfigurert && _ibEnabled ? "on" : "off")">@(_ibKonfigurert && _ibEnabled ? "Aktiv" : "Av")</span>
@@ -1141,6 +1161,115 @@ else if (_active == "Logikk-matrise")
         </table>
     </div>
 }
+else if (_active == "Merknad lån")
+{
+    <div class="section">
+        <h2>Merknadsregler <span class="pill pill-warn">@_merknadsregler.Count(r => r.Aktiv) aktive</span></h2>
+        <p class="page-sub" style="margin:-4px 0 14px">
+            Gir kundekort en fargebadge i «Merknad»-kolonnen i Person-/Bedriftsmarked når betingelsen matcher.
+            Bruk alle kundedata (@Catalog.Fields.Count felter) — f.eks. <strong>alder</strong> (utledet fra
+            fødselsnummer) &lt; 34 → «Boliglån UNG», eller <strong>årsinntekt</strong> &gt; 999999 → «Grønt boliglån».
+            Alle matchende badges vises.
+        </p>
+        <table class="data-table">
+            <thead>
+                <tr><th>#</th><th>Parameter</th><th>Operator</th><th>Verdi</th><th>Merknad (badge)</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_merknadsregler.Count == 0)
+                {
+                    <tr><td colspan="7" class="empty-row">Ingen merknadsregler ennå — legg til under.</td></tr>
+                }
+                @foreach (var r in _merknadsregler.OrderBy(r => r.Prioritet))
+                {
+                    <tr>
+                        <td class="mono-cell">@r.Prioritet</td>
+                        <td>@LabelFor(r.FeltNokkel)</td>
+                        <td class="mono-cell">@r.Operator</td>
+                        <td>@r.Verdi</td>
+                        <td>@MerknadBadge(r.BadgeTekst, r.BadgeFarge)</td>
+                        <td>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@r.Aktiv" @onchange="e => ToggleMerknad(r, (bool)e.Value!)" />
+                                <span class="status @(r.Aktiv ? "on" : "off")">@(r.Aktiv ? "Aktiv" : "Av")</span>
+                            </label>
+                        </td>
+                        <td><button class="btn-sm btn-danger" @onclick="() => RemoveMerknad(r)">Slett</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Ny merknadsregel</h2>
+        <div class="rule-builder">
+            <div class="rb-field">
+                <label>Felt (kundedata)</label>
+                <select class="rb-input" value="@_mkFieldKey" @onchange="OnMkFieldChanged">
+                    @foreach (var cat in Catalog.Categories)
+                    {
+                        <optgroup label="@cat">
+                            @foreach (var f in Catalog.InCategory(cat)) { <option value="@f.Key">@f.Label</option> }
+                        </optgroup>
+                    }
+                </select>
+            </div>
+            <div class="rb-field rb-op">
+                <label>Operator</label>
+                <select class="rb-input" @bind="_mkOp">
+                    @foreach (var o in MkOperators) { <option value="@o">@o</option> }
+                </select>
+            </div>
+            @{ var mnf = MkField; }
+            @if (_mkOp == "mellom")
+            {
+                <div class="rb-field rb-op" style="max-width:130px">
+                    <label>Fra</label>
+                    <div class="input-unit"><input class="rb-input" @bind="_mkFra" placeholder="fra" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                </div>
+                <div class="rb-field rb-op" style="max-width:130px">
+                    <label>Til</label>
+                    <div class="input-unit"><input class="rb-input" @bind="_mkTil" placeholder="til" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                </div>
+            }
+            else
+            {
+                <div class="rb-field">
+                    <label>Verdi</label>
+                    @if (mnf?.Type == FieldType.Enum && mnf.Options is not null)
+                    {
+                        <select class="rb-input" @bind="_mkValue">@foreach (var v in mnf.Options) { <option value="@v">@v</option> }</select>
+                    }
+                    else
+                    {
+                        <div class="input-unit"><input class="rb-input" @bind="_mkValue" placeholder="@(mnf?.Placeholder ?? "Verdi")" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                    }
+                </div>
+            }
+            <div class="rb-arrow">→</div>
+            <div class="rb-field">
+                <label>Merknad-tekst (badge)</label>
+                <input class="rb-input" @bind="_mkBadgeTekst" placeholder="f.eks. Boliglån UNG" />
+            </div>
+            <div class="rb-field rb-op">
+                <label>Farge</label>
+                <select class="rb-input" @bind="_mkFarge">
+                    @foreach (var f in MerknadEval.Farger) { <option value="@f.Key">@f.Navn</option> }
+                </select>
+            </div>
+            <div class="rb-field" style="align-self:flex-end">
+                <label>Forhåndsvisning</label>
+                @MerknadBadge(string.IsNullOrWhiteSpace(_mkBadgeTekst) ? "Merknad" : _mkBadgeTekst, _mkFarge)
+            </div>
+        </div>
+        <button class="btn-primary rb-add-row" @onclick="AddMerknad">Legg til merknadsregel</button>
+        @if (!string.IsNullOrEmpty(_mkMsg))
+        {
+            <p class="page-sub" style="margin:12px 0 0; font-size:12.5px; color:@(_mkOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_mkMsg</p>
+        }
+    </div>
+}
 else if (_active == "Beregningsmodell")
 {
     <div class="form-card">
@@ -1521,6 +1650,7 @@ else if (_active == "GDPR")
         _smsMax24h = await Settings.GetIntAsync(TwoFactorService.KeyMaxPer24h, TwoFactorService.DefaultMaxPer24h);
         _gdprAnonMonths = await Settings.GetIntAsync("gdpr_anonymize_months", 12);
         _gdprDeleteMonths = await Settings.GetIntAsync("gdpr_delete_months", 24);
+        _timeoutDager = await Settings.GetIntAsync(KundekortService.KeySendtBankTimeoutDager, 0);
         _loginIpList = await Settings.GetAsync("login_ip_allowlist") ?? "";
         _loginMaxFailHour = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFailHour, SupabaseUserService.DefaultMaxFailHour);
         _loginMaxFail24h = await Settings.GetIntAsync(SupabaseUserService.KeyMaxFail24h, SupabaseUserService.DefaultMaxFail24h);
@@ -1541,6 +1671,7 @@ else if (_active == "GDPR")
         _grMaxDogn = await Gjeld.MaxPerDognAsync();
         _sisteSendinger = await BankSending.SisteAsync(25);
         _rules = await Ruting.ListAsync();
+        _merknadsregler = await Merknad.ListAsync();
         var bp = await Beregning.HentParametreAsync();
         _berRente = bp.Rente; _berLopetid = bp.LopetidAar;
         _berStress = bp.Stresstest; _berSifoVoksen = bp.SifoVoksen; _berSifoBarn = bp.SifoBarn;
@@ -1786,7 +1917,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Beregningsmodell", "GDPR", "Hendelseslogg" };
+    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
     private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
@@ -2324,6 +2455,82 @@ else if (_active == "GDPR")
     {
         await Ruting.DeleteAsync(r.Id);
         _rules.Remove(r);
+    }
+
+    // ---- Sending til bank: timeout-dager ----
+    private int _timeoutDager;
+    private string? _timeoutMsg;
+    private async Task LagreTimeout()
+    {
+        if (_timeoutDager < 0) _timeoutDager = 0;
+        await Settings.SetAsync(KundekortService.KeySendtBankTimeoutDager, _timeoutDager.ToString());
+        _timeoutMsg = _timeoutDager == 0
+            ? "Lagret. Timeout er av (0 dager)."
+            : $"Lagret. Saker i «Sendt bank» settes til timeout etter {_timeoutDager} dager.";
+    }
+
+    // ---- Merknad lån (universalfilter → fargebadge i markedet) ----
+    private List<Merknadsregel> _merknadsregler = new();
+    private string _mkFieldKey = "alder";
+    private string _mkOp = "<";
+    private string _mkValue = "34";
+    private string _mkFra = "", _mkTil = "";
+    private string _mkBadgeTekst = "";
+    private string _mkFarge = "gronn";
+    private string? _mkMsg;
+    private bool _mkOk;
+
+    private FieldDef? MkField => Catalog.Get(_mkFieldKey);
+    private string[] MkOperators => CustomerFieldCatalog.OperatorsFor(MkField?.Type ?? FieldType.Text);
+
+    private RenderFragment MerknadBadge(string tekst, string fargeKey) => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "style",
+            $"display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px; font-weight:700; color:#fff; background:{MerknadEval.FargeHex(fargeKey)}");
+        builder.AddContent(2, tekst);
+        builder.CloseElement();
+    };
+
+    private void OnMkFieldChanged(ChangeEventArgs e)
+    {
+        _mkFieldKey = e.Value?.ToString() ?? "";
+        var f = MkField;
+        _mkOp = MkOperators.First();
+        _mkValue = f?.Type == FieldType.Enum && f.Options is { Length: > 0 } ? f.Options[0] : "";
+        _mkFra = _mkTil = "";
+    }
+
+    private async Task AddMerknad()
+    {
+        _mkMsg = null;
+        var verdi = _mkOp == "mellom" ? $"{_mkFra.Trim()}-{_mkTil.Trim()}" : _mkValue?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(_mkBadgeTekst)) { _mkMsg = "Fyll inn merknad-tekst (badge)."; _mkOk = false; return; }
+        if (_mkOp == "mellom" ? (string.IsNullOrWhiteSpace(_mkFra) || string.IsNullOrWhiteSpace(_mkTil)) : string.IsNullOrWhiteSpace(verdi))
+        { _mkMsg = "Fyll inn verdi (Fra/Til for intervall)."; _mkOk = false; return; }
+
+        var prioritet = _merknadsregler.Count == 0 ? 1 : _merknadsregler.Max(r => r.Prioritet) + 1;
+        var (lagret, feil) = await Merknad.AddAsync(prioritet, _mkFieldKey, _mkOp, verdi, _mkBadgeTekst.Trim(), _mkFarge);
+        if (lagret is not null)
+        {
+            _merknadsregler = await Merknad.ListAsync();
+            _mkMsg = $"Merknadsregel lagret: {LabelFor(_mkFieldKey)} {_mkOp} {verdi} → «{_mkBadgeTekst.Trim()}»";
+            _mkOk = true;
+            _mkBadgeTekst = ""; _mkFra = _mkTil = "";
+        }
+        else { _mkMsg = "Kunne ikke lagre: " + (feil ?? "ukjent databasefeil"); _mkOk = false; }
+    }
+
+    private async Task ToggleMerknad(Merknadsregel r, bool aktiv)
+    {
+        r.Aktiv = aktiv;
+        await Merknad.SetAktivAsync(r.Id, aktiv);
+    }
+
+    private async Task RemoveMerknad(Merknadsregel r)
+    {
+        await Merknad.DeleteAsync(r.Id);
+        _merknadsregler.Remove(r);
     }
 
     private readonly string[] _roles = { "Saksbeh.", "Compliance", "Leder", "Admin" };

@@ -172,6 +172,10 @@ public class Kundekort : BaseModel
     [Column("siste_kontakt")] public DateTime? SisteKontakt { get; set; }
     [Column("neste_oppfolging")] public DateTime? NesteOppfolging { get; set; }
 
+    // Tidspunkt saken ble satt til «Sendt bank» — driver auto-timeout. Settes kun via de eksplisitte
+    // status-settere (SetStatusAsync/SetEierAsync); ignoreOnUpdate hindrer at full-lagring (SaveAsync) nuller den.
+    [Column("sendt_bank_at", ignoreOnUpdate: true)] public DateTime? SendtBankAt { get; set; }
+
     // Tidsstempler — leses for sortering, men skrives ikke (DB styrer dem).
     [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
     public DateTime CreatedAt { get; set; }
