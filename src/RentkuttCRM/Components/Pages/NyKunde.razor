@@ -81,107 +81,15 @@
 @* Statuskort — samlet status + hvilke banker saken er i prosess hos *@
 <div class="kk-side-title">Status</div>
 <div class="form-card">
-    <div style="margin-bottom:12px">
-        <span class="kk-chip" style="@ChipStyle(StatusFarge(_k.Status))"><span class="kk-chip-dot" style="background:@StatusFarge(_k.Status)"></span>@_k.Status</span>
-    </div>
-    <div class="ff" style="margin-bottom:14px">
+    <div class="ff">
         <label>Endre status</label>
         <select @bind="_k.Status" @bind:after="EndreStatus" disabled="@(!_isEdit || !KanEndre)">
             @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
         </select>
     </div>
-
-    <h3 class="ww-h">Matchende banker</h3>
-    @{ var visBanker = BankerForVisning(); }
-    @if (visBanker.Count == 0)
-    {
-        <p class="page-sub" style="margin:2px 0 0; font-size:12px">Ingen banker matcher ennå (styres av logikk-matrisen).</p>
-    }
-    else
-    {
-        @foreach (var bank in visBanker)
-        {
-            var sending = SisteSendingFor(bank);
-            var erIb = InstabankService.ErInstabankNavn(bank);
-            var auto = _banker.FirstOrDefault(b => b.Navn == bank)?.AutoSend ?? false;
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border)">
-                <div style="min-width:0">
-                    <strong style="font-size:13px">@bank</strong>
-                    <div class="page-sub" style="margin:0; font-size:11px">
-                        @(erIb ? "API" : "Manuell")@(auto ? " · Auto" : "") · @(sending is null ? "Ikke sendt" : $"{sending.SendtAt.TilOslo():dd.MM.yy} · {SendtTekst(sending)}")
-                    </div>
-                </div>
-                <div style="flex-shrink:0">
-                    @if (sending is null)
-                    {
-                        <button class="btn-primary btn-sm" @onclick="() => SendTilMatchetBank(bank)" disabled="@(_sender || !_isEdit || !KanEndre)">Send</button>
-                    }
-                    else if (erIb)
-                    {
-                        <span class="status @UtfallKlasse(sending.Utfall)" title="Settes automatisk via Instabank-synk">@(string.IsNullOrWhiteSpace(sending.Utfall) ? "Venter" : sending.Utfall)</span>
-                    }
-                    else
-                    {
-                        <select class="inline-select" style="max-width:130px" @onchange="e => SettBankUtfall(sending, e)" disabled="@(!KanEndre)">
-                            @foreach (var u in SendUtfall.Alle) { <option value="@u" selected="@(u == (sending.Utfall ?? SendUtfall.Venter))">@u</option> }
-                        </select>
-                    }
-                </div>
-            </div>
-        }
-        <p class="page-sub" style="margin:8px 0 0; font-size:11px">Instabank sendes via API (auto hvis påslått, ellers «Send»). Manuelle banker registreres og settes her. Kundens status utledes fra bankene.</p>
-        @if (!string.IsNullOrEmpty(_sendMsg)) { <p class="page-sub" style="margin:6px 0 0; font-size:11px; color:@(_sendOk ? "var(--green-dark)" : "var(--danger,#b42318)")">@_sendMsg</p> }
-    }
 </div>
 
 <div class="kk-side-title">Handlinger</div>
-
-@* Send søknaden til en bankpartner *@
-<div class="form-card send-bank">
-    <h2>Send til bank</h2>
-    <p class="page-sub" style="margin:-4px 0 12px">Send denne søknaden til en bankpartner. Instabank sendes via API; andre banker registreres som manuelt videresendt.</p>
-    <div class="rq-row">
-        <div class="ff" style="min-width:200px">
-            <label>Bank</label>
-            <select value="@_valgtBank" @onchange="OnBankValgt" disabled="@(!_isEdit || !KanEndre)">
-                <option value="">— velg bank —</option>
-                @foreach (var b in _banker) { <option value="@b.Navn">@b.Navn@(InstabankService.ErInstabankNavn(b.Navn) ? " (API)" : "")</option> }
-            </select>
-        </div>
-        @{ var valgteProdukter = ProdukterForValgtBank(); }
-        @if (valgteProdukter.Count > 0)
-        {
-            <div class="ff" style="min-width:200px">
-                <label>Produkt (@(_k.KundeType == "B2B" ? "bedrift" : "privat"))</label>
-                <select @bind="_valgtProduktId" disabled="@(!_isEdit || !KanEndre)">
-                    <option value="">— velg produkt —</option>
-                    @foreach (var p in valgteProdukter)
-                    {
-                        <option value="@p.Id">@p.Navn@(p.Kode is int kode ? $" ({kode})" : "")</option>
-                    }
-                </select>
-                @if (ErAutoValgt)
-                {
-                    <span class="page-sub" style="margin:2px 0 0; font-size:11.5px; color:var(--green-dark)">Auto-valgt fra lånetype «@_k.Laanetype»</span>
-                }
-            </div>
-        }
-        <button class="btn-primary btn-sm" @onclick="SendTilBank"
-                disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank) || (valgteProdukter.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)) || OverMaks)"
-                title="@(!_isEdit ? "Lagre kundekortet først" : OverMaks ? "Beløpet overstiger maksgrensen for produktet" : "")">@(_sender ? "Sender…" : "Send til bank")</button>
-        @if (!string.IsNullOrEmpty(_sendMsg)) { <span class="form-msg @(_sendOk ? "ok" : "err")">@_sendMsg</span> }
-    </div>
-    @{ var _maks = GjeldendeMaks(); }
-    @if (_maks > 0)
-    {
-        <p class="page-sub" style="margin:8px 0 0; font-size:12px; @(OverMaks ? "color:var(--red,#c0392b); font-weight:600" : "")">
-            Maks lånebeløp for @(valgteProdukter.FirstOrDefault(p => p.Id.ToString() == _valgtProduktId)?.Navn?.ToLowerInvariant()) hos Instabank: <strong>@_maks.ToString("N0") kr</strong>.
-            @if (OverMaks) { <text>Ønsket beløp (@_k.OnsketLaanebelop?.ToString("N0") kr) overstiger grensen — kan ikke sendes.</text> }
-        </p>
-    }
-
-    @* «Sendt til bank»-loggen vises i Oversikt-fanen — ikke duplisert her. *@
-</div>
 
 @* Tidsstemplet notatlogg *@
 <div class="form-card note-card">
@@ -276,6 +184,27 @@
             }
         </div>
     }
+
+    <h3 class="ww-h" style="margin-top:16px">Sendt til bank</h3>
+    @if (_sendinger.Count == 0)
+    {
+        <p class="notat-empty">Ikke sendt til noen bank ennå.</p>
+    }
+    else
+    {
+        <div class="logg-liste">
+            @foreach (var s in _sendinger)
+            {
+                <div class="logg-item">
+                    <div class="logg-meta">
+                        <span class="logg-tid">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
+                        <span class="status @SendtKlasse(s.Status)">@s.Status</span>
+                    </div>
+                    <div class="logg-tekst">@s.Bank@(string.IsNullOrWhiteSpace(s.Produkt) ? "" : $" · {s.Produkt}")@(string.IsNullOrWhiteSpace(s.Detalj) ? "" : $" — {s.Detalj}")</div>
+                </div>
+            }
+        </div>
+    }
 </div>
 </div>@* /kk-side *@
 
@@ -285,7 +214,6 @@
     var (ber, linjer) = BeregningService.Detaljert(_k, _berParams);
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
-    var forslagBanker = RutingEval.ForeslaBanker(_regler, _k, _banker);
     var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
     var terminalStatus = _k.Status is "Avslått" or "Kansellert" or "Teknisk feil";
 }
@@ -318,6 +246,92 @@
         @if (terminalStatus)
         {
             <p class="flyt-terminal-tekst">Søknaden er avsluttet med status <strong>@_k.Status</strong>.</p>
+        }
+    </div>
+
+    @* Send til bank — bankmatch (logikk-matrisen) + manuell sending, over Oppfølginger *@
+    <div class="form-card">
+        <h2>Send til bank</h2>
+        <p class="page-sub" style="margin:-4px 0 12px">Banker som matcher logikk-matrisen. Instabank sendes via API (auto hvis påslått, ellers «Send»); andre registreres som manuelt videresendt. Kundens status utledes fra bankene.</p>
+
+        @{ var visBanker = BankerForVisning(); }
+        @if (visBanker.Count == 0)
+        {
+            <p class="notat-empty">Ingen banker matcher reglene for denne søknaden ennå.</p>
+        }
+        else
+        {
+            @foreach (var bank in visBanker)
+            {
+                var sending = SisteSendingFor(bank);
+                var erIb = InstabankService.ErInstabankNavn(bank);
+                var auto = _banker.FirstOrDefault(b => b.Navn == bank)?.AutoSend ?? false;
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border)">
+                    <div style="min-width:0">
+                        <strong style="font-size:13px">@bank</strong>
+                        <div class="page-sub" style="margin:0; font-size:11px">
+                            @(erIb ? "API" : "Manuell")@(auto ? " · Auto" : "") · @(sending is null ? "Ikke sendt" : $"{sending.SendtAt.TilOslo():dd.MM.yy} · {SendtTekst(sending)}")
+                        </div>
+                    </div>
+                    <div style="flex-shrink:0">
+                        @if (sending is null)
+                        {
+                            <button class="btn-primary btn-sm" @onclick="() => SendTilMatchetBank(bank)" disabled="@(_sender || !_isEdit || !KanEndre)">Send</button>
+                        }
+                        else if (erIb)
+                        {
+                            <span class="status @UtfallKlasse(sending.Utfall)" title="Settes automatisk via Instabank-synk">@(string.IsNullOrWhiteSpace(sending.Utfall) ? "Venter" : sending.Utfall)</span>
+                        }
+                        else
+                        {
+                            <select class="inline-select" style="max-width:130px" @onchange="e => SettBankUtfall(sending, e)" disabled="@(!KanEndre)">
+                                @foreach (var u in SendUtfall.Alle) { <option value="@u" selected="@(u == (sending.Utfall ?? SendUtfall.Venter))">@u</option> }
+                            </select>
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        <h3 class="ww-h" style="margin-top:16px">Send til annen bank / velg produkt</h3>
+        <div class="rq-row">
+            <div class="ff" style="min-width:200px">
+                <label>Bank</label>
+                <select value="@_valgtBank" @onchange="OnBankValgt" disabled="@(!_isEdit || !KanEndre)">
+                    <option value="">— velg bank —</option>
+                    @foreach (var b in _banker) { <option value="@b.Navn">@b.Navn@(InstabankService.ErInstabankNavn(b.Navn) ? " (API)" : "")</option> }
+                </select>
+            </div>
+            @{ var valgteProdukter = ProdukterForValgtBank(); }
+            @if (valgteProdukter.Count > 0)
+            {
+                <div class="ff" style="min-width:200px">
+                    <label>Produkt (@(_k.KundeType == "B2B" ? "bedrift" : "privat"))</label>
+                    <select @bind="_valgtProduktId" disabled="@(!_isEdit || !KanEndre)">
+                        <option value="">— velg produkt —</option>
+                        @foreach (var p in valgteProdukter)
+                        {
+                            <option value="@p.Id">@p.Navn@(p.Kode is int kode ? $" ({kode})" : "")</option>
+                        }
+                    </select>
+                    @if (ErAutoValgt)
+                    {
+                        <span class="page-sub" style="margin:2px 0 0; font-size:11.5px; color:var(--green-dark)">Auto-valgt fra lånetype «@_k.Laanetype»</span>
+                    }
+                </div>
+            }
+            <button class="btn-primary btn-sm" @onclick="SendTilBank"
+                    disabled="@(_sender || !_isEdit || !KanEndre || string.IsNullOrWhiteSpace(_valgtBank) || (valgteProdukter.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)) || OverMaks)"
+                    title="@(!_isEdit ? "Lagre kundekortet først" : OverMaks ? "Beløpet overstiger maksgrensen for produktet" : "")">@(_sender ? "Sender…" : "Send til bank")</button>
+            @if (!string.IsNullOrEmpty(_sendMsg)) { <span class="form-msg @(_sendOk ? "ok" : "err")">@_sendMsg</span> }
+        </div>
+        @{ var _maks = GjeldendeMaks(); }
+        @if (_maks > 0)
+        {
+            <p class="page-sub" style="margin:8px 0 0; font-size:12px; @(OverMaks ? "color:var(--red,#c0392b); font-weight:600" : "")">
+                Maks lånebeløp for @(valgteProdukter.FirstOrDefault(p => p.Id.ToString() == _valgtProduktId)?.Navn?.ToLowerInvariant()) hos Instabank: <strong>@_maks.ToString("N0") kr</strong>.
+                @if (OverMaks) { <text>Ønsket beløp (@_k.OnsketLaanebelop?.ToString("N0") kr) overstiger grensen — kan ikke sendes.</text> }
+            </p>
         }
     </div>
 
@@ -362,43 +376,6 @@
         else
         {
             <p class="page-sub" style="margin:0; font-size:12px">Lagre kundekortet først for å legge til oppfølginger.</p>
-        }
-    </div>
-
-    <div class="form-card">
-        <h2>Bankmatch (fra logikk-matrisen)</h2>
-        @if (forslagBanker.Count == 0)
-        {
-            <p class="notat-empty">Ingen banker matcher reglene for denne søknaden ennå.</p>
-        }
-        else
-        {
-            <div class="bank-chips">
-                @foreach (var b in forslagBanker) { <span class="route-bank">@b</span> }
-            </div>
-        }
-    </div>
-
-    <div class="form-card">
-        <h2>Sendt til bank</h2>
-        @if (_sendinger.Count == 0)
-        {
-            <p class="notat-empty">Ikke sendt til noen bank ennå.</p>
-        }
-        else
-        {
-            <div class="logg-liste">
-                @foreach (var s in _sendinger)
-                {
-                    <div class="logg-item">
-                        <div class="logg-meta">
-                            <span class="logg-tid">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
-                            <span class="status @SendtKlasse(s.Status)">@s.Status</span>
-                        </div>
-                        <div class="logg-tekst">@s.Bank@(string.IsNullOrWhiteSpace(s.Produkt) ? "" : $" · {s.Produkt}")@(string.IsNullOrWhiteSpace(s.Detalj) ? "" : $" — {s.Detalj}")</div>
-                    </div>
-                }
-            </div>
         }
     </div>
 
