@@ -251,8 +251,8 @@
 
     @* Send til bank — bankmatch (logikk-matrisen) + manuell sending, over Oppfølginger *@
     <div class="form-card">
-        <h2>Send til bank</h2>
-        <p class="page-sub" style="margin:-4px 0 12px">Banker som matcher logikk-matrisen. Instabank sendes via API (auto hvis påslått, ellers «Send»); andre registreres som manuelt videresendt. Kundens status utledes fra bankene.</p>
+        <h2>Bankstatus</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Banker som matcher logikk-matrisen — med status per bank. Instabank sendes via API (auto hvis påslått, ellers «Send»); andre registreres og følges opp manuelt.</p>
 
         @{ var visBanker = BankerForVisning(); }
         @if (visBanker.Count == 0)
@@ -266,28 +266,47 @@
                 var sending = SisteSendingFor(bank);
                 var erIb = InstabankService.ErInstabankNavn(bank);
                 var auto = _banker.FirstOrDefault(b => b.Navn == bank)?.AutoSend ?? false;
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border)">
-                    <div style="min-width:0">
-                        <strong style="font-size:13px">@bank</strong>
-                        <div class="page-sub" style="margin:0; font-size:11px">
-                            @(erIb ? "API" : "Manuell")@(auto ? " · Auto" : "") · @(sending is null ? "Ikke sendt" : $"{sending.SendtAt.TilOslo():dd.MM.yy} · {SendtTekst(sending)}")
+                var idx = BankStegIdx(sending);
+                <div style="border:1px solid var(--border-strong); border-radius:10px; padding:12px 14px; margin-bottom:12px; background:var(--surface)">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px">
+                        <div style="min-width:0">
+                            <strong style="font-size:14px">@bank</strong>
+                            <span style="margin-left:8px; font-size:10.5px; font-weight:700; color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:1px 7px">@(erIb ? "API" : "Manuell")</span>
+                            @if (auto) { <span style="margin-left:4px; font-size:10.5px; font-weight:700; color:#266f32; background:#e7f4ea; border:1px solid #c3e4cb; border-radius:8px; padding:1px 7px">Auto</span> }
                         </div>
+                        <span class="status @BankStatusKlasse(sending)">@BankStatusLabel(sending)</span>
                     </div>
-                    <div style="flex-shrink:0">
-                        @if (sending is null)
+
+                    @* Per-bank prosess *@
+                    <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-bottom:10px">
+                        @{ var steg = new[] { "Ikke sendt", "Sendt", "Pågår", "Avklart" }; }
+                        @for (var i = 0; i < steg.Length; i++)
                         {
-                            <button class="btn-primary btn-sm" @onclick="() => SendTilMatchetBank(bank)" disabled="@(_sender || !_isEdit || !KanEndre)">Send</button>
+                            <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; @(i <= idx ? "background:#1f5fc4;color:#fff" : "background:#eef0f3;color:#9aa0a8")">@steg[i]</span>
+                            @if (i < steg.Length - 1) { <span style="color:#c3c7cf; font-size:11px">›</span> }
                         }
-                        else if (erIb)
-                        {
-                            <span class="status @UtfallKlasse(sending.Utfall)" title="Settes automatisk via Instabank-synk">@(string.IsNullOrWhiteSpace(sending.Utfall) ? "Venter" : sending.Utfall)</span>
-                        }
-                        else
-                        {
-                            <select class="inline-select" style="max-width:130px" @onchange="e => SettBankUtfall(sending, e)" disabled="@(!KanEndre)">
-                                @foreach (var u in SendUtfall.Alle) { <option value="@u" selected="@(u == (sending.Utfall ?? SendUtfall.Venter))">@u</option> }
-                            </select>
-                        }
+                    </div>
+
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
+                        <span class="page-sub" style="margin:0; font-size:11px">
+                            @(sending is null ? "Matcher — ikke sendt ennå" : $"{sending.SendtAt.TilOslo():dd.MM.yy HH:mm} · sendt {SendtMaate(sending)}")
+                        </span>
+                        <div style="flex-shrink:0">
+                            @if (sending is null)
+                            {
+                                <button class="btn-primary btn-sm" @onclick="() => SendTilMatchetBank(bank)" disabled="@(_sender || !_isEdit || !KanEndre)">Send til @bank</button>
+                            }
+                            else if (erIb)
+                            {
+                                <span class="page-sub" style="margin:0; font-size:11px; font-style:italic">Oppdateres automatisk</span>
+                            }
+                            else
+                            {
+                                <select class="inline-select" style="max-width:140px" @onchange="e => SettBankUtfall(sending, e)" disabled="@(!KanEndre)">
+                                    @foreach (var u in SendUtfall.Alle) { <option value="@u" selected="@(u == (sending.Utfall ?? SendUtfall.Venter))">@u</option> }
+                                </select>
+                            }
+                        </div>
                     </div>
                 </div>
             }
@@ -1189,6 +1208,34 @@
     {
         SendStatus.IKo => "I kø", SendStatus.Feilet => "Feilet", SendStatus.Manuelt => "Manuelt", _ => "Sendt",
     };
+
+    // ---- Per-bank prosess (Ikke sendt → Sendt → Pågår → Avklart) ----
+    private static int BankStegIdx(BankSending? s)
+    {
+        if (s is null) return 0;                                   // Ikke sendt
+        if (s.Status == SendStatus.IKo) return 1;                  // Sendt (i kø)
+        if (s.Status == SendStatus.Feilet) return 3;               // Avklart (teknisk feil)
+        return string.IsNullOrWhiteSpace(s.Utfall) || s.Utfall == SendUtfall.Venter ? 2 : 3; // Pågår / Avklart
+    }
+
+    private static string BankStatusLabel(BankSending? s)
+    {
+        if (s is null) return "Ikke sendt";
+        if (s.Status == SendStatus.IKo) return "I kø";
+        if (s.Status == SendStatus.Feilet) return "Teknisk feil";
+        return string.IsNullOrWhiteSpace(s.Utfall) || s.Utfall == SendUtfall.Venter ? "Pågår" : s.Utfall!;
+    }
+
+    private static string BankStatusKlasse(BankSending? s)
+    {
+        if (s is null) return "off";
+        if (s.Status == SendStatus.Feilet) return "err";
+        if (s.Status == SendStatus.IKo) return "pending";
+        return UtfallKlasse(string.IsNullOrWhiteSpace(s.Utfall) ? SendUtfall.Venter : s.Utfall);
+    }
+
+    private static string SendtMaate(BankSending s) =>
+        InstabankService.ErInstabankNavn(s.Bank) ? "via API" : "manuelt";
 
     // Send til en matchende bank fra statuskortet (auto-velger produkt for Instabank).
     private async Task SendTilMatchetBank(string bank)
