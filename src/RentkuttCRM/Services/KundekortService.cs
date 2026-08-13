@@ -6,19 +6,33 @@ namespace RentkuttCRM.Services;
 /// </summary>
 public class KundekortService
 {
+    // Full statusliste (kundekortet kan sette alle; markeds-dropdownen viser kun StatuserManuelle).
     public static readonly string[] Statuser =
-        { "Nytt lead", "Påbegynt søknad", "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Sendt til bank - Timeout", "Feilet i sending", "Tilbud utsendt", "Fullført og utbetalt", "Avslått" };
+        { "Påbegynt søknad", "Nytt lead", "Ny søknad", "Pågår - Agent", "Sendt - I prosess",
+          "Sendt til bank - Timeout", "Sendt - Innvilget", "Utbetalt", "Avslått", "Kansellert", "Teknisk feil" };
+
+    /// <summary>Statuser en saksbehandler kan sette manuelt i markeds-dropdownen. Øvrige er system-satt
+    /// (webhook/API/bakgrunnsjobber) og kan bare endres ved å åpne kundekortet.</summary>
+    public static readonly string[] StatuserManuelle =
+        { "Pågår - Agent", "Sendt - I prosess", "Utbetalt", "Avslått", "Kansellert" };
+
     /// <summary>Nytt, ueid lead (f.eks. fra Prismatch) som ikke er plukket/behandlet ennå.</summary>
     public const string StatusNyttLead = "Nytt lead";
     /// <summary>Utkast opprettet fra Vipps/BankID-bekreftelse, før kunden har fullført skjemaet.</summary>
     public const string StatusPaabegynt = "Påbegynt søknad";
-    public const string StatusAapen = "Åpen";
-    public const string StatusFullfort = "Fullført og utbetalt";
-    public const string StatusAvslatt = "Avslått";
-    public const string StatusSendtBank = "Sendt bank";
+    /// <summary>Komplett, signert søknad (rentekutt.no) klar til behandling.</summary>
+    public const string StatusNySoknad = "Ny søknad";
+    public const string StatusPagaarAgent = "Pågår - Agent";
+    public const string StatusSendtIProsess = "Sendt - I prosess";
     public const string StatusSendtBankTimeout = "Sendt til bank - Timeout";
-    public const string StatusTilbudUtsendt = "Tilbud utsendt";
-    public const string StatusFeiletSending = "Feilet i sending";
+    public const string StatusSendtInnvilget = "Sendt - Innvilget";
+    public const string StatusUtbetalt = "Utbetalt";
+    public const string StatusAvslatt = "Avslått";
+    public const string StatusKansellert = "Kansellert";
+    public const string StatusTekniskFeil = "Teknisk feil";
+
+    /// <summary>Statuser der saken er ferdig avklart — bl.a. brukt til å stoppe Instabank-polling.</summary>
+    public static readonly string[] StatuserAvklart = { "Utbetalt", "Avslått", "Kansellert" };
 
     // Innstilling: antall dager en sak kan stå i «Sendt bank» før den auto-settes til timeout. 0 = av.
     public const string KeySendtBankTimeoutDager = "sendt_bank_timeout_dager";
@@ -26,8 +40,9 @@ public class KundekortService
     /// <summary>Forenklet status for tredjeparter: åpen / utbetalt / avslått + om saken er ferdigbehandlet.</summary>
     public static (string kode, string tekst, bool ferdig) TredjepartStatus(string? status) => status switch
     {
-        StatusFullfort => ("utbetalt", "Utbetalt", true),
+        StatusUtbetalt => ("utbetalt", "Utbetalt", true),
         StatusAvslatt => ("avslatt", "Avslått", true),
+        StatusKansellert => ("kansellert", "Kansellert", true),
         _ => ("apen", "Åpen", false),
     };
 
@@ -419,7 +434,7 @@ public class KundekortService
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
-            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; if (nyStatus is not null) { k.Status = nyStatus; if (nyStatus == StatusSendtBank) k.SendtBankAt = naa; } }
+            if (k is not null) { k.Eier = eier; k.EierNavn = eierNavn; k.EierTattAt = naa; if (nyStatus is not null) { k.Status = nyStatus; if (nyStatus == StatusSendtIProsess) k.SendtBankAt = naa; } }
             return;
         }
         try
@@ -431,7 +446,7 @@ public class KundekortService
                 .Set(x => x.EierNavn!, eierNavn)
                 .Set(x => x.EierTattAt!, naa);
             if (nyStatus is not null) q = q.Set(x => x.Status, nyStatus);
-            if (nyStatus == StatusSendtBank) q = q.Set(x => x.SendtBankAt!, naa);
+            if (nyStatus == StatusSendtIProsess) q = q.Set(x => x.SendtBankAt!, naa);
             await q.Update();
             InvaliderCache();
             await _logg.LoggAsync(id, eierNavn, "Tok eierskap" + (nyStatus is not null ? $" · status → {nyStatus}" : ""));
@@ -575,8 +590,8 @@ public class KundekortService
 
     public async Task SetStatusAsync(Guid id, string status, string? aktor = null)
     {
-        // Når en sak settes til «Sendt bank», stemple tidspunktet — brukes av timeout-jobben.
-        var settSendtBank = status == StatusSendtBank;
+        // Når en sak settes til «Sendt - I prosess», stemple tidspunktet — brukes av timeout-jobben.
+        var settSendtBank = status == StatusSendtIProsess;
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == id);
@@ -593,6 +608,34 @@ public class KundekortService
             await _logg.LoggAsync(id, aktor, $"Endret status til {status}");
         }
         catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
+    }
+
+    /// <summary>Samlet kundekortstatus utledet fra alle bankenes utfall (fler-bank-logikk):
+    /// utbetalt vinner, så innvilget; ellers venter (i prosess); ellers alle negative
+    /// (kansellert/avslått/teknisk feil). Null = ingen faktiske sendinger ennå.</summary>
+    public static string? AggregertStatus(IEnumerable<BankSending> sendinger)
+    {
+        var utfall = sendinger
+            .Where(s => s.Status == SendStatus.Sendt || s.Status == SendStatus.Manuelt)
+            .Select(s => string.IsNullOrWhiteSpace(s.Utfall) ? SendUtfall.Venter : s.Utfall!)
+            .ToList();
+        if (utfall.Count == 0) return null;
+        if (utfall.Any(u => u == SendUtfall.Utbetalt)) return StatusUtbetalt;
+        if (utfall.Any(u => u == SendUtfall.Innvilget)) return StatusSendtInnvilget;
+        if (utfall.Any(u => u == SendUtfall.Venter)) return StatusSendtIProsess;   // noen banker ikke avklart
+        if (utfall.All(u => u == SendUtfall.Kansellert)) return StatusKansellert;
+        if (utfall.Any(u => u == SendUtfall.Avslatt)) return StatusAvslatt;
+        if (utfall.Any(u => u == SendUtfall.TekniskFeil)) return StatusTekniskFeil;
+        return StatusSendtIProsess;
+    }
+
+    /// <summary>Regn ut og sett kundekortets status fra bankenes utfall. Oppdaterer kun ved reell endring
+    /// (så «Sendt - I prosess»-tidsstempelet ikke nullstilles hver polling-syklus).</summary>
+    public async Task OppdaterStatusFraBankerAsync(Guid kundekortId, string? naavaerendeStatus, IEnumerable<BankSending> sendinger, string? aktor = null)
+    {
+        var ny = AggregertStatus(sendinger);
+        if (ny is null || ny == naavaerendeStatus) return;
+        await SetStatusAsync(kundekortId, ny, aktor ?? "System (bank-utfall)");
     }
 
     public async Task<(bool ok, string? error)> DeleteAsync(Guid id)

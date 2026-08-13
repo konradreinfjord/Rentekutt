@@ -21,7 +21,7 @@
 
 <div class="db-stats">
     <div class="db-box accent-green"><span class="db-box-num">@View.Count</span><span class="db-box-lbl">Søknader</span></div>
-    <div class="db-box accent-amber"><span class="db-box-num">@View.Count(k => k.Status == "Åpen")</span><span class="db-box-lbl">Åpne</span></div>
+    <div class="db-box accent-amber"><span class="db-box-num">@View.Count(k => k.Status == "Ny søknad")</span><span class="db-box-lbl">Nye søknader</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2C")</span><span class="db-box-lbl">B2C</span></div>
     <div class="db-box"><span class="db-box-num">@View.Count(k => k.KundeType == "B2B")</span><span class="db-box-lbl">B2B</span></div>
     <div class="db-box"><span class="db-box-num">@SamletBelop<span class="db-box-unit">@SamletEnhet</span></span><span class="db-box-lbl">Samlet beløp</span></div>
@@ -341,15 +341,17 @@ else
 
     private static string StatusKlasse(string s) => s switch
     {
+        "Påbegynt søknad" => "st-manuell",
         "Nytt lead" => "st-nytt",
-        "Åpen" => "st-apen",
-        "Pågår" => "st-pagar",
-        "Manuell behandling" => "st-manuell",
-        "Sendt bank" => "st-sendt",
+        "Ny søknad" => "st-apen",
+        "Pågår - Agent" => "st-pagar",
+        "Sendt - I prosess" => "st-sendt",
         "Sendt til bank - Timeout" => "st-avslatt",
-        "Tilbud utsendt" => "st-tilbud",
-        "Fullført og utbetalt" => "st-fullfort",
+        "Sendt - Innvilget" => "st-tilbud",
+        "Utbetalt" => "st-fullfort",
         "Avslått" => "st-avslatt",
+        "Kansellert" => "st-kansellert",
+        "Teknisk feil" => "st-avslatt",
         _ => "",
     };
 
@@ -471,7 +473,7 @@ else
     private async Task TakeOwnership(Kundekort k)
     {
         var eier = Session.Email ?? Session.UserName ?? "ukjent";
-        var nyStatus = k.Status == "Åpen" ? "Pågår" : null;
+        var nyStatus = k.Status == KundekortService.StatusNySoknad ? KundekortService.StatusPagaarAgent : null;
         await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier, nyStatus);
         k.Eier = eier;
         k.EierNavn = Session.UserName ?? eier;

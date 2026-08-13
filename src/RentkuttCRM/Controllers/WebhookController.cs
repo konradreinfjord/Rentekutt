@@ -561,7 +561,7 @@ public class WebhookController : ControllerBase
 
             // Fnr oppgitt i søknadsskjema = lavere sikkerhetsnivå enn Vipps/BankID-autentisert.
             FnrKilde = KundekortService.FnrKildeSkjema,
-            Status = "Åpen",
+            Status = KundekortService.StatusNySoknad,
         };
     }
 }

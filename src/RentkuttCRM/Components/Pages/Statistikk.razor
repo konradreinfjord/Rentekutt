@@ -37,9 +37,9 @@ else
 
     var rows = Rows;
     var total = rows.Count;
-    var fullfort = rows.Where(k => k.Status == KundekortService.StatusFullfort).ToList();
+    var fullfort = rows.Where(k => k.Status == KundekortService.StatusUtbetalt).ToList();
     var avslatt = rows.Where(k => k.Status == "Avslått").ToList();
-    var aktive = rows.Where(k => k.Status != KundekortService.StatusFullfort && k.Status != "Avslått").ToList();
+    var aktive = rows.Where(k => k.Status != KundekortService.StatusUtbetalt && k.Status != "Avslått").ToList();
 
     var konv = total == 0 ? 0 : 100.0 * fullfort.Count / total;
     var laanevolum = fullfort.Sum(k => k.OnsketLaanebelop ?? 0);
@@ -396,7 +396,7 @@ else
 
     // Pipeline-steg for cashflow (uten Avslått).
     private readonly string[] _cashflowSteg =
-        { "Åpen", "Pågår", "Manuell behandling", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt" };
+        { "Ny søknad", "Pågår - Agent", "Sendt - I prosess", "Sendt - Innvilget", "Utbetalt" };
 
     private IEnumerable<string> Leadskilder =>
         _all.Select(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde).Distinct().OrderBy(x => x);
@@ -433,7 +433,7 @@ else
         {
             var delegert = rows.Where(k => k.DelegertBank == p.Navn).ToList();
             if (delegert.Count == 0) continue;
-            var fullf = delegert.Where(k => k.Status == KundekortService.StatusFullfort).ToList();
+            var fullf = delegert.Where(k => k.Status == KundekortService.StatusUtbetalt).ToList();
             yield return new BankRad(
                 p.Navn, delegert.Count, fullf.Count,
                 delegert.Count == 0 ? 0 : 100.0 * fullf.Count / delegert.Count,
@@ -452,25 +452,28 @@ else
     // Sannsynlighet for at en søknad ender i utbetaling, per status.
     private static double Sannsynlighet(string status) => status switch
     {
-        "Åpen" => 0.10,
-        "Pågår" => 0.25,
-        "Manuell behandling" => 0.20,
-        "Sendt bank" => 0.45,
-        "Tilbud utsendt" => 0.70,
-        "Fullført og utbetalt" => 1.0,
+        "Ny søknad" => 0.10,
+        "Pågår - Agent" => 0.25,
+        "Sendt - I prosess" => 0.45,
+        "Sendt til bank - Timeout" => 0.40,
+        "Sendt - Innvilget" => 0.85,
+        "Utbetalt" => 1.0,
         _ => 0.0,
     };
 
     private static string StatusFarge(string status) => status switch
     {
-        "Åpen" => "#2f8a3e",
-        "Pågår" => "#1f5fc4",
-        "Manuell behandling" => "#c2740a",
-        "Sendt bank" => "#6b3fc4",
+        "Påbegynt søknad" => "#c2740a",
+        "Nytt lead" => "#0891b2",
+        "Ny søknad" => "#2f8a3e",
+        "Pågår - Agent" => "#1f5fc4",
+        "Sendt - I prosess" => "#6b3fc4",
         "Sendt til bank - Timeout" => "#b42318",
-        "Tilbud utsendt" => "#0f8a8a",
-        "Fullført og utbetalt" => "#266f32",
+        "Sendt - Innvilget" => "#0f8a8a",
+        "Utbetalt" => "#266f32",
         "Avslått" => "#b42318",
+        "Kansellert" => "#5b6b7f",
+        "Teknisk feil" => "#b42318",
         _ => "#9aa0a8",
     };
 
@@ -482,7 +485,7 @@ else
 
     private record BankSyklus(string Bank, int Antall, double Snitt);
     private List<BankSyklus> BankSyklustider(List<Kundekort> rows) =>
-        rows.Where(k => k.Status == KundekortService.StatusFullfort && !string.IsNullOrWhiteSpace(k.DelegertBank))
+        rows.Where(k => k.Status == KundekortService.StatusUtbetalt && !string.IsNullOrWhiteSpace(k.DelegertBank))
             .GroupBy(k => k.DelegertBank!)
             .Select(g => new BankSyklus(g.Key, g.Count(), g.Average(SyklusDager)))
             .OrderByDescending(x => x.Snitt)

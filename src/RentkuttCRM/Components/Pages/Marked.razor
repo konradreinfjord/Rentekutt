@@ -129,8 +129,8 @@ else
                     <td class="mono-cell" title="@OpprettetTittel(k.CreatedAt)">@OpprettetTekst(k.CreatedAt)</td>
                     <td class="mono-cell">@if (k.NesteOppfolging is { } n) { <span class="opf-date @OppfDatoKlasse(n)">@n.ToString("dd.MM.yyyy")</span> } else { <span class="muted">—</span> }</td>
                     <td @onclick:stopPropagation="true">
-                        <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "")" @onchange="e => ChangeStatus(k, e)">
-                            @foreach (var s in _statuses) { <option value="@s" selected="@(s == k.Status)">@s</option> }
+                        <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "Systemstatuser endres ved å åpne kundekortet")" @onchange="e => ChangeStatus(k, e)">
+                            @foreach (var s in RadStatuser(k.Status)) { <option value="@s" selected="@(s == k.Status)">@s</option> }
                         </select>
                     </td>
                     <td @onclick:stopPropagation="true">
@@ -240,6 +240,11 @@ else
     private string Tittel => ErBedrift ? "Bedriftsmarked" : "Personmarked";
 
     private readonly string[] _statuses = KundekortService.Statuser;
+    // Rad-dropdown viser kun manuelt valgbare statuser (+ nåværende hvis den er system-satt, så den vises riktig).
+    private static IEnumerable<string> RadStatuser(string current) =>
+        KundekortService.StatuserManuelle.Contains(current)
+            ? KundekortService.StatuserManuelle
+            : KundekortService.StatuserManuelle.Prepend(current);
     private List<Partner> _partnere = new();
     private List<Rutingsregel> _regler = new();
     private BeregningParametre _berParams = BeregningService.Standard;
@@ -262,9 +267,9 @@ else
     private List<string> Forslag(Kundekort k)
     {
         if (_forslagCache.TryGetValue(k.Id, out var r)) return r;
-        // Drives av rutingsreglene (logikk-matrisen): matcher en regel (f.eks. postnummer
-        // mellom 7000-8000 → Sokndal), foreslås banken — så lenge auto-send er AV for banken.
-        r = RutingEval.ForeslaBanker(_regler, k, _partnere);
+        // Drives av rutingsreglene (logikk-matrisen): ALLE banker som matcher vises — også
+        // auto-send-banker (f.eks. Instabank), så flere matcher blir synlige i kolonnen.
+        r = RutingEval.MatchendeBanker(_regler, k);
         _forslagCache[k.Id] = r;
         return r;
     }
@@ -455,9 +460,11 @@ else
 
     private static string StatusKlasse(string s) => s switch
     {
-        "Nytt lead" => "st-nytt", "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
-        "Sendt bank" => "st-sendt", "Sendt til bank - Timeout" => "st-avslatt", "Tilbud utsendt" => "st-tilbud",
-        "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
+        "Påbegynt søknad" => "st-manuell", "Nytt lead" => "st-nytt", "Ny søknad" => "st-apen",
+        "Pågår - Agent" => "st-pagar", "Sendt - I prosess" => "st-sendt",
+        "Sendt til bank - Timeout" => "st-avslatt", "Sendt - Innvilget" => "st-tilbud",
+        "Utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", "Kansellert" => "st-kansellert",
+        "Teknisk feil" => "st-avslatt", _ => "",
     };
 
     // ---- Opprettet-dato ----
@@ -527,8 +534,8 @@ else
     private async Task Plukk(Kundekort k)
     {
         var eier = Session.Email ?? Session.UserName ?? "ukjent";
-        // Ta eierskap → flytt «Åpen» til «Pågår».
-        var nyStatus = k.Status == "Åpen" ? "Pågår" : null;
+        // Ta eierskap → flytt «Ny søknad» til «Pågår - Agent».
+        var nyStatus = k.Status == KundekortService.StatusNySoknad ? KundekortService.StatusPagaarAgent : null;
         await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier, nyStatus);
         k.Eier = eier;
         k.EierNavn = Session.UserName ?? eier;

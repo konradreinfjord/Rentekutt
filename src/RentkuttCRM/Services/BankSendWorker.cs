@@ -184,6 +184,13 @@ public class BankSendWorker : BackgroundService
             s.Status = SendStatus.Manuelt;
             s.Detalj = "Videresendt manuelt til banken.";
             await ko.OppdaterAsync(s);
+            // Sendt til bank (manuelt) → utled kundekortstatus fra bankene («Sendt - I prosess»).
+            if (s.KundekortId is { } mid)
+            {
+                var alle = await ko.ForKundeAsync(mid);
+                var kort = await kunder.GetAsync(mid);
+                await kunder.OppdaterStatusFraBankerAsync(mid, kort?.Status, alle, "System (sendt til bank)");
+            }
             return Utfall.IngenApiKall;
         }
 
@@ -209,7 +216,7 @@ public class BankSendWorker : BackgroundService
             catch { selvtest = "FEILET"; }
             s.Status = SendStatus.Feilet;
             s.Detalj = $"Kryptering i sendekø-prosessen: IsEnabled={krypto.IsEnabled}, selvtest={selvtest} — men fnr forble kryptert (enc:1:). Prosessen/instansen som kjører sendekøen har ikke riktig Gdpr__FieldKey.";
-            await kunder.SetStatusAsync(id, KundekortService.StatusFeiletSending);
+            await kunder.SetStatusAsync(id, KundekortService.StatusTekniskFeil);
             await ko.OppdaterAsync(s);
             return Utfall.Varig;
         }
@@ -222,7 +229,7 @@ public class BankSendWorker : BackgroundService
             s.Status = SendStatus.Feilet;
             s.Detalj = "Mangler gyldig samtykke (Gjeldsregister og kredittsjekk) — ikke sendt til bank.";
             await ko.OppdaterAsync(s);
-            await kunder.SetStatusAsync(id, KundekortService.StatusFeiletSending);
+            await kunder.SetStatusAsync(id, KundekortService.StatusTekniskFeil);
             return Utfall.Varig;
         }
 
@@ -250,12 +257,19 @@ public class BankSendWorker : BackgroundService
             // Nådde vi maks forsøk på en forbigående feil, teller det fortsatt som at banken sliter.
             utfall = ErForbigaaende(r.Detalj) ? Utfall.Forbigaaende : Utfall.Varig;
             // API-sending til bank feilet endelig → sett kundekort-status «Feilet i sending».
-            await kunder.SetStatusAsync(id, KundekortService.StatusFeiletSending);
+            await kunder.SetStatusAsync(id, KundekortService.StatusTekniskFeil);
             await AlarmAsync("Banksending", $"Sending til {s.Bank} feilet",
                 $"{s.KundeNavn ?? "Kunde"}{(string.IsNullOrWhiteSpace(s.Produkt) ? "" : $" · {s.Produkt}")}: {r.Detalj}",
                 AlarmService.Alvorlighet.Advarsel, $"banksending-feilet-{s.KundekortId}");
         }
         await ko.OppdaterAsync(s);
+        // Vellykket sending til bank → utled kundekortstatus fra bankene («Sendt - I prosess»
+        // til Instabank-synk gir endelig utfall).
+        if (utfall == Utfall.Ok)
+        {
+            var alle = await ko.ForKundeAsync(id);
+            await kunder.OppdaterStatusFraBankerAsync(id, k.Status, alle, "System (sendt til bank)");
+        }
         return utfall;
     }
 

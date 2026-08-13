@@ -37,7 +37,7 @@ public class SendtBankTimeoutWorker : BackgroundService
                     var kunder = scope.ServiceProvider.GetRequiredService<KundekortService>();
                     var grense = DateTime.UtcNow.AddDays(-dager);
                     var forfalt = (await kunder.ListLettAsync()).Where(k =>
-                        k.Status == KundekortService.StatusSendtBank &&
+                        k.Status == KundekortService.StatusSendtIProsess &&
                         k.SendtBankAt is { } sendt && sendt < grense).ToList();
 
                     foreach (var k in forfalt)

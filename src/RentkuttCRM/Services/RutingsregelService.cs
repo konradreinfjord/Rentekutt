@@ -151,6 +151,16 @@ public static class RutingEval
             .ToList();
     }
 
+    /// <summary>Alle banker fra regler som matcher kunden — inkludert auto-send-banker (i motsetning
+    /// til <see cref="ForeslaBanker"/>). Brukes til å vise hvilke banker en sak matcher.</summary>
+    public static List<string> MatchendeBanker(IEnumerable<Rutingsregel> regler, Kundekort k) =>
+        regler.Where(r => r.Aktiv).OrderBy(r => r.Prioritet)
+            .Where(r => Matcher(r, k))
+            .SelectMany(r => r.BankerListe)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(b => b, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
     public static bool Matcher(Rutingsregel r, Kundekort k)
         => r.Aktiv && Matcher(r.FeltNokkel, r.Operator, r.Verdi, k);
 

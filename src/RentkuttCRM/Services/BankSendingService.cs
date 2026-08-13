@@ -14,6 +14,8 @@ public class BankSending : BaseModel
     [Column("produkt")] public string? Produkt { get; set; }
     [Column("produkt_kode")] public int? ProduktKode { get; set; }
     [Column("status")] public string? Status { get; set; }
+    // Per-bank utfall (fler-bank-logikk): Venter/Innvilget/Avslått/Utbetalt/Kansellert/Teknisk feil.
+    [Column("utfall")] public string? Utfall { get; set; } = SendUtfall.Venter;
     [Column("ekstern_ref")] public string? EksternRef { get; set; }
     [Column("signing_url")] public string? SigningUrl { get; set; }
     [Column("detalj")] public string? Detalj { get; set; }
@@ -29,6 +31,21 @@ public static class SendStatus
     public const string Sendt = "Sendt";
     public const string Feilet = "Feilet";
     public const string Manuelt = "Registrert manuelt";
+}
+
+/// <summary>Per-bank UTFALL (bankens beslutning), skilt fra sende-statusen. Driver kundekortets
+/// samlede status via <see cref="KundekortService.AggregertStatus"/>.</summary>
+public static class SendUtfall
+{
+    public const string Venter = "Venter";
+    public const string Innvilget = "Innvilget";
+    public const string Avslatt = "Avslått";
+    public const string Utbetalt = "Utbetalt";
+    public const string Kansellert = "Kansellert";
+    public const string TekniskFeil = "Teknisk feil";
+
+    /// <summary>Utfall en saksbehandler kan sette manuelt per bank i statuskortet.</summary>
+    public static readonly string[] Alle = { Venter, Innvilget, Avslatt, Utbetalt, Kansellert, TekniskFeil };
 }
 
 /// <summary>Logg over søknader sendt til bank. Vises på kundekortet og under Bank API.</summary>
@@ -103,6 +120,14 @@ public class BankSendingService
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av banksending feilet"); }
+    }
+
+    /// <summary>Sett per-bank utfall (bankens beslutning) på én sending.</summary>
+    public async Task SetUtfallAsync(Guid id, string utfall)
+    {
+        if (!IsConfigured) { var k = _staging.FirstOrDefault(x => x.Id == id); if (k is not null) k.Utfall = utfall; return; }
+        try { await EnsureInitAsync(); await _client.From<BankSending>().Where(x => x.Id == id).Set(x => x.Utfall!, utfall).Update(); }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av bank-utfall feilet"); }
     }
 
     public async Task<List<BankSending>> ForKundeAsync(Guid kundekortId)

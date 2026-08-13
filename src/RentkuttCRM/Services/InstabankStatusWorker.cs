@@ -2,9 +2,10 @@ namespace RentkuttCRM.Services;
 
 /// <summary>
 /// Statussynk mot Instabank: spør (GET) hvert 5. minutt på søknader som er sendt til Instabank,
-/// men ennå ikke har endelig utfall. Oppdaterer kundekortets status fra svaret. Når søknaden er
-/// avklart (godkjent/tilbud utsendt eller avslått) slutter vi å spørre. Kjører kun i produksjon —
-/// dev/lokale instanser deler prod-databasen og skal ikke endre saker.
+/// men ennå ikke er endelig avklart. Setter per-bank UTFALL på sendingen, og lar kundekortets
+/// samlede status utledes fra alle bankene (fler-bank-logikk). Slutter å spørre når saken er
+/// avklart (Utbetalt/Avslått/Kansellert). Kjører kun i produksjon — dev/lokale instanser deler
+/// prod-databasen og skal ikke endre saker.
 /// </summary>
 public class InstabankStatusWorker : BackgroundService
 {
@@ -21,20 +22,18 @@ public class InstabankStatusWorker : BackgroundService
         _log = log;
     }
 
-    // Endelig utfall → slutt å spørre.
-    private static bool ErAvklart(string? status) =>
-        status is KundekortService.StatusAvslatt
-               or KundekortService.StatusFullfort
-               or KundekortService.StatusTilbudUtsendt;
-
-    // Instabank-status → kundekort-status. New/Control = fortsatt under behandling (ingen endring).
-    private static string? MapStatus(string? instabankStatus) => instabankStatus switch
+    // Instabank-status → per-bank utfall. New/Control = fortsatt under behandling (ingen endring).
+    private static string? MapUtfall(string? instabankStatus) => instabankStatus switch
     {
-        "Complete" => KundekortService.StatusFullfort,
-        "Rejected" or "Cancelled" => KundekortService.StatusAvslatt,
-        "Approved" or "DocumentsSent" or "DocumentsComplete" => KundekortService.StatusTilbudUtsendt,
+        "Complete" => SendUtfall.Utbetalt,
+        "Approved" or "DocumentsSent" or "DocumentsComplete" => SendUtfall.Innvilget,
+        "Rejected" => SendUtfall.Avslatt,
+        "Cancelled" => SendUtfall.Kansellert,
         _ => null,
     };
+
+    private static bool UtfallAvklart(string? utfall) =>
+        utfall is SendUtfall.Utbetalt or SendUtfall.Avslatt or SendUtfall.Kansellert;
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -51,32 +50,34 @@ public class InstabankStatusWorker : BackgroundService
                 {
                     var sendinger = scope.ServiceProvider.GetRequiredService<BankSendingService>();
                     var kunder = scope.ServiceProvider.GetRequiredService<KundekortService>();
+                    var kortMap = (await kunder.ListLettAsync()).ToDictionary(k => k.Id, k => k.Status);
                     var perKort = await sendinger.SisteePerKundekortAsync();
-                    var kortMap = (await kunder.ListLettAsync()).ToDictionary(k => k.Id);
 
-                    int oppdatert = 0, sjekket = 0;
-                    foreach (var (kortId, s) in perKort)
+                    int oppdatert = 0;
+                    foreach (var (kortId, siste) in perKort)
                     {
                         if (ct.IsCancellationRequested) break;
-                        if (!InstabankService.ErInstabankNavn(s.Bank) || string.IsNullOrWhiteSpace(s.EksternRef)) continue;
-                        if (!kortMap.TryGetValue(kortId, out var k)) continue;
-                        if (ErAvklart(k.Status)) continue;   // allerede endelig utfall → hopp over
+                        if (!InstabankService.ErInstabankNavn(siste.Bank) || string.IsNullOrWhiteSpace(siste.EksternRef)) continue;
+                        if (!kortMap.TryGetValue(kortId, out var status)) continue;
+                        if (KundekortService.StatuserAvklart.Contains(status)) continue;   // saken er ferdig
+                        if (UtfallAvklart(siste.Utfall)) continue;                          // denne sendingen er ferdig
 
-                        sjekket++;
-                        var r = await instabank.HentStatusAsync(s.EksternRef!);
+                        var r = await instabank.HentStatusAsync(siste.EksternRef!);
                         if (r.Ok)
                         {
-                            var ny = MapStatus(r.Status);
-                            if (ny is not null && ny != k.Status)
+                            var utfall = MapUtfall(r.Status);
+                            if (utfall is not null && utfall != siste.Utfall)
                             {
-                                await kunder.SetStatusAsync(k.Id, ny, "System (Instabank-synk)");
+                                await sendinger.SetUtfallAsync(siste.Id, utfall);
+                                // Aggreger kundekortets status fra ALLE bankenes utfall.
+                                var alle = await sendinger.ForKundeAsync(kortId);
+                                await kunder.OppdaterStatusFraBankerAsync(kortId, status, alle, "System (Instabank-synk)");
                                 oppdatert++;
                             }
                         }
-                        try { await Task.Delay(500, ct); } catch { break; }   // ikke bombardér API-et
+                        try { await Task.Delay(500, ct); } catch { break; }
                     }
-                    if (oppdatert > 0)
-                        _log.LogInformation("Instabank-synk: {Opp} av {Sjekk} søknader oppdatert.", oppdatert, sjekket);
+                    if (oppdatert > 0) _log.LogInformation("Instabank-synk: {N} sak(er) oppdatert.", oppdatert);
                 }
             }
             catch (Exception ex) { _log.LogError(ex, "Instabank-statussynk-syklus feilet"); }

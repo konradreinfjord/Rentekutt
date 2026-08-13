@@ -261,15 +261,17 @@ else
 
     private static string StatusFarge(string status) => status switch
     {
+        "Påbegynt søknad" => "#c2740a",     // amber
         "Nytt lead" => "#0891b2",           // cyan
-        "Åpen" => "#2f8a3e",                // grønn
-        "Pågår" => "#1f5fc4",               // blå
-        "Manuell behandling" => "#c2740a",  // amber
-        "Sendt bank" => "#6b3fc4",          // lilla
+        "Ny søknad" => "#2f8a3e",           // grønn
+        "Pågår - Agent" => "#1f5fc4",       // blå
+        "Sendt - I prosess" => "#6b3fc4",   // lilla
         "Sendt til bank - Timeout" => "#b42318", // rød
-        "Tilbud utsendt" => "#0f8a8a",      // teal
-        "Fullført og utbetalt" => "#266f32",// mørk grønn
+        "Sendt - Innvilget" => "#0f8a8a",   // teal
+        "Utbetalt" => "#266f32",            // mørk grønn
         "Avslått" => "#b42318",             // rød
+        "Kansellert" => "#5b6b7f",          // grå
+        "Teknisk feil" => "#b42318",        // rød
         _ => "#9aa0a8"
     };
 
@@ -289,17 +291,17 @@ else
             .OrderByDescending(x => x.Item2)
             .ToList();
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
-        _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusFullfort or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
+        _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusUtbetalt or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
 
         // Utatte: ingen eier + fortsatt aktiv (ikke fullført/avslått).
         _utatte = _rows.Count(k => string.IsNullOrWhiteSpace(k.Eier)
-                                   && k.Status is not (KundekortService.StatusFullfort or "Avslått"));
+                                   && k.Status is not (KundekortService.StatusUtbetalt or "Avslått"));
         _b2c = _rows.Count(k => k.KundeType == "B2C");
         _b2b = _rows.Count(k => k.KundeType == "B2B");
 
         // Pågår hos rådgiver: har eier + fortsatt aktiv (ikke fullført/avslått).
         var eideAktive = _rows.Where(k => !string.IsNullOrWhiteSpace(k.Eier)
-                                          && k.Status is not (KundekortService.StatusFullfort or KundekortService.StatusAvslatt))
+                                          && k.Status is not (KundekortService.StatusUtbetalt or KundekortService.StatusAvslatt))
                               .ToList();
         _eideAktive = eideAktive.Count;
         if (_eideAktive > 0)
@@ -310,7 +312,7 @@ else
         }
 
         // Ferdigbehandlet-andel (utbetalt + avslått av totalt).
-        _utbetalt = _rows.Count(k => k.Status == KundekortService.StatusFullfort);
+        _utbetalt = _rows.Count(k => k.Status == KundekortService.StatusUtbetalt);
         _avslatt = _rows.Count(k => k.Status == KundekortService.StatusAvslatt);
         _ferdigPct = _rows.Count > 0 ? (int)Math.Round((_utbetalt + _avslatt) * 100.0 / _rows.Count) : 0;
 

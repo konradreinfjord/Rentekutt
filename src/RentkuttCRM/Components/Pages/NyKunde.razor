@@ -77,6 +77,63 @@
 
 <div class="kk-grid">
 <div class="kk-side">
+
+@* Statuskort — samlet status + hvilke banker saken er i prosess hos *@
+<div class="kk-side-title">Status</div>
+<div class="form-card">
+    <div style="margin-bottom:12px">
+        <span class="kk-chip" style="@ChipStyle(StatusFarge(_k.Status))"><span class="kk-chip-dot" style="background:@StatusFarge(_k.Status)"></span>@_k.Status</span>
+    </div>
+    <div class="ff" style="margin-bottom:14px">
+        <label>Endre status</label>
+        <select @bind="_k.Status" @bind:after="EndreStatus" disabled="@(!_isEdit || !KanEndre)">
+            @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
+        </select>
+    </div>
+
+    <h3 class="ww-h">Matchende banker</h3>
+    @{ var visBanker = BankerForVisning(); }
+    @if (visBanker.Count == 0)
+    {
+        <p class="page-sub" style="margin:2px 0 0; font-size:12px">Ingen banker matcher ennå (styres av logikk-matrisen).</p>
+    }
+    else
+    {
+        @foreach (var bank in visBanker)
+        {
+            var sending = SisteSendingFor(bank);
+            var erIb = InstabankService.ErInstabankNavn(bank);
+            var auto = _banker.FirstOrDefault(b => b.Navn == bank)?.AutoSend ?? false;
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border)">
+                <div style="min-width:0">
+                    <strong style="font-size:13px">@bank</strong>
+                    <div class="page-sub" style="margin:0; font-size:11px">
+                        @(erIb ? "API" : "Manuell")@(auto ? " · Auto" : "") · @(sending is null ? "Ikke sendt" : $"{sending.SendtAt.TilOslo():dd.MM.yy} · {SendtTekst(sending)}")
+                    </div>
+                </div>
+                <div style="flex-shrink:0">
+                    @if (sending is null)
+                    {
+                        <button class="btn-primary btn-sm" @onclick="() => SendTilMatchetBank(bank)" disabled="@(_sender || !_isEdit || !KanEndre)">Send</button>
+                    }
+                    else if (erIb)
+                    {
+                        <span class="status @UtfallKlasse(sending.Utfall)" title="Settes automatisk via Instabank-synk">@(string.IsNullOrWhiteSpace(sending.Utfall) ? "Venter" : sending.Utfall)</span>
+                    }
+                    else
+                    {
+                        <select class="inline-select" style="max-width:130px" @onchange="e => SettBankUtfall(sending, e)" disabled="@(!KanEndre)">
+                            @foreach (var u in SendUtfall.Alle) { <option value="@u" selected="@(u == (sending.Utfall ?? SendUtfall.Venter))">@u</option> }
+                        </select>
+                    }
+                </div>
+            </div>
+        }
+        <p class="page-sub" style="margin:8px 0 0; font-size:11px">Instabank sendes via API (auto hvis påslått, ellers «Send»). Manuelle banker registreres og settes her. Kundens status utledes fra bankene.</p>
+        @if (!string.IsNullOrEmpty(_sendMsg)) { <p class="page-sub" style="margin:6px 0 0; font-size:11px; color:@(_sendOk ? "var(--green-dark)" : "var(--danger,#b42318)")">@_sendMsg</p> }
+    }
+</div>
+
 <div class="kk-side-title">Handlinger</div>
 
 @* Send søknaden til en bankpartner *@
@@ -230,7 +287,7 @@
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
     var forslagBanker = RutingEval.ForeslaBanker(_regler, _k, _banker);
     var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
-    var terminalStatus = _k.Status is "Avslått" or "Feilet i sending";
+    var terminalStatus = _k.Status is "Avslått" or "Kansellert" or "Teknisk feil";
 }
 
 <div class="kk-tabs">
@@ -856,15 +913,17 @@
     // Farge på status-chip i topp-kortet.
     private static string StatusFarge(string? s) => s switch
     {
+        "Påbegynt søknad" => "#c2740a",
         "Nytt lead" => "#0891b2",
-        "Fullført og utbetalt" => "#2f8a3e",
-        "Sendt bank" => "#2f8a3e",
-        "Tilbud utsendt" => "#1f5fc4",
-        "Pågår" => "#1f5fc4",
-        "Manuell behandling" => "#c2740a",
-        "Avslått" => "#b42318",
-        "Feilet i sending" => "#b42318",
+        "Ny søknad" => "#2f8a3e",
+        "Pågår - Agent" => "#1f5fc4",
+        "Sendt - I prosess" => "#6b3fc4",
         "Sendt til bank - Timeout" => "#b42318",
+        "Sendt - Innvilget" => "#0f8a8a",
+        "Utbetalt" => "#266f32",
+        "Avslått" => "#b42318",
+        "Kansellert" => "#5b6b7f",
+        "Teknisk feil" => "#b42318",
         _ => "#767b84",
     };
 
@@ -885,10 +944,11 @@
 
     private static string StatusKlasse(string s) => s switch
     {
-        "Åpen" => "st-apen", "Pågår" => "st-pagar", "Manuell behandling" => "st-manuell",
-        "Sendt bank" => "st-sendt", "Sendt til bank - Timeout" => "st-avslatt", "Tilbud utsendt" => "st-tilbud",
-        "Feilet i sending" => "st-avslatt",
-        "Fullført og utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", _ => "",
+        "Påbegynt søknad" => "st-manuell", "Nytt lead" => "st-nytt", "Ny søknad" => "st-apen",
+        "Pågår - Agent" => "st-pagar", "Sendt - I prosess" => "st-sendt",
+        "Sendt til bank - Timeout" => "st-avslatt", "Sendt - Innvilget" => "st-tilbud",
+        "Utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", "Kansellert" => "st-kansellert",
+        "Teknisk feil" => "st-avslatt", _ => "",
     };
 
     // Hurtiglagring av bank + nåværende rente (mates til Markedsinnsikt).
@@ -1097,12 +1157,74 @@
     private string _fane = "oversikt";
     private bool _visKoder;   // «Koder & metadata» — skjult som standard, sammenleggbart
     private List<Rutingsregel> _regler = new();
-    private static readonly string[] FlytSteg = { "Åpen", "Pågår", "Sendt bank", "Tilbud utsendt", "Fullført og utbetalt" };
+    private static readonly string[] FlytSteg = { "Ny søknad", "Pågår - Agent", "Sendt - I prosess", "Sendt - Innvilget", "Utbetalt" };
 
     // ---- Send til bank ----
     private List<Partner> _banker = new();
     private List<PartnerProdukt> _produkter = new();
     private List<BankSending> _sendinger = new();
+
+    // ---- Statuskort: manuell status + per-bank utfall ----
+    private async Task EndreStatus()
+    {
+        if (!_isEdit || !KanEndre) return;
+        await Svc.SetStatusAsync(_k.Id, _k.Status, Session.UserName ?? Session.Email);
+        _endringslogg = await Logg.ForKundeAsync(_k.Id);
+    }
+
+    private async Task SettBankUtfall(BankSending s, ChangeEventArgs e)
+    {
+        if (!KanEndre) return;
+        var val = e.Value?.ToString() ?? SendUtfall.Venter;
+        s.Utfall = val;
+        await BankSending.SetUtfallAsync(s.Id, val);
+        // Kundens samlede status utledes fra alle bankenes utfall.
+        var ny = KundekortService.AggregertStatus(_sendinger);
+        if (ny is not null && ny != _k.Status)
+        {
+            _k.Status = ny;
+            await Svc.SetStatusAsync(_k.Id, ny, Session.UserName ?? Session.Email);
+        }
+        _endringslogg = await Logg.ForKundeAsync(_k.Id);
+    }
+
+    private static string UtfallKlasse(string? u) => u switch
+    {
+        SendUtfall.Innvilget or SendUtfall.Utbetalt => "on",
+        SendUtfall.Avslatt or SendUtfall.TekniskFeil => "err",
+        SendUtfall.Kansellert => "off",
+        _ => "pending",
+    };
+
+    // Alle banker saken matcher (logikk-matrisen), forent med banker det allerede er sendt til.
+    private List<string> BankerForVisning() =>
+        RutingEval.MatchendeBanker(_regler, _k)
+            .Concat(_sendinger.Select(s => s.Bank).Where(b => !string.IsNullOrWhiteSpace(b)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(b => b, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+    private BankSending? SisteSendingFor(string bank) =>
+        _sendinger.Where(s => string.Equals(s.Bank, bank, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(s => s.SendtAt).FirstOrDefault();
+
+    private static string SendtTekst(BankSending s) => s.Status switch
+    {
+        SendStatus.IKo => "I kø", SendStatus.Feilet => "Feilet", SendStatus.Manuelt => "Manuelt", _ => "Sendt",
+    };
+
+    // Send til en matchende bank fra statuskortet (auto-velger produkt for Instabank).
+    private async Task SendTilMatchetBank(string bank)
+    {
+        _valgtBank = bank;
+        _valgtProduktId = AutoValgtProduktId();
+        if (string.IsNullOrWhiteSpace(_valgtProduktId))
+        {
+            var f = ProdukterForValgtBank().FirstOrDefault();
+            if (f is not null) _valgtProduktId = f.Id.ToString();
+        }
+        await SendTilBank();
+    }
     private string _valgtBank = "";
     private string _valgtProduktId = "";
     private bool _sender;
@@ -1235,18 +1357,18 @@
 
         // Manuell sending: sett status «Sendt bank», og gi agenten eierskap automatisk
         // (tar saken hvis den er ueid; ellers beholdes eksisterende eier).
-        _k.Status = KundekortService.StatusSendtBank;
+        _k.Status = KundekortService.StatusSendtIProsess;
         var eier = Session.Email ?? Session.UserName ?? "ukjent";
         if (string.IsNullOrWhiteSpace(_k.Eier))
         {
             _k.Eier = eier;
             _k.EierNavn = Session.UserName ?? eier;
             _k.EierTattAt = DateTime.UtcNow;
-            await Svc.SetEierAsync(_k.Id, eier, _k.EierNavn, KundekortService.StatusSendtBank);
+            await Svc.SetEierAsync(_k.Id, eier, _k.EierNavn, KundekortService.StatusSendtIProsess);
         }
         else
         {
-            await Svc.SetStatusAsync(_k.Id, KundekortService.StatusSendtBank, avsender);
+            await Svc.SetStatusAsync(_k.Id, KundekortService.StatusSendtIProsess, avsender);
         }
         _endringslogg = await Logg.ForKundeAsync(_k.Id);
 
