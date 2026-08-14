@@ -123,6 +123,41 @@ else
             <div class="stat-num">@($"{_pipeline / 1_000_000:N1}")<span class="stat-unit">MNOK</span></div>
             <div class="stat-sub">aktiv pipeline</div>
         </div>
+
+        @* Fullført søknad (rentekutt.no): påbegynt → Ny søknad *@
+        <div class="stat-card accent-teal">
+            <div class="stat-top">
+                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+                <span class="stat-lbl">Fullført søknad · rentekutt.no</span>
+            </div>
+            <div class="stat-num">@_fullfortPct<span class="stat-unit">%</span></div>
+            <div class="stat-sub">@_fullfortAntall av @_fullfortBase påbegynte fullført</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Fullføringsgrad per uke — rentekutt.no</h2>
+        <p class="page-sub" style="margin:-4px 0 14px">Andel påbegynte søknader som er fullført og satt til «Ny søknad», uke for uke. Prismatch er ikke medregnet.</p>
+        @if (_fullfortUker.All(u => u.Total == 0))
+        {
+            <p class="page-sub">Ingen rentekutt.no-leads registrert i perioden ennå.</p>
+        }
+        else
+        {
+            <div style="display:flex; align-items:flex-end; gap:10px; padding:0 4px">
+                @foreach (var u in _fullfortUker)
+                {
+                    <div style="flex:1; text-align:center" title="Uke fra @u.Label: @u.Pct % fullført (@u.Fullfort av @u.Total)">
+                        <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--text-2)">@(u.Total > 0 ? u.Pct + "%" : "–")</div>
+                        <div style="height:150px; display:flex; align-items:flex-end">
+                            <div style="width:100%; border-radius:4px 4px 0 0; background:@(u.Total > 0 ? "#2f8a3e" : "#e5e7eb"); height:@(u.Total > 0 ? Math.Max(2, u.Pct) : 0)%"></div>
+                        </div>
+                        <div style="font-size:10px; color:var(--text-2); margin-top:6px">@u.Label</div>
+                        <div style="font-size:10px; color:var(--text-3, #9aa0a8)">@(u.Total > 0 ? $"{u.Fullfort}/{u.Total}" : "")</div>
+                    </div>
+                }
+            </div>
+        }
     </div>
 
     <div class="section">
@@ -240,6 +275,16 @@ else
     // Ferdigbehandlet-andel.
     private int _utbetalt, _avslatt, _ferdigPct;
 
+    // Fullføringsgrad rentekutt.no: påbegynte søknader som er fullført (satt til «Ny søknad» / videre).
+    private int _fullfortPct, _fullfortAntall, _fullfortBase;
+    private List<UkeBar> _fullfortUker = new();
+    private record UkeBar(string Label, int Pct, int Fullfort, int Total);
+
+    // Kun rentekutt.no-leads (både påbegynt-utkast og fullførte får kilde «Rentekutt.no»); ekskluderer Prismatch.
+    private static bool ErRentekutt(Kundekort k) => (k.Kilde ?? "").Contains("rentekutt", StringComparison.OrdinalIgnoreCase);
+    // Fullført = har passert «Påbegynt søknad» (kunden fullførte skjemaet).
+    private static bool ErFullfort(Kundekort k) => k.Status != KundekortService.StatusPaabegynt;
+
     // Eierskap tatt per dag (siste 30).
     private List<EierBar> _eierDager = new();
     private int _maxEierDag = 1;
@@ -316,7 +361,28 @@ else
         _avslatt = _rows.Count(k => k.Status == KundekortService.StatusAvslatt);
         _ferdigPct = _rows.Count > 0 ? (int)Math.Round((_utbetalt + _avslatt) * 100.0 / _rows.Count) : 0;
 
+        // Fullføringsgrad (kun rentekutt.no): andel påbegynte som har fullført søknaden.
+        var rk = _rows.Where(ErRentekutt).ToList();
+        _fullfortBase = rk.Count;
+        _fullfortAntall = rk.Count(ErFullfort);
+        _fullfortPct = _fullfortBase > 0 ? (int)Math.Round(_fullfortAntall * 100.0 / _fullfortBase) : 0;
+
         var idag = Tid.Naa.Date;
+
+        // Ukentlig trend (siste 12 uker, mandag-basert).
+        _fullfortUker = new();
+        var tilMandag = ((int)idag.DayOfWeek + 6) % 7;   // mandag = 0
+        var denneMandag = idag.AddDays(-tilMandag);
+        for (var w = 11; w >= 0; w--)
+        {
+            var start = denneMandag.AddDays(-7 * w);
+            var slutt = start.AddDays(7);
+            var kohort = rk.Where(k => { var d = k.CreatedAt.TilOslo().Date; return d >= start && d < slutt; }).ToList();
+            var full = kohort.Count(ErFullfort);
+            var pct = kohort.Count > 0 ? (int)Math.Round(full * 100.0 / kohort.Count) : 0;
+            _fullfortUker.Add(new UkeBar(start.ToString("dd.MM"), pct, full, kohort.Count));
+        }
+
         _dager = new();
         for (var i = 29; i >= 0; i--)
         {
