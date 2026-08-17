@@ -109,11 +109,13 @@ public class AlarmService
 
     public async Task<int> AntallAapneAsync()
     {
-        if (!IsConfigured) return _staging.Count(a => !a.Kvittert);
+        // Info-alarmer (bl.a. GDPR-jobb-hjerteslag) er rene logglinjer og teller ikke som problem.
+        if (!IsConfigured) return _staging.Count(a => !a.Kvittert && a.Alvorlighet != Alvorlighet.Info);
         try
         {
             await EnsureInitAsync();
-            return (await _client.From<Alarm>().Where(a => a.Kvittert == false).Get()).Models.Count;
+            return (await _client.From<Alarm>()
+                .Where(a => a.Kvittert == false && a.Alvorlighet != Alvorlighet.Info).Get()).Models.Count;
         }
         catch (Exception ex) { _log.LogError(ex, "Telling av åpne alarmer feilet"); return 0; }
     }

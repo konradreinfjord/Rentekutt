@@ -14,14 +14,16 @@ public class GdprService
 {
     private readonly string? _conn;
     private readonly CryptoService _krypto;
+    private readonly GdprKjoringService _kjoring;
     private readonly ILogger<GdprService> _log;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_conn);
 
-    public GdprService(IConfiguration cfg, CryptoService krypto, ILogger<GdprService> log)
+    public GdprService(IConfiguration cfg, CryptoService krypto, GdprKjoringService kjoring, ILogger<GdprService> log)
     {
         _conn = PgConn.Normaliser(cfg.GetConnectionString("Postgres") ?? cfg["ConnectionStrings:Postgres"]);
         _krypto = krypto;
+        _kjoring = kjoring;
         _log = log;
     }
 
@@ -37,6 +39,14 @@ public class GdprService
 
         var anonGrense = DateTime.UtcNow.AddMonths(-anonMnd);
         var slettGrense = DateTime.UtcNow.AddMonths(-slettMnd);
+
+        // Kjøringslogg (vedlegg A): opprett forsøk-rader ved start, oppdater ved fullføring/feil.
+        long? anonId = null, slettId = null;
+        if (!torrkjor)
+        {
+            anonId = await _kjoring.StartAsync(GdprKjoringService.JobbAnonymisering);
+            slettId = await _kjoring.StartAsync(GdprKjoringService.JobbSletting);
+        }
 
         try
         {
@@ -110,11 +120,15 @@ where created_at < @grense and anonymisert_at is null;";
             await ExecAsync(conn, $"insert into public.hendelser (type, beskrivelse, kilde) values ('GDPR', 'Anonymiserte {anon}, slettet {slett} kundekort', 'GDPR-jobb');", ct);
 
             _log.LogInformation("GDPR-jobb: anonymiserte {Anon}, slettet {Slett}", anon, slett);
+            if (anonId is { } ai) await _kjoring.FullfortAsync(ai, anon);
+            if (slettId is { } si) await _kjoring.FullfortAsync(si, slett);
             return (anon, slett, null);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "GDPR-jobb feilet");
+            if (anonId is { } ai) await _kjoring.FeiletAsync(ai, ex.Message);
+            if (slettId is { } si) await _kjoring.FeiletAsync(si, ex.Message);
             return (0, 0, ex.Message);
         }
     }

@@ -705,6 +705,58 @@ public class KundekortService
 
     public bool KrypteringPaa => _krypto.IsEnabled;
 
+    /// <summary>Teller kundekort der et fødselsnummer ligger i KLARTEKST (11 gyldige siffer, men ikke
+    /// «enc:1:»-beskyttet) — dvs. avvik der kryptering ikke slo til (f.eks. skrevet mens nøkkelen manglet).
+    /// Leser rå (ukryptert) verdier direkte. Returnerer -1 ved feil.</summary>
+    public async Task<int> AntallKlartekstFnrAsync()
+    {
+        if (!IsConfigured) return 0;
+        bool ErKlartekstFnr(string? v) =>
+            !string.IsNullOrWhiteSpace(v) && !_krypto.ErBeskyttet(v)
+            && new string(v.Where(char.IsDigit).ToArray()).Length == 11;
+        try
+        {
+            await EnsureReadyAsync();
+            var raa = (await _client.From<Kundekort>()
+                .Select("id,foedselsnummer,medsoker_foedselsnummer,kunde_id").Get()).Models;
+            return raa.Count(x => ErKlartekstFnr(x.Foedselsnummer)
+                                  || ErKlartekstFnr(x.MedsokerFoedselsnummer)
+                                  || ErKlartekstFnr(x.KundeId));
+        }
+        catch (Exception ex) { _log.LogError(ex, "Klartekst-fnr-sjekk feilet"); return -1; }
+    }
+
+    /// <summary>Teller kundekort eldre enn slette-grensen (over oppbevaringstid) — «{M}» i Alarm 1.
+    /// Leser via Supabase, uavhengig av GDPR-jobbens direkte-Postgres-tilkobling. Returnerer -1 ved feil.</summary>
+    public async Task<int> TellOverOppbevaringstidAsync(int slettMnd)
+    {
+        if (!IsConfigured) return 0;
+        if (slettMnd < 1) slettMnd = 1;
+        var grense = DateTime.UtcNow.AddMonths(-slettMnd);
+        try
+        {
+            await EnsureReadyAsync();
+            return (await _client.From<Kundekort>().Select("id").Where(k => k.CreatedAt < grense).Get()).Models.Count;
+        }
+        catch (Exception ex) { _log.LogError(ex, "Telling over oppbevaringstid feilet"); return -1; }
+    }
+
+    /// <summary>Teller kundekort over ANONYMISERINGS-grensen som ennå IKKE er anonymisert
+    /// (anonymisert_at is null). Måler at GDPR-jobben faktisk virker — «{N}» i Alarm 3. Returnerer -1 ved feil.</summary>
+    public async Task<int> TellIkkeAnonymisertOverTidAsync(int anonMnd)
+    {
+        if (!IsConfigured) return 0;
+        if (anonMnd < 1) anonMnd = 1;
+        var grense = DateTime.UtcNow.AddMonths(-anonMnd);
+        try
+        {
+            await EnsureReadyAsync();
+            return (await _client.From<Kundekort>().Select("id")
+                .Where(k => k.AnonymisertAt == null && k.CreatedAt < grense).Get()).Models.Count;
+        }
+        catch (Exception ex) { _log.LogError(ex, "Telling ikke-anonymisert over tid feilet"); return -1; }
+    }
+
     /// <summary>Tester om NÅVÆRENDE nøkkel faktisk kan dekryptere EKSISTERENDE lagrede fnr.
     /// Henter rå (ukryptert-lest) verdier og forsøker Avdekk manuelt. Hvis mange «kunne ikke»,
     /// er nøkkelverdien en annen enn den dataene ble kryptert med (ikke bare «nøkkel mangler»).</summary>

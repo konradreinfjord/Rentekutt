@@ -176,6 +176,10 @@ public class Kundekort : BaseModel
     // status-settere (SetStatusAsync/SetEierAsync); ignoreOnUpdate hindrer at full-lagring (SaveAsync) nuller den.
     [Column("sendt_bank_at", ignoreOnUpdate: true)] public DateTime? SendtBankAt { get; set; }
 
+    // Settes av GDPR-jobben (direkte Postgres) ved anonymisering. Skrivebeskyttet fra appen (kun lest,
+    // bl.a. av Alarm 3 «rader over oppbevaringstid ikke anonymisert»).
+    [Column("anonymisert_at", ignoreOnInsert: true, ignoreOnUpdate: true)] public DateTime? AnonymisertAt { get; set; }
+
     // Tidsstempler — leses for sortering, men skrives ikke (DB styrer dem).
     [Column("created_at", ignoreOnInsert: true, ignoreOnUpdate: true)]
     public DateTime CreatedAt { get; set; }

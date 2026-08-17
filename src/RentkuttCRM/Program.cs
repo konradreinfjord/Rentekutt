@@ -134,6 +134,9 @@ builder.Services.AddScoped<LoggService>();
 // GDPR: anonymisering + sletting etter oppsatt antall måneder.
 builder.Services.AddScoped<GdprService>();
 
+// GDPR-kjøringslogg (én rad per jobbforsøk) — driver Alarm 1 (oppbevaringsjobb har ikke fullført).
+builder.Services.AddScoped<GdprKjoringService>();
+
 // Samtykke (GDPR) — egen entitet + gyldighetssjekk før banksending.
 builder.Services.AddScoped<SamtykkeService>();
 
@@ -148,6 +151,10 @@ builder.Services.AddHostedService<BankSendWorker>();
 
 // GDPR-jobb: daglig anonymisering/sletting etter oppsatt oppbevaringstid.
 builder.Services.AddHostedService<GdprWorker>();
+
+// GDPR-overvåking (hver time, prod): Alarm 1 (oppbevaringsjobb forsinket), Alarm 2 (fnr i klartekst)
+// + reparasjonsjobb som krypterer klartekst og regenererer HMAC.
+builder.Services.AddHostedService<GdprOvervaakWorker>();
 
 // SMS-løp: 24-timers påminnelse til søknader som fortsatt står i «Påbegynt søknad».
 builder.Services.AddHostedService<Paamindelse24tWorker>();
