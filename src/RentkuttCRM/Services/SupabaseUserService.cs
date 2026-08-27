@@ -3,7 +3,7 @@ using Supabase.Postgrest;
 
 namespace RentkuttCRM.Services;
 
-public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active, string? Mobilnummer = null, bool TwoFactorEnabled = false);
+public record UserRow(Guid Id, string Email, string FullName, string Role, bool Active, string? Mobilnummer = null, bool TwoFactorEnabled = false, string? ZissonAgentGuid = null);
 public record SignInResult(bool Ok, string? Error, UserRow? User);
 
 /// <summary>
@@ -301,7 +301,38 @@ public class SupabaseUserService
         }
     }
 
-    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active, u.Mobilnummer, u.TwoFactorEnabled);
+    private static UserRow ToRow(AppUser u) => new(u.Id, u.Email, u.FullName, u.Role, u.Active, u.Mobilnummer, u.TwoFactorEnabled, u.ZissonAgentGuid);
+
+    /// <summary>Setter (eller fjerner) Zisson-agent-koblingen for en bruker (dialer).</summary>
+    public async Task SetZissonAgentAsync(Guid id, string? agentGuid)
+    {
+        agentGuid = string.IsNullOrWhiteSpace(agentGuid) ? null : agentGuid.Trim();
+        if (!IsConfigured)
+        {
+            var u = _staging.FirstOrDefault(x => x.Id == id);
+            if (u is not null) u.ZissonAgentGuid = agentGuid;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<AppUser>().Where(x => x.Id == id).Set(x => x.ZissonAgentGuid!, agentGuid!).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av Zisson-agent feilet"); }
+    }
+
+    /// <summary>Henter Zisson-agent-guid for en bruker (brukes når vi ringer fra kundekort).</summary>
+    public async Task<string?> ZissonAgentGuidAsync(Guid id)
+    {
+        if (!IsConfigured) return _staging.FirstOrDefault(x => x.Id == id)?.ZissonAgentGuid;
+        try
+        {
+            await EnsureReadyAsync();
+            var res = await _client.From<AppUser>().Where(x => x.Id == id).Single();
+            return res?.ZissonAgentGuid;
+        }
+        catch (Exception ex) { _log.LogError(ex, "Henting av Zisson-agent feilet"); return null; }
+    }
 
     public async Task SetMobilAsync(Guid id, string? mobil)
     {

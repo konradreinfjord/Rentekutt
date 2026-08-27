@@ -30,6 +30,10 @@ public class AppUser : BaseModel
     [Column("twofa_enabled")]
     public bool TwoFactorEnabled { get; set; }
 
+    /// <summary>Zisson-agentens guid – brukes av dialeren (click-to-call ringer denne agentens telefon).</summary>
+    [Column("zisson_agent_guid")]
+    public string? ZissonAgentGuid { get; set; }
+
     [Column("password_hash")]
     public string PasswordHash { get; set; } = "";
 

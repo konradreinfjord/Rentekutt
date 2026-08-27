@@ -22,6 +22,7 @@
 @inject RentkuttCRM.Services.CryptoService Krypto
 @inject RentkuttCRM.Services.DatabaseMigrator Migrator
 @inject RentkuttCRM.Services.AlarmService Alarm
+@inject RentkuttCRM.Services.ZissonService Zisson
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -33,7 +34,7 @@
 <div class="tabs">
     @foreach (var t in _tabs)
     {
-        <button class="tab @(t == _active ? "active" : "")" @onclick="() => _active = t">@t</button>
+        <button class="tab @(t == _active ? "active" : "")" @onclick="() => SettFane(t)">@t</button>
     }
 </div>
 
@@ -347,6 +348,82 @@ else if (_active == "Brukere")
         @if (!string.IsNullOrEmpty(_loginIpMsg))
         {
             <p class="page-sub" style="margin-top:10px">@_loginIpMsg</p>
+        }
+    </div>
+}
+else if (_active == "Dialer")
+{
+    <div class="section">
+        <h2>Dialer <span class="status @(_zKonfigurert ? "on" : "off")">@(_zKonfigurert ? "Konfigurert" : "Mangler credentials")</span></h2>
+        <p class="page-sub">Klikk-og-ring fra kundekortet via Zisson. <strong>Click-to-call ringer agentens egen telefon først</strong>, og kobler den så til kunden. Ringehistorikk logges på søknaden.</p>
+        <div class="rule-builder">
+            <div class="rb-field" style="max-width:120px"><label>Aktiv</label>
+                <button class="btn-sm @(_zEnabled ? "" : "btn-danger")" @onclick="ToggleZisson">@(_zEnabled ? "På" : "Av")</button>
+            </div>
+            <div class="rb-field" style="max-width:150px"><label>Auto-svar agent</label>
+                <button class="btn-sm @(_zAutoAnswer ? "" : "btn-danger")" @onclick="ToggleAutoAnswer" title="Softphone: agentens klient svarer automatisk. Fysisk telefon: sett Av så telefonen ringer.">@(_zAutoAnswer ? "På" : "Av")</button>
+            </div>
+            <div class="rb-field" style="max-width:300px"><label>Utgående visningsnummer (callerId)</label>
+                <select class="rb-input" @onchange="ChangeCallerId">
+                    <option value="">— Zisson-standard —</option>
+                    @foreach (var n in _zNumre) { <option value="@n.Nummer" selected="@(n.Nummer == _zCallerId)">@(string.IsNullOrWhiteSpace(n.Navn) ? n.Nummer : $"{n.Navn} ({n.Nummer})")</option> }
+                    @if (!string.IsNullOrWhiteSpace(_zCallerId) && !_zNumre.Any(n => n.Nummer == _zCallerId)) { <option value="@_zCallerId" selected>@_zCallerId</option> }
+                </select>
+            </div>
+        </div>
+        @if (!_zKonfigurert)
+        {
+            <p class="page-sub" style="margin-top:6px">Sett <code>Zisson:Password</code> og <code>Zisson:RefreshToken</code> i Azure-konfigurasjonen for å aktivere ringing.</p>
+        }
+    </div>
+
+    <div class="section">
+        <h2>Agent-kobling</h2>
+        <p class="page-sub">Koble hver CRM-bruker til sin Zisson-agent. Uten kobling kan ikke brukeren ringe fra kundekortet.</p>
+        @if (_dialerLaster)
+        {
+            <p class="page-sub">Laster agenter fra Zisson…</p>
+        }
+        else if (_zAgenter.Count == 0)
+        {
+            <p class="page-sub">Fant ingen Zisson-agenter. Sjekk tilkoblingen (credentials i Azure).</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson-agent</th></tr></thead>
+                <tbody>
+                    @foreach (var u in _userRows.Where(x => x.Active))
+                    {
+                        <tr>
+                            <td>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</td>
+                            <td class="mono-cell">@u.Email</td>
+                            <td>
+                                <select class="inline-select" @onchange="e => ChangeAgent(u, e)">
+                                    <option value="">— ikke koblet —</option>
+                                    @foreach (var a in _zAgenter)
+                                    {
+                                        <option value="@a.Guid" selected="@(a.Guid == u.ZissonAgentGuid)">@a.Navn@(string.IsNullOrWhiteSpace(a.Username) ? "" : $" ({a.Username})")</option>
+                                    }
+                                </select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="section">
+        <h2>Test-ring</h2>
+        <p class="page-sub">Ringer et nummer via <em>din</em> Zisson-agent. Din telefon ringer først, deretter testnummeret.</p>
+        <div class="rule-builder">
+            <div class="rb-field"><label>Nummer</label><input class="rb-input" @bind="_zTestNummer" placeholder="+47 …" /></div>
+            <button class="btn-primary rb-add" @onclick="TestRing" disabled="@(_zTestSender || !_zEnabled)">@(_zTestSender ? "Ringer…" : "Test-ring")</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_zTestMsg))
+        {
+            <p class="page-sub" style="margin-top:10px">@_zTestMsg</p>
         }
     </div>
 }
@@ -1663,6 +1740,10 @@ else if (_active == "GDPR")
         _ibEnabled = await Instabank.AktivertAsync();
         _ibMiljo = await Instabank.MiljoAsync();
         _ibKonfigurert = await Instabank.ErKonfigurertAsync();
+        _zKonfigurert = await Zisson.ErKonfigurertAsync();
+        _zEnabled = await Zisson.AktivertAsync();
+        _zAutoAnswer = await Zisson.AutoAnswerAsync();
+        _zCallerId = await Zisson.DefaultCallerIdAsync();
         _grEnabled = await Gjeld.AktivertAsync();
         _grMiljo = await Gjeld.MiljoAsync();
         _grKonfigurert = Gjeld.ErKonfigurert;
@@ -1839,6 +1920,71 @@ else if (_active == "GDPR")
     // ---- Brukeradministrasjon ----
     private List<UserRow> _userRows = new();
     private bool _loadingUsers = true;
+
+    // ---- Dialer (Zisson) ----
+    private bool _zKonfigurert;
+    private bool _zEnabled = true;
+    private bool _zAutoAnswer = true;
+    private string? _zCallerId;
+    private List<ZissonService.ZAgent> _zAgenter = new();
+    private List<ZissonService.ZNummer> _zNumre = new();
+    private bool _dialerLastet;
+    private bool _dialerLaster;
+    private string? _zTestNummer;
+    private bool _zTestSender;
+    private string? _zTestMsg;
+
+    private async Task SettFane(string t)
+    {
+        _active = t;
+        if (t == "Dialer" && !_dialerLastet) await LastDialerData();
+    }
+
+    private async Task LastDialerData()
+    {
+        _dialerLaster = true;
+        _dialerLastet = true;   // unngå gjentatt lasting selv om kallet feiler
+        StateHasChanged();
+        try
+        {
+            _zAgenter = await Zisson.HentAgenterAsync();
+            _zNumre = await Zisson.HentVisningsnumreAsync();
+            _zTestNummer ??= _userRows.FirstOrDefault(u => u.Id == Session.UserId)?.Mobilnummer;
+        }
+        finally { _dialerLaster = false; StateHasChanged(); }
+    }
+
+    private async Task ToggleZisson() { _zEnabled = !_zEnabled; await Zisson.SettAktivertAsync(_zEnabled); }
+    private async Task ToggleAutoAnswer() { _zAutoAnswer = !_zAutoAnswer; await Zisson.SettAutoAnswerAsync(_zAutoAnswer); }
+
+    private async Task ChangeCallerId(ChangeEventArgs e)
+    {
+        _zCallerId = e.Value?.ToString();
+        await Zisson.SettDefaultCallerIdAsync(_zCallerId);
+    }
+
+    private async Task ChangeAgent(UserRow u, ChangeEventArgs e)
+    {
+        await Users.SetZissonAgentAsync(u.Id, e.Value?.ToString());
+        _userRows = await Users.ListUsersAsync();
+    }
+
+    private async Task TestRing()
+    {
+        _zTestSender = true; _zTestMsg = null; StateHasChanged();
+        try
+        {
+            var agent = await Users.ZissonAgentGuidAsync(Session.UserId);
+            if (string.IsNullOrWhiteSpace(agent))
+            {
+                _zTestMsg = "Du er ikke koblet til en Zisson-agent ennå (sett det under Agent-kobling).";
+                return;
+            }
+            var r = await Zisson.ClickToCallAsync(agent, _zTestNummer ?? "");
+            _zTestMsg = (r.Ok ? "✓ " : "✗ ") + r.Melding;
+        }
+        finally { _zTestSender = false; }
+    }
     private string _nuName = "", _nuEmail = "", _nuRole = "Saksbehandler", _nuPassword = "", _nuMobil = "";
     private bool _creating;
     private string? _userMsg;
@@ -1917,7 +2063,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
+    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
     private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };

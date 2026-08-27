@@ -113,6 +113,10 @@ builder.Services.AddScoped<SettingsService>();
 // Fagforeninger (dropdown på kundekort, dynamisk utvidbar).
 builder.Services.AddScoped<FagforeningService>();
 
+// Dialer (Zisson/Wave click-to-call).
+builder.Services.AddScoped<ZissonService>();
+builder.Services.AddScoped<DialerService>();
+
 // Hendelseslogg.
 builder.Services.AddScoped<EventService>();
 
@@ -167,6 +171,9 @@ builder.Services.AddHostedService<SendtBankTimeoutWorker>();
 
 // Instabank-statussynk: spør hver 60. min på uavklarte, sendte søknader og oppdaterer status.
 builder.Services.AddHostedService<InstabankStatusWorker>();
+
+// Dialer CDR-synk: fyller utfall/varighet på utgående anrop og oppdaterer loggen.
+builder.Services.AddHostedService<ZissonCdrWorker>();
 
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();

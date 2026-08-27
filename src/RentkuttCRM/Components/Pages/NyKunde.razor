@@ -13,6 +13,9 @@
 @inject RentkuttCRM.Services.SamtykkeService Samtykke
 @inject RentkuttCRM.Services.OppfolgingService Oppf
 @inject RentkuttCRM.Services.FagforeningService Fagforeninger
+@inject RentkuttCRM.Services.ZissonService Zisson
+@inject RentkuttCRM.Services.DialerService Dialer
+@inject RentkuttCRM.Services.SupabaseUserService Brukere
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -61,9 +64,18 @@
                 }
             </div>
             <div class="kk-head-contact">
-                <span>📞 @Vis(_k.Mobilnummer)</span>
+                <span>📞 @Vis(_k.Mobilnummer)
+                    @if (_isEdit && !string.IsNullOrWhiteSpace(_k.Mobilnummer))
+                    {
+                        <button class="btn-sm" style="margin-left:6px" @onclick="() => Ring(_k.Mobilnummer, false)" disabled="@(_ringer || !KanEndre)" title="Ring kunden via Zisson">@(_ringer ? "Ringer…" : "📞 Ring")</button>
+                    }
+                </span>
                 <span>✉ @Vis(_k.Epost)</span>
             </div>
+            @if (!string.IsNullOrEmpty(_ringMsg))
+            {
+                <div class="kk-head-contact"><span class="page-sub" style="margin:0">@_ringMsg</span></div>
+            }
         </div>
     </div>
     <div class="kk-head-facts">
@@ -177,6 +189,7 @@
                         <span class="logg-tid">@l.Opprettet.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
                         @if (l.Kategori == "innsyn") { <span class="logg-tag innsyn">Innsyn</span> }
                         @if (l.Kategori == "avgjørelse") { <span class="logg-tag avgjorelse">Avgjørelse</span> }
+                        @if (l.Kategori == "anrop") { <span class="logg-tag">📞 Anrop</span> }
                         @if (!string.IsNullOrWhiteSpace(l.Aktor)) { <span class="logg-aktor">@l.Aktor</span> }
                     </div>
                     <div class="logg-tekst">@l.Tekst</div>
@@ -717,7 +730,16 @@
         <div class="form-grid" style="margin-top:16px">
             <div class="ff wide"><label>Fullt navn</label><input @bind="_k.MedsokerNavn" /></div>
             <div class="ff"><label>Fødselsnummer</label><input @bind="_k.MedsokerFoedselsnummer" /></div>
-            <div class="ff"><label>Mobilnummer</label><input @bind="_k.MedsokerMobil" /></div>
+            <div class="ff">
+                <label>Mobilnummer</label>
+                <div style="display:flex; gap:6px">
+                    <input @bind="_k.MedsokerMobil" style="flex:1" />
+                    @if (_isEdit && !string.IsNullOrWhiteSpace(_k.MedsokerMobil))
+                    {
+                        <button type="button" class="btn-sm" @onclick="() => Ring(_k.MedsokerMobil, true)" disabled="@(_ringer || !KanEndre)" title="Ring medsøker via Zisson">📞</button>
+                    }
+                </div>
+            </div>
             <div class="ff"><label>E-post</label><input @bind="_k.MedsokerEpost" /></div>
             <div class="ff wide"><label>Adresse</label><input @bind="_k.MedsokerAdresse" /></div>
             <div class="ff"><label>Postnummer</label><input @bind="_k.MedsokerPostnummer" /></div>
@@ -1203,6 +1225,45 @@
     }
 
     private void AvbrytNyFagforening() { _visNyFagforening = false; _nyFagforening = null; }
+
+    // ---- Dialer (Zisson click-to-call) ----
+    private bool _ringer;
+    private string? _ringMsg;
+
+    private async Task Ring(string? nummer, bool medsoker)
+    {
+        if (!_isEdit || !KanEndre || string.IsNullOrWhiteSpace(nummer)) return;
+        _ringer = true; _ringMsg = null; StateHasChanged();
+        try
+        {
+            var agent = await Brukere.ZissonAgentGuidAsync(Session.UserId);
+            if (string.IsNullOrWhiteSpace(agent))
+            {
+                _ringMsg = "Du er ikke koblet til en Zisson-agent ennå (Admin → Dialer → Agent-kobling).";
+                return;
+            }
+            var r = await Zisson.ClickToCallAsync(agent, nummer);
+            if (r.Ok)
+            {
+                var normalisert = ZissonService.NormaliserNummer(nummer);
+                await Dialer.OpprettAsync(_k.Id, Session.UserName ?? Session.Email, agent, normalisert, r.Zid);
+                var hvem = medsoker ? "medsøker" : "kunde";
+                await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email,
+                    $"📞 Utgående anrop startet til {hvem} ({MaskerNr(nummer)})", "anrop");
+                _endringslogg = await Logg.ForKundeAsync(_k.Id);
+                _ringMsg = "✓ " + r.Melding;
+            }
+            else _ringMsg = "✗ " + r.Melding;
+        }
+        finally { _ringer = false; StateHasChanged(); }
+    }
+
+    // Viser kun de siste 4 sifrene i loggen (personvern).
+    private static string MaskerNr(string? n)
+    {
+        var d = new string((n ?? "").Where(char.IsDigit).ToArray());
+        return d.Length >= 4 ? "•••• " + d[^4..] : (n ?? "");
+    }
 
     // ---- Interne faner ----
     private string _fane = "oversikt";
