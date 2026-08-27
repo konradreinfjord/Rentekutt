@@ -15,6 +15,7 @@ namespace RentkuttCRM.Services;
 public class ZissonService
 {
     private const string RefreshTokenKey = "zisson_refresh_token";
+    private const string CustomerGuidKey = "zisson_customer_guid";
     private const string CallerIdKey = "zisson_default_callerid";
     private const string EnabledKey = "zisson_enabled";
     private const string AutoAnswerKey = "zisson_auto_answer";
@@ -37,15 +38,20 @@ public class ZissonService
     }
 
     private string BaseUrl => (_config["Zisson:BaseUrl"] ?? "https://app2.zisson.com").TrimEnd('/');
-    private string? CustomerGuid => _config["Zisson:CustomerGuid"];
     private string? LoginId => _config["Zisson:Id"];
     private string? RefreshTokenConfig => _config["Zisson:RefreshToken"];
 
-    public bool HarGrunnkonfig =>
-        !string.IsNullOrWhiteSpace(CustomerGuid) && !string.IsNullOrWhiteSpace(LoginId);
+    /// <summary>Kundens Zisson-guid (customerGuid). Kan settes i Dialer-fanen (lagres i innstillinger)
+    /// og faller ellers tilbake til appsettings.</summary>
+    public async Task<string?> CustomerGuidAsync()
+        => (await _settings.GetAsync(CustomerGuidKey)) is { Length: > 0 } s ? s : _config["Zisson:CustomerGuid"];
+    public Task SettCustomerGuidAsync(string? verdi)
+        => _settings.SetAsync(CustomerGuidKey, string.IsNullOrWhiteSpace(verdi) ? null : verdi.Trim());
 
     public async Task<bool> ErKonfigurertAsync()
-        => HarGrunnkonfig && !string.IsNullOrWhiteSpace(await GjeldendeRefreshTokenAsync());
+        => !string.IsNullOrWhiteSpace(await CustomerGuidAsync())
+           && !string.IsNullOrWhiteSpace(LoginId)
+           && !string.IsNullOrWhiteSpace(await GjeldendeRefreshTokenAsync());
 
     public async Task<bool> AktivertAsync() => (await _settings.GetAsync(EnabledKey)) != "false"; // på som standard
     public Task SettAktivertAsync(bool på) => _settings.SetAsync(EnabledKey, på ? "true" : "false");
@@ -88,13 +94,15 @@ public class ZissonService
             if (_jwt is not null && DateTime.UtcNow < _jwtUtløper) return _jwt;
 
             var refreshToken = await GjeldendeRefreshTokenAsync();
-            if (!HarGrunnkonfig || string.IsNullOrWhiteSpace(refreshToken)) return null;
+            var customerGuid = await CustomerGuidAsync();
+            if (string.IsNullOrWhiteSpace(customerGuid) || string.IsNullOrWhiteSpace(LoginId) || string.IsNullOrWhiteSpace(refreshToken))
+                return null;
 
             var http = _httpFactory.CreateClient();
             http.Timeout = TimeSpan.FromSeconds(20);
             var body = JsonSerializer.Serialize(new
             {
-                customerGuid = CustomerGuid,
+                customerGuid,
                 id = LoginId,
                 refreshToken,
                 sessionGuid = Guid.NewGuid().ToString(),
@@ -172,6 +180,11 @@ public class ZissonService
         // slå opp guid fra Zisson-brukerlista når verdien ikke allerede er en guid.
         var løstAgentGuid = await LøsAgentGuidAsync(agentGuid);
 
+        // Zisson krever en gyldig guid i agentGuid. Klarte vi ikke å løse brukernavnet til en guid,
+        // stopper vi her med en tydelig melding i stedet for et kryptisk 400-valideringssvar.
+        if (!Guid.TryParse(løstAgentGuid, out _))
+            return new(false, -1, $"Fant ikke Zisson-agenten «{agentGuid}». Lim inn agentens guid, eller velg fra nedtrekkslista når agentlista er tilgjengelig.", null);
+
         try
         {
             var body = JsonSerializer.Serialize(new
@@ -219,23 +232,38 @@ public class ZissonService
         try
         {
             using var doc = JsonDocument.Parse(txt);
-            if (doc.RootElement.TryGetProperty("detail", out var d) && d.GetString() is { Length: > 0 } s) return s;
-            if (doc.RootElement.TryGetProperty("title", out var t) && t.GetString() is { Length: > 0 } s2) return s2;
+            var root = doc.RootElement;
+            // ASP.NET valideringsfeil: {"errors":{"felt":["melding", …]}} – vis feltnavn + melding.
+            if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Object)
+            {
+                var deler = new List<string>();
+                foreach (var felt in errs.EnumerateObject())
+                {
+                    var meldinger = felt.Value.ValueKind == JsonValueKind.Array
+                        ? string.Join(" ", felt.Value.EnumerateArray().Select(v => v.GetString()))
+                        : felt.Value.GetString();
+                    deler.Add($"{felt.Name}: {meldinger}");
+                }
+                if (deler.Count > 0) return "Zisson avviste forespørselen – " + string.Join("; ", deler);
+            }
+            if (root.TryGetProperty("detail", out var d) && d.GetString() is { Length: > 0 } s) return s;
+            if (root.TryGetProperty("title", out var t) && t.GetString() is { Length: > 0 } s2) return s2;
         }
         catch { /* ikke JSON */ }
         return status == 401 ? "Ikke autorisert mot Zisson (sjekk credentials)." : $"Feil fra Zisson (HTTP {status}).";
     }
 
     // Løser en agent-verdi til guid: er den allerede en guid returneres den som den er;
-    // ellers tolkes den som brukernavn og slås opp mot Zisson-brukerlista. Faller tilbake til
-    // råverdien hvis oppslag ikke gir treff (best effort).
+    // ellers tolkes den som bruker-id/brukernavn (f.eks. «3657») og slås opp mot Zisson-brukerlista
+    // (entities/users + id-mapping). Faller tilbake til råverdien hvis oppslag ikke gir treff.
     private async Task<string> LøsAgentGuidAsync(string agent)
     {
         if (Guid.TryParse(agent, out _)) return agent;
         try
         {
-            var agenter = await HentAgenterAsync();
-            var treff = agenter.FirstOrDefault(a => string.Equals(a.Username, agent, StringComparison.OrdinalIgnoreCase))
+            var agenter = await HentAgenterAlleAsync();
+            var treff = agenter.FirstOrDefault(a => string.Equals(a.LoginId, agent, StringComparison.OrdinalIgnoreCase))
+                     ?? agenter.FirstOrDefault(a => string.Equals(a.Username, agent, StringComparison.OrdinalIgnoreCase))
                      ?? agenter.FirstOrDefault(a => string.Equals(a.Navn, agent, StringComparison.OrdinalIgnoreCase));
             return treff?.Guid ?? agent;
         }
@@ -244,9 +272,10 @@ public class ZissonService
 
     // ---- Oppslag (agenter, visningsnumre) ------------------------------------------------
 
-    public record ZAgent(string Guid, string Navn, string? Username, string? Mobil);
+    public record ZAgent(string Guid, string Navn, string? Username, string? Mobil, string? LoginId = null);
     public record ZNummer(string Nummer, string? Navn);
 
+    /// <summary>Agenter fra entities/users (guid, navn, brukernavn, mobil).</summary>
     public async Task<List<ZAgent>> HentAgenterAsync()
     {
         var http = await KlientAsync();
@@ -271,6 +300,48 @@ public class ZissonService
             return liste.OrderBy(a => a.Navn, StringComparer.CurrentCultureIgnoreCase).ToList();
         }
         catch (Exception ex) { _log.LogError(ex, "Henting av Zisson-agenter feilet"); return new(); }
+    }
+
+    /// <summary>Id-mapping (entities/users/id-mapping): kobler bruker-id (tall, f.eks. 3657) ↔ guid.</summary>
+    public async Task<List<ZAgent>> HentIdMappingAsync()
+    {
+        var http = await KlientAsync();
+        if (http is null) return new();
+        try
+        {
+            using var resp = await http.GetAsync("/external-api/v1/entities/users/id-mapping");
+            if (!resp.IsSuccessStatusCode) return new();
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var liste = new List<ZAgent>();
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                var guid = e.TryGetProperty("guid", out var g) ? g.GetString() : null;
+                if (string.IsNullOrWhiteSpace(guid)) continue;
+                var loginId = e.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.Number ? i.GetInt32().ToString() : null;
+                var user = e.TryGetProperty("username", out var u) ? u.GetString() : null;
+                var fornavn = e.TryGetProperty("firstName", out var f) ? f.GetString() : "";
+                var etternavn = e.TryGetProperty("lastName", out var l) ? l.GetString() : "";
+                var navn = $"{fornavn} {etternavn}".Trim();
+                liste.Add(new(guid!, string.IsNullOrWhiteSpace(navn) ? (user ?? loginId ?? guid!) : navn, user, null, loginId));
+            }
+            return liste;
+        }
+        catch (Exception ex) { _log.LogError(ex, "Henting av id-mapping feilet"); return new(); }
+    }
+
+    /// <summary>Slår sammen entities/users og id-mapping (ett kan være tomt avhengig av tilganger).
+    /// Nøkkel på guid; beholder LoginId fra id-mapping når tilgjengelig.</summary>
+    public async Task<List<ZAgent>> HentAgenterAlleAsync()
+    {
+        var users = await HentAgenterAsync();
+        var mapping = await HentIdMappingAsync();
+        var byGuid = new Dictionary<string, ZAgent>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in users) byGuid[a.Guid] = a;
+        foreach (var m in mapping)
+            byGuid[m.Guid] = byGuid.TryGetValue(m.Guid, out var u)
+                ? u with { LoginId = u.LoginId ?? m.LoginId, Username = u.Username ?? m.Username }
+                : m;
+        return byGuid.Values.OrderBy(a => a.Navn, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     public async Task<List<ZNummer>> HentVisningsnumreAsync()

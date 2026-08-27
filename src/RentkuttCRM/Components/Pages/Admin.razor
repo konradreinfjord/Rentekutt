@@ -363,6 +363,13 @@ else if (_active == "Dialer")
             <div class="rb-field" style="max-width:150px"><label>Auto-svar agent</label>
                 <button class="btn-sm @(_zAutoAnswer ? "" : "btn-danger")" @onclick="ToggleAutoAnswer" title="Softphone: agentens klient svarer automatisk. Fysisk telefon: sett Av så telefonen ringer.">@(_zAutoAnswer ? "På" : "Av")</button>
             </div>
+            <div class="rb-field" style="max-width:340px"><label>customerGuid (Zisson-konto)</label>
+                <span class="token-row">
+                    <input class="inline-input" style="width:250px" placeholder="kundens Zisson-guid"
+                           value="@_zCustomerGuid" @onchange="e => _zCustomerGuid = e.Value?.ToString()" />
+                    <button class="btn-sm" @onclick="SaveCustomerGuid">Lagre</button>
+                </span>
+            </div>
             <div class="rb-field" style="max-width:300px"><label>Utgående visningsnummer (callerId)</label>
                 <select class="rb-input" @onchange="ChangeCallerId">
                     <option value="">— Zisson-standard —</option>
@@ -371,18 +378,41 @@ else if (_active == "Dialer")
                 </select>
             </div>
         </div>
+        @if (!string.IsNullOrEmpty(_zCustomerMsg)) { <p class="page-sub" style="margin-top:6px">@_zCustomerMsg</p> }
         @if (!_zKonfigurert)
         {
-            <p class="page-sub" style="margin-top:6px">Sett <code>Zisson:Password</code> og <code>Zisson:RefreshToken</code> i Azure-konfigurasjonen for å aktivere ringing.</p>
+            <p class="page-sub" style="margin-top:6px">Sett customerGuid over og <code>Zisson__RefreshToken</code> i Azure-konfigurasjonen for å aktivere ringing.</p>
+        }
+        <div style="margin-top:10px">
+            <button class="btn-sm" @onclick="HentAgenter" disabled="@_zHenter">@(_zHenter ? "Henter…" : "Hent agenter fra Zisson")</button>
+            @if (!string.IsNullOrEmpty(_zHentMsg)) { <span class="page-sub" style="margin-left:10px">@_zHentMsg</span> }
+        </div>
+        @if (_zAgenter.Count > 0)
+        {
+            <table class="data-table" style="margin-top:10px">
+                <thead><tr><th>Navn</th><th>Bruker-id</th><th>Brukernavn</th><th>Guid (kopier til Agent-kobling)</th></tr></thead>
+                <tbody>
+                    @foreach (var a in _zAgenter)
+                    {
+                        <tr>
+                            <td>@a.Navn</td>
+                            <td>@(a.LoginId ?? "—")</td>
+                            <td>@(a.Username ?? "—")</td>
+                            <td class="mono-cell">@a.Guid</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         }
     </div>
 
     <div class="section">
         <h2>Agent-kobling</h2>
-        <p class="page-sub">Koble hver CRM-bruker til sin Zisson-agent: skriv inn Zisson-agentens id (guid) eller brukernavn, f.eks. <code>3657</code>. Uten kobling kan ikke brukeren ringe fra kundekortet.
-        @if (_zAgenter.Count == 0) { <text>(Fant ingen agentliste fra Zisson – skriv inn manuelt.)</text> }</p>
+        <p class="page-sub">Legg inn hver CRM-brukers <strong>Zisson bruker-id</strong> (guid) — f.eks. <code>232ee31d-0ccb-474e-979f-eee764b531a8</code> for bruker 3657. Du kan også skrive brukernavnet (f.eks. <code>3657</code>) hvis agentlista er tilgjengelig. Uten kobling kan ikke brukeren ringe fra kundekortet.
+        @if (!_dialerLaster && _zAgenter.Count == 0) { <text>(Fant ingen agentliste fra Zisson – lim inn guid manuelt.)</text> }</p>
+        @if (_dialerLaster) { <p class="page-sub" style="margin:-6px 0 8px">Laster fra Zisson…</p> }
         <table class="data-table">
-            <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson-agent (guid eller brukernavn)</th><th></th><th></th></tr></thead>
+            <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson bruker-id (guid)</th><th></th><th></th></tr></thead>
             <tbody>
                 @foreach (var u in _userRows.Where(x => x.Active))
                 {
@@ -391,7 +421,7 @@ else if (_active == "Dialer")
                         <td class="mono-cell">@u.Email</td>
                         <td>
                             <span class="token-row">
-                                <input class="inline-input" style="width:220px" placeholder="f.eks. 3657 eller guid"
+                                <input class="inline-input" style="width:320px" placeholder="Zisson bruker-id (guid), f.eks. 232ee31d-…"
                                        value="@AgentInput(u)" @onchange="e => SetAgentInput(u.Id, e)" />
                                 @if (_zAgenter.Count > 0)
                                 {
@@ -413,23 +443,6 @@ else if (_active == "Dialer")
             </tbody>
         </table>
         @if (!string.IsNullOrEmpty(_agentMsg)) { <p class="page-sub" style="margin-top:10px">@_agentMsg</p> }
-
-        <h3 style="margin:22px 0 8px">Legg til bruker / agent</h3>
-        <p class="page-sub" style="margin:0 0 10px">Oppretter en ny CRM-bruker og kobler den til en Zisson-agent i én operasjon. Bruk dette når Zisson får nye agenter.</p>
-        <div class="rule-builder">
-            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_naName" placeholder="Fullt navn" /></div>
-            <div class="rb-field"><label>E-post</label><input class="rb-input" @bind="_naEmail" placeholder="navn@rentekutt.no" /></div>
-            <div class="rb-field rb-op" style="max-width:150px">
-                <label>Rolle</label>
-                <select class="rb-input" @bind="_naRole">
-                    @foreach (var r in SupabaseUserService.Roles) { <option value="@r">@r</option> }
-                </select>
-            </div>
-            <div class="rb-field"><label>Zisson-agent (guid/brukernavn)</label><input class="rb-input" @bind="_naAgent" placeholder="f.eks. 3657" /></div>
-            <div class="rb-field"><label>Midlertidig passord</label><input class="rb-input" type="password" @bind="_naPassword" placeholder="••••••" /></div>
-            <button class="btn-primary rb-add" @onclick="LeggTilAgentBruker" disabled="@_naCreating">@(_naCreating ? "Legger til…" : "Legg til")</button>
-        </div>
-        @if (!string.IsNullOrEmpty(_naMsg)) { <p class="page-sub" style="margin-top:10px">@_naMsg</p> }
     </div>
 
     <div class="section">
@@ -1724,6 +1737,7 @@ else if (_active == "GDPR")
         var eventsTask = Events.ListAsync(100);
         await Task.WhenAll(usersTask, banksTask, produktTask, webhookTask, webhookPrismatchTask, webhookVippsTask, webhookBankIdTask, eventsTask);
         _userRows = usersTask.Result;
+        _loadingUsers = false;   // brukerlista er hentet – vis tabellen (ellers står den på «Laster …»)
         _banks = banksTask.Result;
         _produkter = produktTask.Result;
 
@@ -1758,10 +1772,6 @@ else if (_active == "GDPR")
         _ibEnabled = await Instabank.AktivertAsync();
         _ibMiljo = await Instabank.MiljoAsync();
         _ibKonfigurert = await Instabank.ErKonfigurertAsync();
-        _zKonfigurert = await Zisson.ErKonfigurertAsync();
-        _zEnabled = await Zisson.AktivertAsync();
-        _zAutoAnswer = await Zisson.AutoAnswerAsync();
-        _zCallerId = await Zisson.DefaultCallerIdAsync();
         _grEnabled = await Gjeld.AktivertAsync();
         _grMiljo = await Gjeld.MiljoAsync();
         _grKonfigurert = Gjeld.ErKonfigurert;
@@ -1944,6 +1954,8 @@ else if (_active == "GDPR")
     private bool _zEnabled = true;
     private bool _zAutoAnswer = true;
     private string? _zCallerId;
+    private string? _zCustomerGuid;
+    private string? _zCustomerMsg;
     private List<ZissonService.ZAgent> _zAgenter = new();
     private List<ZissonService.ZNummer> _zNumre = new();
     private bool _dialerLastet;
@@ -1965,11 +1977,41 @@ else if (_active == "GDPR")
         StateHasChanged();
         try
         {
-            _zAgenter = await Zisson.HentAgenterAsync();
+            // Dialer-innstillinger lastes her (ikke i den store OnInitializedAsync) så fanen alltid
+            // får ferske verdier når den åpnes, uavhengig av resten av admin-initialiseringen.
+            _zKonfigurert = await Zisson.ErKonfigurertAsync();
+            _zEnabled = await Zisson.AktivertAsync();
+            _zAutoAnswer = await Zisson.AutoAnswerAsync();
+            _zCallerId = await Zisson.DefaultCallerIdAsync();
+            _zCustomerGuid = await Zisson.CustomerGuidAsync();
+            _zAgenter = await Zisson.HentAgenterAlleAsync();
             _zNumre = await Zisson.HentVisningsnumreAsync();
             _zTestNummer ??= _userRows.FirstOrDefault(u => u.Id == Session.UserId)?.Mobilnummer;
         }
         finally { _dialerLaster = false; StateHasChanged(); }
+    }
+
+    private async Task SaveCustomerGuid()
+    {
+        await Zisson.SettCustomerGuidAsync(_zCustomerGuid);
+        _zKonfigurert = await Zisson.ErKonfigurertAsync();
+        _zCustomerMsg = "customerGuid lagret.";
+    }
+
+    private bool _zHenter;
+    private string? _zHentMsg;
+    private async Task HentAgenter()
+    {
+        _zHenter = true; _zHentMsg = null; StateHasChanged();
+        try
+        {
+            if (!await Zisson.ErKonfigurertAsync()) { _zHentMsg = "Zisson er ikke konfigurert (mangler customerGuid/refreshToken)."; return; }
+            _zAgenter = await Zisson.HentAgenterAlleAsync();
+            _zHentMsg = _zAgenter.Count > 0
+                ? $"Hentet {_zAgenter.Count} agent(er). Kopier riktig guid til Agent-kobling under."
+                : "Token OK, men Zisson returnerte ingen agenter (sjekk at kontoen har tilgang til brukerlista).";
+        }
+        finally { _zHenter = false; StateHasChanged(); }
     }
 
     private async Task ToggleZisson() { _zEnabled = !_zEnabled; await Zisson.SettAktivertAsync(_zEnabled); }
@@ -2012,37 +2054,6 @@ else if (_active == "GDPR")
         _userRows = await Users.ListUsersAsync();
     }
 
-    // ---- Ny bruker/agent (fra Dialer-fanen) ----
-    private string _naName = "", _naEmail = "", _naAgent = "", _naPassword = "", _naRole = "Saksbehandler";
-    private bool _naCreating;
-    private string? _naMsg;
-
-    private async Task LeggTilAgentBruker()
-    {
-        if (!Session.IsAdmin) return;   // server-side vern
-        if (string.IsNullOrWhiteSpace(_naEmail) || string.IsNullOrWhiteSpace(_naPassword))
-        {
-            _naMsg = "E-post og midlertidig passord må fylles ut.";
-            return;
-        }
-        _naCreating = true; _naMsg = null; StateHasChanged();
-        try
-        {
-            var (ok, error) = await Users.CreateUserAsync(_naEmail.Trim(), _naName.Trim(), _naRole, _naPassword);
-            if (!ok) { _naMsg = "Kunne ikke opprette bruker: " + (error ?? "ukjent feil"); return; }
-
-            _userRows = await Users.ListUsersAsync();
-            var ny = _userRows.FirstOrDefault(u => string.Equals(u.Email, _naEmail.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (ny is not null && !string.IsNullOrWhiteSpace(_naAgent))
-            {
-                await Users.SetZissonAgentAsync(ny.Id, _naAgent.Trim());
-                _userRows = await Users.ListUsersAsync();
-            }
-            _naMsg = $"La til {_naEmail.Trim()}" + (string.IsNullOrWhiteSpace(_naAgent) ? "" : $" (Zisson-agent «{_naAgent.Trim()}»)") + ".";
-            _naName = ""; _naEmail = ""; _naAgent = ""; _naPassword = "";
-        }
-        finally { _naCreating = false; }
-    }
 
     private async Task TestRing()
     {
