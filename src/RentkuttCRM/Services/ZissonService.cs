@@ -39,8 +39,6 @@ public class ZissonService
     private string BaseUrl => (_config["Zisson:BaseUrl"] ?? "https://app2.zisson.com").TrimEnd('/');
     private string? CustomerGuid => _config["Zisson:CustomerGuid"];
     private string? LoginId => _config["Zisson:Id"];
-    private string? Username => _config["Zisson:Username"];
-    private string? Password => _config["Zisson:Password"];
     private string? RefreshTokenConfig => _config["Zisson:RefreshToken"];
 
     public bool HarGrunnkonfig =>
