@@ -379,39 +379,57 @@ else if (_active == "Dialer")
 
     <div class="section">
         <h2>Agent-kobling</h2>
-        <p class="page-sub">Koble hver CRM-bruker til sin Zisson-agent. Uten kobling kan ikke brukeren ringe fra kundekortet.</p>
-        @if (_dialerLaster)
-        {
-            <p class="page-sub">Laster agenter fra Zisson…</p>
-        }
-        else if (_zAgenter.Count == 0)
-        {
-            <p class="page-sub">Fant ingen Zisson-agenter. Sjekk tilkoblingen (credentials i Azure).</p>
-        }
-        else
-        {
-            <table class="data-table">
-                <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson-agent</th></tr></thead>
-                <tbody>
-                    @foreach (var u in _userRows.Where(x => x.Active))
-                    {
-                        <tr>
-                            <td>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</td>
-                            <td class="mono-cell">@u.Email</td>
-                            <td>
-                                <select class="inline-select" @onchange="e => ChangeAgent(u, e)">
-                                    <option value="">— ikke koblet —</option>
-                                    @foreach (var a in _zAgenter)
-                                    {
-                                        <option value="@a.Guid" selected="@(a.Guid == u.ZissonAgentGuid)">@a.Navn@(string.IsNullOrWhiteSpace(a.Username) ? "" : $" ({a.Username})")</option>
-                                    }
-                                </select>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
+        <p class="page-sub">Koble hver CRM-bruker til sin Zisson-agent: skriv inn Zisson-agentens id (guid) eller brukernavn, f.eks. <code>3657</code>. Uten kobling kan ikke brukeren ringe fra kundekortet.
+        @if (_zAgenter.Count == 0) { <text>(Fant ingen agentliste fra Zisson – skriv inn manuelt.)</text> }</p>
+        <table class="data-table">
+            <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson-agent (guid eller brukernavn)</th><th></th><th></th></tr></thead>
+            <tbody>
+                @foreach (var u in _userRows.Where(x => x.Active))
+                {
+                    <tr>
+                        <td>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</td>
+                        <td class="mono-cell">@u.Email</td>
+                        <td>
+                            <span class="token-row">
+                                <input class="inline-input" style="width:220px" placeholder="f.eks. 3657 eller guid"
+                                       value="@AgentInput(u)" @onchange="e => SetAgentInput(u.Id, e)" />
+                                @if (_zAgenter.Count > 0)
+                                {
+                                    <select class="inline-select" @onchange="e => VelgAgent(u.Id, e)" title="Velg fra Zisson-lista">
+                                        <option value="">— velg fra Zisson —</option>
+                                        @foreach (var a in _zAgenter)
+                                        {
+                                            <option value="@a.Guid">@a.Navn@(string.IsNullOrWhiteSpace(a.Username) ? "" : $" ({a.Username})")</option>
+                                        }
+                                    </select>
+                                }
+                                <button class="btn-sm" @onclick="() => SaveAgent(u)">Lagre</button>
+                            </span>
+                        </td>
+                        <td>@if (!string.IsNullOrWhiteSpace(u.ZissonAgentGuid)) { <span class="status on">Koblet</span> }</td>
+                        <td>@if (!string.IsNullOrWhiteSpace(u.ZissonAgentGuid)) { <button class="btn-sm btn-danger" @onclick="() => FjernAgent(u)">Fjern</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (!string.IsNullOrEmpty(_agentMsg)) { <p class="page-sub" style="margin-top:10px">@_agentMsg</p> }
+
+        <h3 style="margin:22px 0 8px">Legg til bruker / agent</h3>
+        <p class="page-sub" style="margin:0 0 10px">Oppretter en ny CRM-bruker og kobler den til en Zisson-agent i én operasjon. Bruk dette når Zisson får nye agenter.</p>
+        <div class="rule-builder">
+            <div class="rb-field"><label>Navn</label><input class="rb-input" @bind="_naName" placeholder="Fullt navn" /></div>
+            <div class="rb-field"><label>E-post</label><input class="rb-input" @bind="_naEmail" placeholder="navn@rentekutt.no" /></div>
+            <div class="rb-field rb-op" style="max-width:150px">
+                <label>Rolle</label>
+                <select class="rb-input" @bind="_naRole">
+                    @foreach (var r in SupabaseUserService.Roles) { <option value="@r">@r</option> }
+                </select>
+            </div>
+            <div class="rb-field"><label>Zisson-agent (guid/brukernavn)</label><input class="rb-input" @bind="_naAgent" placeholder="f.eks. 3657" /></div>
+            <div class="rb-field"><label>Midlertidig passord</label><input class="rb-input" type="password" @bind="_naPassword" placeholder="••••••" /></div>
+            <button class="btn-primary rb-add" @onclick="LeggTilAgentBruker" disabled="@_naCreating">@(_naCreating ? "Legger til…" : "Legg til")</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_naMsg)) { <p class="page-sub" style="margin-top:10px">@_naMsg</p> }
     </div>
 
     <div class="section">
@@ -1963,10 +1981,67 @@ else if (_active == "GDPR")
         await Zisson.SettDefaultCallerIdAsync(_zCallerId);
     }
 
-    private async Task ChangeAgent(UserRow u, ChangeEventArgs e)
+    private readonly Dictionary<Guid, string> _agentInputs = new();
+    private string? _agentMsg;
+
+    private string AgentInput(UserRow u) => _agentInputs.TryGetValue(u.Id, out var v) ? v : (u.ZissonAgentGuid ?? "");
+    private void SetAgentInput(Guid id, ChangeEventArgs e) => _agentInputs[id] = e.Value?.ToString() ?? "";
+    // Valg fra Zisson-lista fyller bare inputfeltet (lagres ved «Lagre»).
+    private void VelgAgent(Guid id, ChangeEventArgs e)
     {
-        await Users.SetZissonAgentAsync(u.Id, e.Value?.ToString());
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(v)) _agentInputs[id] = v;
+    }
+
+    private async Task SaveAgent(UserRow u)
+    {
+        var verdi = AgentInput(u);
+        await Users.SetZissonAgentAsync(u.Id, verdi);
+        _agentInputs.Remove(u.Id);
+        _agentMsg = string.IsNullOrWhiteSpace(verdi)
+            ? $"Zisson-agent fjernet for {u.Email}."
+            : $"{u.Email} koblet til Zisson-agent «{verdi}».";
         _userRows = await Users.ListUsersAsync();
+    }
+
+    private async Task FjernAgent(UserRow u)
+    {
+        await Users.SetZissonAgentAsync(u.Id, null);
+        _agentInputs.Remove(u.Id);
+        _agentMsg = $"Zisson-agent fjernet for {u.Email}.";
+        _userRows = await Users.ListUsersAsync();
+    }
+
+    // ---- Ny bruker/agent (fra Dialer-fanen) ----
+    private string _naName = "", _naEmail = "", _naAgent = "", _naPassword = "", _naRole = "Saksbehandler";
+    private bool _naCreating;
+    private string? _naMsg;
+
+    private async Task LeggTilAgentBruker()
+    {
+        if (!Session.IsAdmin) return;   // server-side vern
+        if (string.IsNullOrWhiteSpace(_naEmail) || string.IsNullOrWhiteSpace(_naPassword))
+        {
+            _naMsg = "E-post og midlertidig passord må fylles ut.";
+            return;
+        }
+        _naCreating = true; _naMsg = null; StateHasChanged();
+        try
+        {
+            var (ok, error) = await Users.CreateUserAsync(_naEmail.Trim(), _naName.Trim(), _naRole, _naPassword);
+            if (!ok) { _naMsg = "Kunne ikke opprette bruker: " + (error ?? "ukjent feil"); return; }
+
+            _userRows = await Users.ListUsersAsync();
+            var ny = _userRows.FirstOrDefault(u => string.Equals(u.Email, _naEmail.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (ny is not null && !string.IsNullOrWhiteSpace(_naAgent))
+            {
+                await Users.SetZissonAgentAsync(ny.Id, _naAgent.Trim());
+                _userRows = await Users.ListUsersAsync();
+            }
+            _naMsg = $"La til {_naEmail.Trim()}" + (string.IsNullOrWhiteSpace(_naAgent) ? "" : $" (Zisson-agent «{_naAgent.Trim()}»)") + ".";
+            _naName = ""; _naEmail = ""; _naAgent = ""; _naPassword = "";
+        }
+        finally { _naCreating = false; }
     }
 
     private async Task TestRing()

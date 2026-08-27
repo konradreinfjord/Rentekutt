@@ -168,11 +168,15 @@ public class ZissonService
         var http = await KlientAsync();
         if (http is null) return new(false, -1, "Zisson er ikke konfigurert (mangler token/credentials).", null);
 
+        // Agent-koblingen kan være lagret som brukernavn (f.eks. «3657») i stedet for guid –
+        // slå opp guid fra Zisson-brukerlista når verdien ikke allerede er en guid.
+        var løstAgentGuid = await LøsAgentGuidAsync(agentGuid);
+
         try
         {
             var body = JsonSerializer.Serialize(new
             {
-                agentGuid,
+                agentGuid = løstAgentGuid,
                 toNumber = normalisert,
                 autoAnswer = await AutoAnswerAsync(),
                 callerId = string.IsNullOrWhiteSpace(callerId) ? await DefaultCallerIdAsync() : callerId,
@@ -220,6 +224,22 @@ public class ZissonService
         }
         catch { /* ikke JSON */ }
         return status == 401 ? "Ikke autorisert mot Zisson (sjekk credentials)." : $"Feil fra Zisson (HTTP {status}).";
+    }
+
+    // Løser en agent-verdi til guid: er den allerede en guid returneres den som den er;
+    // ellers tolkes den som brukernavn og slås opp mot Zisson-brukerlista. Faller tilbake til
+    // råverdien hvis oppslag ikke gir treff (best effort).
+    private async Task<string> LøsAgentGuidAsync(string agent)
+    {
+        if (Guid.TryParse(agent, out _)) return agent;
+        try
+        {
+            var agenter = await HentAgenterAsync();
+            var treff = agenter.FirstOrDefault(a => string.Equals(a.Username, agent, StringComparison.OrdinalIgnoreCase))
+                     ?? agenter.FirstOrDefault(a => string.Equals(a.Navn, agent, StringComparison.OrdinalIgnoreCase));
+            return treff?.Guid ?? agent;
+        }
+        catch { return agent; }
     }
 
     // ---- Oppslag (agenter, visningsnumre) ------------------------------------------------
