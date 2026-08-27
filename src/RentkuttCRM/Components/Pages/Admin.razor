@@ -23,6 +23,7 @@
 @inject RentkuttCRM.Services.DatabaseMigrator Migrator
 @inject RentkuttCRM.Services.AlarmService Alarm
 @inject RentkuttCRM.Services.ZissonService Zisson
+@inject Microsoft.Extensions.Hosting.IHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -447,9 +448,10 @@ else if (_active == "Dialer")
 
     <div class="section">
         <h2>Test-ring</h2>
-        <p class="page-sub">Ringer et nummer via <em>din</em> Zisson-agent. Din telefon ringer først, deretter testnummeret.</p>
+        <p class="page-sub">Ringer et nummer via en Zisson-agent. Agentens telefon ringer først, deretter testnummeret. La agent-guid stå tom for å bruke <em>din</em> kobling — eller lim inn en guid for å teste den direkte (f.eks. auth-id-en <code>232ee31d-…</code>).</p>
         <div class="rule-builder">
             <div class="rb-field"><label>Nummer</label><input class="rb-input" @bind="_zTestNummer" placeholder="+47 …" /></div>
+            <div class="rb-field"><label>Agent-guid (valgfri, overstyrer din kobling)</label><input class="rb-input" style="width:280px" @bind="_zTestAgent" placeholder="lim inn guid for å teste" /></div>
             <button class="btn-primary rb-add" @onclick="TestRing" disabled="@(_zTestSender || !_zEnabled)">@(_zTestSender ? "Ringer…" : "Test-ring")</button>
         </div>
         @if (!string.IsNullOrEmpty(_zTestMsg))
@@ -1859,14 +1861,24 @@ else if (_active == "GDPR")
         var (dbOk, dbDetalj) = await Migrator.TestTilkoblingAsync();
         _dbOk = dbOk; _dbDetalj = dbDetalj;
 
+        // Alarmene reises KUN fra prod. Lokal/dev når ikke direkte-Postgres (passordet ligger bare i
+        // Azure), så uten denne guarden ville hver lokale Admin-åpning skrevet falske «Postgres nede»-
+        // alarmer til den delte prod-lista. Status vises fortsatt lokalt (_apiOk/_dbOk) – bare ikke reist.
+        if (!Env.IsProduction()) return;
+
         var naa = DateTime.UtcNow.TilOslo().ToString("dd.MM.yyyy HH:mm:ss");
         if (!apiOk)
             await Alarm.RaiseAsync("API", "Ingen kontakt med Supabase API (PostgREST)",
                 $"Tidspunkt: {naa}. {apiDetalj}", AlarmService.Alvorlighet.Kritisk, "API", "db-api-nede");
+        else
+            await Alarm.LosOppNoekkelAsync("db-api-nede", "System (kontakt gjenopprettet)");
+
         if (!dbOk)
             await Alarm.RaiseAsync("Database", "Ingen kontakt med direkte database (Postgres)",
                 $"Tidspunkt: {naa}. {dbDetalj} — migrasjoner og GDPR-jobber stopper til tilkoblingen (passord i ConnectionStrings:Postgres) er riktig.",
                 AlarmService.Alvorlighet.Kritisk, "Database", "db-direkte-nede");
+        else
+            await Alarm.LosOppNoekkelAsync("db-direkte-nede", "System (kontakt gjenopprettet)");
     }
 
     // ---- Inbound webhooks + status + hendelser ----
@@ -2055,19 +2067,23 @@ else if (_active == "GDPR")
     }
 
 
+    private string? _zTestAgent;
     private async Task TestRing()
     {
         _zTestSender = true; _zTestMsg = null; StateHasChanged();
         try
         {
-            var agent = await Users.ZissonAgentGuidAsync(Session.UserId);
+            // Bruk overstyrt agent-guid hvis fylt inn, ellers den innloggede brukerens kobling.
+            var agent = string.IsNullOrWhiteSpace(_zTestAgent)
+                ? await Users.ZissonAgentGuidAsync(Session.UserId)
+                : _zTestAgent!.Trim();
             if (string.IsNullOrWhiteSpace(agent))
             {
-                _zTestMsg = "Du er ikke koblet til en Zisson-agent ennå (sett det under Agent-kobling).";
+                _zTestMsg = "Ingen agent å ringe med: lim inn en agent-guid over, eller koble deg selv under Agent-kobling.";
                 return;
             }
             var r = await Zisson.ClickToCallAsync(agent, _zTestNummer ?? "");
-            _zTestMsg = (r.Ok ? "✓ " : "✗ ") + r.Melding;
+            _zTestMsg = (r.Ok ? "✓ " : $"✗ (kode {r.Kode}) ") + r.Melding;
         }
         finally { _zTestSender = false; }
     }
