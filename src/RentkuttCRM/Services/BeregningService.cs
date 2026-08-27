@@ -231,6 +231,24 @@ public class BeregningService
         return (alder, kjonn);
     }
 
+    /// <summary>Fødselsår (4-sifret) utledet fra norsk fnr/D-nummer, eller null hvis ugyldig.
+    /// Bruker samme århundre-logikk (individnummer) som <see cref="FnrInfo"/>.</summary>
+    public static int? FnrFodselsaar(string? fnr)
+    {
+        if (string.IsNullOrWhiteSpace(fnr)) return null;
+        var d = new string(fnr.Where(char.IsDigit).ToArray());
+        if (d.Length != 11) return null;
+        var yy = int.Parse(d.Substring(4, 2));
+        var ind = int.Parse(d.Substring(6, 3));
+        int aar;
+        if (ind <= 499) aar = 1900 + yy;
+        else if (ind is >= 500 and <= 749 && yy >= 54) aar = 1800 + yy;
+        else if (ind is >= 500 and <= 999 && yy <= 39) aar = 2000 + yy;
+        else if (ind is >= 900 and <= 999 && yy >= 40) aar = 1900 + yy;
+        else aar = 1900 + yy;
+        return aar is >= 1850 and <= 2100 ? aar : null;
+    }
+
     /// <summary>Netto årsinntekt etter norsk lønnsskatt (2024-satser): trygdeavgift,
     /// minstefradrag, personfradrag, alminnelig inntektsskatt 22 % og trinnskatt.</summary>
     public static decimal NettoArsinntekt(decimal brutto)

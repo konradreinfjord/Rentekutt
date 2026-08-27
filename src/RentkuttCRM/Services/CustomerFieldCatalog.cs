@@ -55,6 +55,7 @@ public class CustomerFieldCatalog
 
         // ---- Personalia ----
         new("alder",        "Alder",         "Personalia", FieldType.Number, Unit: "år", Placeholder: "f.eks. 35"),
+        new("fodselsaar",   "Fødselsår",     "Personalia", FieldType.Number, Placeholder: "f.eks. 1993"),
         new("sivilstatus",  "Sivilstatus",   "Personalia", FieldType.Enum,
             Options: new[] { "Enslig", "Samboer", "Gift", "Skilt" }),
         new("ansettelse",   "Ansettelsesform","Personalia", FieldType.Enum,

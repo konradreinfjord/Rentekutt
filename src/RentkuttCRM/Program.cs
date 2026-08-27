@@ -110,6 +110,9 @@ builder.Services.AddScoped<SmsUtsendingService>();
 // Innstillinger (key/value).
 builder.Services.AddScoped<SettingsService>();
 
+// Fagforeninger (dropdown på kundekort, dynamisk utvidbar).
+builder.Services.AddScoped<FagforeningService>();
+
 // Hendelseslogg.
 builder.Services.AddScoped<EventService>();
 

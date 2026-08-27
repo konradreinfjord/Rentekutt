@@ -26,17 +26,26 @@ public static class Produktkategori
     /// Dekker Boliglån/Boliglån ung/Forbrukslån/Bedriftslån; de fire øvrige settes manuelt på kundekortet.</summary>
     public static string Foreslaa(Kundekort k)
     {
-        if (k.KundeType == "B2B") return Bedriftslaan;
+        var t = (k.Laanetype ?? "").ToLowerInvariant();
 
-        var erBolig = (k.Laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase)
-                      || (k.Boligverdi ?? 0) > 0;
-        if (erBolig)
-        {
-            var (alder, _) = BeregningService.FnrInfo(k.Foedselsnummer);
-            return alder is int a && a < 34 ? BoliglaanUng : Boliglaan;
-        }
+        // Bedrift: kassakreditt hvis lånetypen sier det, ellers bedriftslån.
+        if (k.KundeType == "B2B")
+            return t.Contains("kassa") || t.Contains("kasse") ? Kassakreditt : Bedriftslaan;
+
+        // Privat: styr etter LÅNETYPE (ikke boligverdi — mange forbrukslån-kunder eier bolig).
+        if (t.Contains("førstehjem") || t.Contains("forstehjem")) return Forstehjem;
+        if (t.Contains("rammel")) return Rammelaan;
+        if (t.Contains("kassa") || t.Contains("kasse")) return Kassakreditt;
+        if (t.Contains("bolig")) return ErUng(k) ? BoliglaanUng : Boliglaan;
+        if (t.Contains("forbruk") || t.Contains("refinansi") || t.Contains("kreditt")) return Forbrukslaan;
+
+        // Ukjent lånetype: boliggjeld indikerer boliglån-kunde, ellers forbrukslån som standard.
+        if ((k.Boliggjeld ?? 0) > 0) return ErUng(k) ? BoliglaanUng : Boliglaan;
         return Forbrukslaan;
     }
+
+    // «Ung» = født 1993 eller senere (samme definisjon som «Boliglån ung»-merknaden).
+    private static bool ErUng(Kundekort k) => BeregningService.FnrFodselsaar(k.Foedselsnummer) is int a && a >= 1993;
 
     /// <summary>Effektiv kategori for et kort: manuelt satt verdi hvis den finnes, ellers auto-forslag.</summary>
     public static string Effektiv(Kundekort k)

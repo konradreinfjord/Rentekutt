@@ -12,6 +12,7 @@
 @inject RentkuttCRM.Services.LoggService Logg
 @inject RentkuttCRM.Services.SamtykkeService Samtykke
 @inject RentkuttCRM.Services.OppfolgingService Oppf
+@inject RentkuttCRM.Services.FagforeningService Fagforeninger
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -638,6 +639,32 @@
                 @foreach (var p in Produktkategori.Alle) { <option value="@p">@p</option> }
             </select>
         </div>
+        <div class="ff">
+            <label>Fagforening</label>
+            @* Egen onchange (ikke @bind) + stopPropagation slik at «+ Legg til ny…» ikke lagres som verdi
+               og ikke trigger AutoLagre på kort-felter. *@
+            <select value="@_k.Fagforening" @onchange="FagforeningValgt" @onchange:stopPropagation="true">
+                <option value="">— ingen —</option>
+                @foreach (var f in _fagforeninger)
+                {
+                    <option value="@f" selected="@(string.Equals(f, _k.Fagforening, StringComparison.OrdinalIgnoreCase))">@f</option>
+                }
+                @if (!string.IsNullOrWhiteSpace(_k.Fagforening) && !_fagforeninger.Any(f => string.Equals(f, _k.Fagforening, StringComparison.OrdinalIgnoreCase)))
+                {
+                    <option value="@_k.Fagforening" selected>@_k.Fagforening</option>
+                }
+                <option value="__ny__">➕ Legg til ny fagforening…</option>
+            </select>
+            @if (_visNyFagforening)
+            {
+                <div style="display:flex; gap:6px; margin-top:6px">
+                    <input @bind="_nyFagforening" @bind:event="oninput" placeholder="Navn på fagforening"
+                           @onkeydown="@(async e => { if (e.Key == "Enter") await LeggTilFagforening(); })" />
+                    <button type="button" class="btn btn-sm" @onclick="LeggTilFagforening" @onclick:stopPropagation="true">Legg til</button>
+                    <button type="button" class="btn-logout btn-sm" @onclick="AvbrytNyFagforening" @onclick:stopPropagation="true">✕</button>
+                </div>
+            }
+        </div>
         <div class="ff"><label>Ønsket lånebeløp (kr)</label><input type="number" @bind="_k.OnsketLaanebelop" /></div>
         <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
         <div class="ff"><label>Låneformål</label><input @bind="_k.Laaneformal" /></div>
@@ -1031,6 +1058,7 @@
         _banker = bankerTask.Result;
         _produkter = produktTask.Result;
         _regler = await Ruting.ListAsync();
+        _fagforeninger = await Fagforeninger.HentAsync();
 
         if (kortTask.Result is { } existing)
         {
@@ -1148,6 +1176,33 @@
         StateHasChanged();
         if (ok) { await Task.Delay(1600); _autoMsg = null; StateHasChanged(); }
     }
+
+    // ---- Fagforening (dropdown med «legg til ny») ----
+    private List<string> _fagforeninger = new();
+    private bool _visNyFagforening;
+    private string? _nyFagforening;
+
+    private async Task FagforeningValgt(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString() ?? "";
+        if (v == "__ny__") { _visNyFagforening = true; return; }   // ikke lagre sentinel-verdien
+        _visNyFagforening = false;
+        _k.Fagforening = string.IsNullOrEmpty(v) ? null : v;
+        await AutoLagre();
+    }
+
+    private async Task LeggTilFagforening()
+    {
+        var navn = (_nyFagforening ?? "").Trim();
+        if (navn.Length == 0) return;
+        _fagforeninger = await Fagforeninger.LeggTilAsync(navn);
+        _k.Fagforening = navn;
+        _nyFagforening = null;
+        _visNyFagforening = false;
+        await AutoLagre();
+    }
+
+    private void AvbrytNyFagforening() { _visNyFagforening = false; _nyFagforening = null; }
 
     // ---- Interne faner ----
     private string _fane = "oversikt";
