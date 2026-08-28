@@ -134,8 +134,18 @@ public class DialerCallService : IDisposable
                 var u = await _zisson.HentUtfallAsync(Aktiv.Zid!, Aktiv.StartUtc.AddMinutes(-2), DateTime.UtcNow.AddMinutes(1));
                 if (u.Funnet)
                 {
-                    if (u.Avsluttet) { Aktiv.Tilstand = Tilstand.Avsluttet; Aktiv.TaletidSek = u.TaletidSek; StoppTimer(); }
-                    else if (Aktiv.Tilstand == Tilstand.Ringer) Aktiv.Tilstand = Tilstand.Besvart;
+                    if (u.Avsluttet && (u.TaletidSek > 0 || Aktiv.GaattSek > 25))
+                    {
+                        // Ekte avslutning: enten med taletid, eller etter at oppsett-vinduet er passert.
+                        Aktiv.Tilstand = Tilstand.Avsluttet;
+                        Aktiv.TaletidSek = u.TaletidSek;
+                        StoppTimer();
+                    }
+                    else if (!u.Avsluttet && Aktiv.Tilstand == Tilstand.Ringer)
+                    {
+                        Aktiv.Tilstand = Tilstand.Besvart;
+                    }
+                    // (avsluttet + 0 taletid de første ~25 s = oppsett-benet i CDR → behold «Ringer opp…»)
                 }
             }
             catch (Exception ex) { _log.LogWarning(ex, "Dialer live-status-oppslag feilet"); }

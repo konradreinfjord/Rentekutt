@@ -19,6 +19,7 @@ public class ZissonService
     private const string CallerIdKey = "zisson_default_callerid";
     private const string EnabledKey = "zisson_enabled";
     private const string AutoAnswerKey = "zisson_auto_answer";
+    private const string NummerFormatKey = "zisson_nummerformat";
 
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpFactory;
@@ -62,6 +63,10 @@ public class ZissonService
     public Task<string?> DefaultCallerIdAsync() => _settings.GetAsync(CallerIdKey);
     public Task SettDefaultCallerIdAsync(string? nummer) => _settings.SetAsync(CallerIdKey, string.IsNullOrWhiteSpace(nummer) ? null : nummer.Trim());
 
+    // Utgående nummerformat mot Zisson – testbart fra Dialer-fanen ("e164" | "0047" | "nasjonalt").
+    public async Task<string> NummerFormatAsync() => (await _settings.GetAsync(NummerFormatKey)) ?? "e164";
+    public Task SettNummerFormatAsync(string format) => _settings.SetAsync(NummerFormatKey, format);
+
     private async Task<string?> GjeldendeRefreshTokenAsync()
         => (await _settings.GetAsync(RefreshTokenKey)) ?? RefreshTokenConfig;
 
@@ -81,6 +86,21 @@ public class ZissonService
         if (siffer.Length == 8) return "+47" + siffer; // norsk mobil/fasttelefon
         if (siffer.StartsWith("47") && siffer.Length == 10) return "+" + siffer;
         return "+" + siffer;                            // ukjent format – best effort
+    }
+
+    /// <summary>Formaterer utgående nummer iht. valgt format. E.164 (+47…) er standard;
+    /// «0047» og «nasjonalt» (8 siffer) finnes for å prøve hva Zisson-oppsettet ruter.</summary>
+    public static string? FormaterUtgaaende(string? raw, string format)
+    {
+        var e164 = NormaliserNummer(raw);
+        if (e164 is null) return null;
+        var siffer = new string(e164.Where(char.IsDigit).ToArray());   // f.eks. 4799451195
+        return format switch
+        {
+            "0047" => "00" + siffer,
+            "nasjonalt" => siffer.StartsWith("47") && siffer.Length > 8 ? siffer[2..] : siffer,
+            _ => e164,   // e164
+        };
     }
 
     // ---- Token ---------------------------------------------------------------------------
@@ -170,7 +190,7 @@ public class ZissonService
     public async Task<RingeResultat> ClickToCallAsync(string agentGuid, string tilNummer, string? callerId = null)
     {
         if (string.IsNullOrWhiteSpace(agentGuid)) return new(false, -1, "Agenten er ikke koblet til Zisson (mangler agent-guid).", null);
-        var normalisert = NormaliserNummer(tilNummer);
+        var normalisert = FormaterUtgaaende(tilNummer, await NummerFormatAsync());
         if (normalisert is null) return new(false, -1, "Ugyldig nummer.", null);
 
         var http = await KlientAsync();

@@ -378,6 +378,13 @@ else if (_active == "Dialer")
                     @if (!string.IsNullOrWhiteSpace(_zCallerId) && !_zNumre.Any(n => n.Nummer == _zCallerId)) { <option value="@_zCallerId" selected>@_zCallerId</option> }
                 </select>
             </div>
+            <div class="rb-field" style="max-width:230px"><label>Nummerformat (utgående)</label>
+                <select class="rb-input" @onchange="ChangeNummerFormat">
+                    <option value="e164" selected="@(_zNummerFormat == "e164")">E.164 (+4799…)</option>
+                    <option value="0047" selected="@(_zNummerFormat == "0047")">0047 (004799…)</option>
+                    <option value="nasjonalt" selected="@(_zNummerFormat == "nasjonalt")">Nasjonalt (8 siffer)</option>
+                </select>
+            </div>
         </div>
         @if (!string.IsNullOrEmpty(_zCustomerMsg)) { <p class="page-sub" style="margin-top:6px">@_zCustomerMsg</p> }
         @if (!_zKonfigurert)
@@ -1967,6 +1974,7 @@ else if (_active == "GDPR")
     private string? _zCallerId;
     private string? _zCustomerGuid;
     private string? _zCustomerMsg;
+    private string _zNummerFormat = "e164";
     private List<ZissonService.ZAgent> _zAgenter = new();
     private List<ZissonService.ZNummer> _zNumre = new();
     private bool _dialerLastet;
@@ -1995,6 +2003,7 @@ else if (_active == "GDPR")
             _zAutoAnswer = await Zisson.AutoAnswerAsync();
             _zCallerId = await Zisson.DefaultCallerIdAsync();
             _zCustomerGuid = await Zisson.CustomerGuidAsync();
+            _zNummerFormat = await Zisson.NummerFormatAsync();
             _zAgenter = await Zisson.HentAgenterAlleAsync();
             _zNumre = await Zisson.HentVisningsnumreAsync();
             _zTestNummer ??= _userRows.FirstOrDefault(u => u.Id == Session.UserId)?.Mobilnummer;
@@ -2034,6 +2043,12 @@ else if (_active == "GDPR")
     {
         _zCallerId = e.Value?.ToString();
         await Zisson.SettDefaultCallerIdAsync(_zCallerId);
+    }
+
+    private async Task ChangeNummerFormat(ChangeEventArgs e)
+    {
+        _zNummerFormat = e.Value?.ToString() ?? "e164";
+        await Zisson.SettNummerFormatAsync(_zNummerFormat);
     }
 
     private readonly Dictionary<Guid, string> _agentInputs = new();
