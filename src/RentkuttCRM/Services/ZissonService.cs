@@ -211,9 +211,10 @@ public class ZissonService
                 var kort = txt.Length > 120 ? txt[..120] : txt;
                 return new(false, -2, $"Uventet svar fra Zisson (HTTP {(int)resp.StatusCode}): {kort}", null);
             }
-            var kode = root.TryGetProperty("responseCode", out var rc) && rc.TryGetInt32(out var k) ? k : 5;
-            var zid = root.TryGetProperty("zid", out var z) ? z.GetString() : null;
-            var melding = root.TryGetProperty("message", out var m) ? m.GetString() : null;
+            // responseCode kan komme som tall (0) ELLER tekst («Ok»/«0»/«AgentNotFound») – tål begge.
+            var kode = LesResponseCode(root);
+            var zid = LesStreng(root, "zid");
+            var melding = LesStreng(root, "message");
             return kode == 0
                 ? new(true, 0, "Anrop satt opp – agentens telefon ringer.", zid)
                 : new(false, kode, TolkKode(kode, melding), zid);
@@ -229,6 +230,38 @@ public class ZissonService
             var indre = ex.InnerException is { } ie ? $" ({ie.GetType().Name}: {ie.Message})" : "";
             return new(false, -1, $"Teknisk feil ved oppringing: {ex.GetType().Name}: {ex.Message}{indre}", null);
         }
+    }
+
+    // Leser en JSON-verdi som streng uansett om den er tekst/tall/annet (unngår GetString()-krasj).
+    private static string? LesStreng(JsonElement root, string navn)
+    {
+        if (!root.TryGetProperty(navn, out var v)) return null;
+        return v.ValueKind switch
+        {
+            JsonValueKind.String => v.GetString(),
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => v.GetRawText(),
+        };
+    }
+
+    // Leser responseCode uansett om Zisson sender tall (0) eller tekst («0» / «Ok» / «AgentNotFound»).
+    private static int LesResponseCode(JsonElement root)
+    {
+        if (!root.TryGetProperty("responseCode", out var rc)) return 5;
+        if (rc.ValueKind == JsonValueKind.Number) return rc.TryGetInt32(out var n) ? n : 5;
+        var s = rc.ValueKind == JsonValueKind.String ? rc.GetString() : rc.GetRawText();
+        if (int.TryParse(s, out var k)) return k;
+        return (s ?? "").Trim().ToLowerInvariant() switch
+        {
+            "ok" => 0,
+            "agentnotfound" => 1,
+            "invalidnumber" => 2,
+            "agentcallstateerror" => 3,
+            "timeout" => 4,
+            "notimplemented" => 6,
+            "invalidcallerid" => 7,
+            _ => 5, // UnknownError
+        };
     }
 
     // AgentApiResponseCode → norsk melding.
