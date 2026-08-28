@@ -504,6 +504,48 @@ public class ZissonService
         return string.Join(" · ", deler);
     }
 
+    /// <summary>Feilsøking: henter alle «ben» (peer sessions) for en samtale-zid, så man ser om
+    /// kunde-benet ble opprettet og hvorfor det ev. falt (join/leave-årsak, nummer, taletid).</summary>
+    public async Task<string> SlaaOppSamtaleAsync(string zid)
+    {
+        if (string.IsNullOrWhiteSpace(zid)) return "Mangler zid.";
+        var http = await KlientAsync();
+        if (http is null) return "Zisson er ikke konfigurert.";
+        var sb = new StringBuilder();
+        var fra = DateTime.UtcNow.AddHours(-2);
+        var til = DateTime.UtcNow.AddMinutes(2);
+        try
+        {
+            var q = $"/external-api/v1/external-statdb/ConversationPeerSessions?from={Uri.EscapeDataString(fra.ToString("o"))}&to={Uri.EscapeDataString(til.ToString("o"))}";
+            using var resp = await http.GetAsync(q);
+            sb.AppendLine($"PeerSessions: HTTP {(int)resp.StatusCode}");
+            if (resp.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                int n = 0;
+                foreach (var e in doc.RootElement.EnumerateArray())
+                {
+                    if (!string.Equals(LesStreng(e, "conversationId"), zid, StringComparison.OrdinalIgnoreCase)) continue;
+                    n++;
+                    sb.AppendLine($"  • type={LesStreng(e, "peerType")} nr={LesStreng(e, "pstnNumber")} ekstern={LesStreng(e, "isExternalPeer")} " +
+                                  $"login={LesStreng(e, "loginId")} join={LesStreng(e, "joinReason")} leave={LesStreng(e, "leaveReason")} taletid={LesStreng(e, "totalTalkTime")}");
+                }
+                if (n == 0) sb.AppendLine("  (ingen ben matchet zid — CDR kan henge, eller samtalen ble aldri opprettet)");
+            }
+        }
+        catch (Exception ex) { sb.AppendLine("PeerSessions-feil: " + ex.Message); }
+
+        try
+        {
+            using var resp = await http.GetAsync($"/external-api/v1/external-statdb/ConversationRecord?conversationGuid={Uri.EscapeDataString(zid)}&includeStarted=true");
+            var txt = await resp.Content.ReadAsStringAsync();
+            sb.AppendLine($"Record: HTTP {(int)resp.StatusCode}: {(txt.Length > 400 ? txt[..400] : txt)}");
+        }
+        catch (Exception ex) { sb.AppendLine("Record-feil: " + ex.Message); }
+
+        return sb.ToString();
+    }
+
     // ---- CDR / utfall (brukes av ZissonCdrWorker) ---------------------------------------
 
     public record SamtaleUtfall(bool Funnet, bool Avsluttet, bool Svart, int TaletidSek);

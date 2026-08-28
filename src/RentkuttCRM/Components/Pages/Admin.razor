@@ -464,6 +464,17 @@ else if (_active == "Dialer")
         {
             <p class="page-sub" style="margin-top:10px">@_zTestMsg</p>
         }
+
+        <h3 style="margin:22px 0 8px">Feilsøk samtale (zid)</h3>
+        <p class="page-sub" style="margin:0 0 10px">Lim inn <code>zid</code> fra ringebaren for å se hva Zisson gjorde med samtalen — hvilke ben (agent/kunde) som ble opprettet og hvorfor de ev. falt.</p>
+        <div class="rule-builder">
+            <div class="rb-field"><label>zid</label><input class="rb-input" style="width:320px" @bind="_zLookupZid" placeholder="a6af588f-…" /></div>
+            <button class="btn-sm rb-add" @onclick="SlaaOppSamtale" disabled="@_zLookupKjorer">@(_zLookupKjorer ? "Slår opp…" : "Slå opp")</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_zLookupResultat))
+        {
+            <pre style="margin-top:10px; padding:10px; background:var(--card,#f8fafc); border:1px solid var(--border,#e5e7eb); border-radius:8px; white-space:pre-wrap; font-size:12px; overflow-x:auto">@_zLookupResultat</pre>
+        }
     </div>
 }
 else if (_active == "API og Data")
@@ -2082,6 +2093,17 @@ else if (_active == "GDPR")
         _userRows = await Users.ListUsersAsync();
     }
 
+
+    private string? _zLookupZid;
+    private string? _zLookupResultat;
+    private bool _zLookupKjorer;
+    private async Task SlaaOppSamtale()
+    {
+        if (string.IsNullOrWhiteSpace(_zLookupZid)) return;
+        _zLookupKjorer = true; _zLookupResultat = null; StateHasChanged();
+        try { _zLookupResultat = await Zisson.SlaaOppSamtaleAsync(_zLookupZid!.Trim()); }
+        finally { _zLookupKjorer = false; }
+    }
 
     private string? _zTestAgent;
     private async Task TestRing()
