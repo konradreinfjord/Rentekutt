@@ -328,15 +328,25 @@ public class ZissonService
         if (string.IsNullOrWhiteSpace(agent)) return false;
         var http = await KlientAsync();
         if (http is null) return false;
-        try
+
+        // Prøv både by-guid (resolvert) og by-username — API-et er sært på hvilken som gjelder.
+        var guid = await LøsAgentGuidAsync(agent);
+        var stier = new List<string>();
+        if (Guid.TryParse(guid, out _))
+            stier.Add($"/external-api/v1/external-agent/log-off-agent-by-guid/{Uri.EscapeDataString(guid)}");
+        stier.Add($"/external-api/v1/external-agent/log-off-agent-by-username/{Uri.EscapeDataString(agent)}");
+
+        foreach (var sti in stier)
         {
-            var sti = Guid.TryParse(agent, out _)
-                ? $"/external-api/v1/external-agent/log-off-agent-by-guid/{Uri.EscapeDataString(agent)}"
-                : $"/external-api/v1/external-agent/log-off-agent-by-username/{Uri.EscapeDataString(agent)}";
-            using var resp = await http.PostAsync(sti, null);
-            return resp.IsSuccessStatusCode;
+            try
+            {
+                using var resp = await http.PostAsync(sti, null);
+                if (resp.IsSuccessStatusCode) return true;
+                _log.LogWarning("Zisson log-off {Sti} → HTTP {Status}", sti, (int)resp.StatusCode);
+            }
+            catch (Exception ex) { _log.LogError(ex, "Zisson log-off-agent feilet ({Sti})", sti); }
         }
-        catch (Exception ex) { _log.LogError(ex, "Zisson log-off-agent feilet"); return false; }
+        return false;
     }
 
     // ---- Oppslag (agenter, visningsnumre) ------------------------------------------------
