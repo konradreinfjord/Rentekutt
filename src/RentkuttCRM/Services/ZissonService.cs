@@ -229,6 +229,8 @@ public class ZissonService
 
     private static string TolkFeil(string txt, int status)
     {
+        if (status == 404)
+            return "404 fra Zisson – fant ikke agenten/ressursen. Enten er agent-guid-en ikke en gyldig agent, eller så er ikke click-to-call/External-API aktivert for kontoen.";
         try
         {
             using var doc = JsonDocument.Parse(txt);
@@ -364,6 +366,45 @@ public class ZissonService
             return liste;
         }
         catch (Exception ex) { _log.LogError(ex, "Henting av visningsnumre feilet"); return new(); }
+    }
+
+    /// <summary>Diagnostikk: viser faktisk HTTP-status per External-API-endepunkt, så vi skiller
+    /// «404 = ikke tilgjengelig for kontoen» fra «200 = tomt». Skriver ingen data.</summary>
+    public async Task<string> DiagnostikkAsync()
+    {
+        var jwt = await HentJwtAsync();
+        if (jwt is null) return "Token: FEIL — fikk ikke JWT (sjekk customerGuid/id/refreshToken).";
+        var http = await KlientAsync();
+        if (http is null) return "Token OK, men kunne ikke opprette HTTP-klient.";
+
+        var deler = new List<string> { "Token: OK" };
+        var endepunkter = new (string Navn, string Sti)[]
+        {
+            ("entities/users", "/external-api/v1/entities/users"),
+            ("id-mapping", "/external-api/v1/entities/users/id-mapping"),
+            ("service-numbers", "/external-api/v1/entities/service-numbers"),
+        };
+        foreach (var (navn, sti) in endepunkter)
+        {
+            try
+            {
+                using var resp = await http.GetAsync(sti);
+                var status = (int)resp.StatusCode;
+                var suffiks = "";
+                if (resp.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                        if (doc.RootElement.ValueKind == JsonValueKind.Array) suffiks = $" ({doc.RootElement.GetArrayLength()} rader)";
+                    }
+                    catch { /* ikke array */ }
+                }
+                deler.Add($"{navn}: HTTP {status}{suffiks}");
+            }
+            catch (Exception ex) { deler.Add($"{navn}: feil ({ex.GetType().Name})"); }
+        }
+        return string.Join(" · ", deler);
     }
 
     // ---- CDR / utfall (brukes av ZissonCdrWorker) ---------------------------------------
