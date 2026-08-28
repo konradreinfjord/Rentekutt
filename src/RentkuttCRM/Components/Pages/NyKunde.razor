@@ -13,8 +13,7 @@
 @inject RentkuttCRM.Services.SamtykkeService Samtykke
 @inject RentkuttCRM.Services.OppfolgingService Oppf
 @inject RentkuttCRM.Services.FagforeningService Fagforeninger
-@inject RentkuttCRM.Services.ZissonService Zisson
-@inject RentkuttCRM.Services.DialerService Dialer
+@inject RentkuttCRM.Services.DialerCallService DialerCall
 @inject RentkuttCRM.Services.SupabaseUserService Brukere
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -1236,33 +1235,13 @@
         _ringer = true; _ringMsg = null; StateHasChanged();
         try
         {
-            var agent = await Brukere.ZissonAgentGuidAsync(Session.UserId);
-            if (string.IsNullOrWhiteSpace(agent))
-            {
-                _ringMsg = "Du er ikke koblet til en Zisson-agent ennå (Admin → Dialer → Agent-kobling).";
-                return;
-            }
-            var r = await Zisson.ClickToCallAsync(agent, nummer);
-            if (r.Ok)
-            {
-                var normalisert = ZissonService.NormaliserNummer(nummer);
-                await Dialer.OpprettAsync(_k.Id, Session.UserName ?? Session.Email, agent, normalisert, r.Zid);
-                var hvem = medsoker ? "medsøker" : "kunde";
-                await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email,
-                    $"📞 Utgående anrop startet til {hvem} ({MaskerNr(nummer)})", "anrop");
-                _endringslogg = await Logg.ForKundeAsync(_k.Id);
-                _ringMsg = "✓ " + r.Melding;
-            }
-            else _ringMsg = "✗ " + r.Melding;
+            // Selve anropet + statusbar + logging håndteres av den globale DialerCallService,
+            // slik at ringebaren i headeren viser samtalen og overlever fanebytte.
+            var r = await DialerCall.RingAsync(nummer, _k.Id, medsoker);
+            _ringMsg = (r.Ok ? "✓ " : "✗ ") + r.Melding;
+            if (r.Ok) _endringslogg = await Logg.ForKundeAsync(_k.Id);   // logglinja er skrevet av tjenesten
         }
         finally { _ringer = false; StateHasChanged(); }
-    }
-
-    // Viser kun de siste 4 sifrene i loggen (personvern).
-    private static string MaskerNr(string? n)
-    {
-        var d = new string((n ?? "").Where(char.IsDigit).ToArray());
-        return d.Length >= 4 ? "•••• " + d[^4..] : (n ?? "");
     }
 
     // ---- Interne faner ----

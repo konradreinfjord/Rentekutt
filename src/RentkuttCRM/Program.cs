@@ -116,6 +116,7 @@ builder.Services.AddScoped<FagforeningService>();
 // Dialer (Zisson/Wave click-to-call).
 builder.Services.AddScoped<ZissonService>();
 builder.Services.AddScoped<DialerService>();
+builder.Services.AddScoped<DialerCallService>();   // aktiv-anrop-tilstand for global ringebar
 
 // Hendelseslogg.
 builder.Services.AddScoped<EventService>();

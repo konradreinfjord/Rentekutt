@@ -62,6 +62,7 @@ else
                     <button class="btn-logout" @onclick="LogOut">Logg ut</button>
                 </div>
             </header>
+            <RingeBar />
             <main class="app-content @(_wide ? "wide" : "")">
                 <ErrorBoundary @ref="_errorBoundary">
                     <ChildContent>@Body</ChildContent>

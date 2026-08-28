@@ -320,6 +320,25 @@ public class ZissonService
         catch { return agent; }
     }
 
+    /// <summary>Logger agenten av i Zisson. Dette er den ENESTE måten API-et kan avbryte en pågående
+    /// samtale på (det finnes ikke noe «legg på denne samtalen»-endepunkt) — den dropper agentens
+    /// samtale, men logger agenten helt ut av Zisson. Bruker by-username når verdien ikke er en guid.</summary>
+    public async Task<bool> LoggAvAgentAsync(string agent)
+    {
+        if (string.IsNullOrWhiteSpace(agent)) return false;
+        var http = await KlientAsync();
+        if (http is null) return false;
+        try
+        {
+            var sti = Guid.TryParse(agent, out _)
+                ? $"/external-api/v1/external-agent/log-off-agent-by-guid/{Uri.EscapeDataString(agent)}"
+                : $"/external-api/v1/external-agent/log-off-agent-by-username/{Uri.EscapeDataString(agent)}";
+            using var resp = await http.PostAsync(sti, null);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _log.LogError(ex, "Zisson log-off-agent feilet"); return false; }
+    }
+
     // ---- Oppslag (agenter, visningsnumre) ------------------------------------------------
 
     public record ZAgent(string Guid, string Navn, string? Username, string? Mobil, string? LoginId = null);
