@@ -69,7 +69,13 @@ public class DialerCallService : IDisposable
             return r;
         }
 
-        Aktiv = new Anrop { Zid = r.Zid, Nummer = nummer, Agent = agent, StartUtc = DateTime.UtcNow, Tilstand = Tilstand.Ringer, KundekortId = kundekortId, Medsoker = medsoker };
+        Aktiv = new Anrop
+        {
+            Zid = r.Zid, Nummer = nummer, Agent = agent, StartUtc = DateTime.UtcNow, Tilstand = Tilstand.Ringer,
+            KundekortId = kundekortId, Medsoker = medsoker,
+            // Diagnostikk i baren: bekrefter at Zisson opprettet en økt (zid) og hvilken agent som ringes.
+            Melding = string.IsNullOrWhiteSpace(r.Zid) ? "Zisson svarte OK, men uten zid" : $"zid {r.Zid} · agent {agent}",
+        };
 
         if (kundekortId is Guid kid)
         {
