@@ -200,8 +200,17 @@ public class ZissonService
             if (!resp.IsSuccessStatusCode)
                 return new(false, (int)resp.StatusCode, TolkFeil(txt, (int)resp.StatusCode), null);
 
-            using var doc = JsonDocument.Parse(txt);
-            var root = doc.RootElement;
+            // Suksess-status, men tomt/ikke-JSON svar → ikke krasj; rapporter det vi fikk.
+            if (string.IsNullOrWhiteSpace(txt))
+                return new(true, 0, "Anrop satt opp (Zisson svarte uten innhold).", null);
+
+            JsonElement root;
+            try { root = JsonDocument.Parse(txt).RootElement; }
+            catch
+            {
+                var kort = txt.Length > 120 ? txt[..120] : txt;
+                return new(false, -2, $"Uventet svar fra Zisson (HTTP {(int)resp.StatusCode}): {kort}", null);
+            }
             var kode = root.TryGetProperty("responseCode", out var rc) && rc.TryGetInt32(out var k) ? k : 5;
             var zid = root.TryGetProperty("zid", out var z) ? z.GetString() : null;
             var melding = root.TryGetProperty("message", out var m) ? m.GetString() : null;
@@ -209,10 +218,16 @@ public class ZissonService
                 ? new(true, 0, "Anrop satt opp – agentens telefon ringer.", zid)
                 : new(false, kode, TolkKode(kode, melding), zid);
         }
+        catch (TaskCanceledException)
+        {
+            _log.LogError("Zisson click-to-call tidsavbrudd");
+            return new(false, -1, "Tidsavbrudd mot Zisson (svarte ikke innen 20 s).", null);
+        }
         catch (Exception ex)
         {
             _log.LogError(ex, "Zisson click-to-call feilet");
-            return new(false, -1, "Teknisk feil ved oppringing.", null);
+            var indre = ex.InnerException is { } ie ? $" ({ie.GetType().Name}: {ie.Message})" : "";
+            return new(false, -1, $"Teknisk feil ved oppringing: {ex.GetType().Name}: {ex.Message}{indre}", null);
         }
     }
 
