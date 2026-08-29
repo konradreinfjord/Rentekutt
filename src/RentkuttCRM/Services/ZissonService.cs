@@ -39,6 +39,10 @@ public class ZissonService
     }
 
     private string BaseUrl => (_config["Zisson:BaseUrl"] ?? "https://app2.zisson.com").TrimEnd('/');
+
+    /// <summary>Adressen agenten logger seg inn i Zisson-agentklienten på (softphone). API-et har
+    /// ikke noe logg-på-endepunkt, så påloggingen skjer her.</summary>
+    public string AgentKlientUrl => _config["Zisson:AgentUrl"] ?? BaseUrl;
     private string? LoginId => _config["Zisson:Id"];
     private string? RefreshTokenConfig => _config["Zisson:RefreshToken"];
 
@@ -544,6 +548,28 @@ public class ZissonService
         catch (Exception ex) { sb.AppendLine("Record-feil: " + ex.Message); }
 
         return sb.ToString();
+    }
+
+    /// <summary>True hvis agenten har en påloggings-økt i Zisson (proxy for «pålogget en enhet»).
+    /// Best-effort mot CDR (kan henge litt). 0 økter = ikke pålogget → click-to-call ringer ingenting.</summary>
+    public async Task<bool> ErAgentPaaloggetAsync(string agent)
+    {
+        if (string.IsNullOrWhiteSpace(agent)) return false;
+        var http = await KlientAsync();
+        if (http is null) return false;
+        var guid = await LøsAgentGuidAsync(agent);
+        if (!Guid.TryParse(guid, out _)) return false;
+        var fra = DateTime.UtcNow.AddHours(-16);
+        var til = DateTime.UtcNow.AddMinutes(2);
+        try
+        {
+            var q = $"/external-api/v1/external-statdb/AgentLogonSessions?from={Uri.EscapeDataString(fra.ToString("o"))}&to={Uri.EscapeDataString(til.ToString("o"))}&includeStarted=true";
+            using var resp = await http.GetAsync(q);
+            if (!resp.IsSuccessStatusCode) return false;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            return doc.RootElement.EnumerateArray().Any(e => string.Equals(LesStreng(e, "loginGuid"), guid, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Sjekk av agent-pålogging feilet"); return false; }
     }
 
     /// <summary>Feilsøking: er agenten pålogget/tilgjengelig i Zisson? click-to-call ringer bare hvis

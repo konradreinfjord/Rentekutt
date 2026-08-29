@@ -32,6 +32,18 @@ public class DialerCallService : IDisposable
     public Anrop? Aktiv { get; private set; }
     public event Action? OnChange;
 
+    /// <summary>Er den innloggede agenten pålogget Zisson? null = ikke sjekket ennå.</summary>
+    public bool? Paalogget { get; private set; }
+    public string AgentKlientUrl => _zisson.AgentKlientUrl;
+
+    /// <summary>Sjekker (og oppdaterer) om agenten er pålogget Zisson.</summary>
+    public async Task SjekkPaaloggingAsync()
+    {
+        var agent = await _users.ZissonAgentGuidAsync(_session.UserId);
+        Paalogget = !string.IsNullOrWhiteSpace(agent) && await _zisson.ErAgentPaaloggetAsync(agent!);
+        Varsle();
+    }
+
     private readonly ZissonService _zisson;
     private readonly DialerService _dialer;
     private readonly LoggService _logg;
@@ -60,6 +72,14 @@ public class DialerCallService : IDisposable
         var agent = await _users.ZissonAgentGuidAsync(_session.UserId);
         if (string.IsNullOrWhiteSpace(agent))
             return new(false, -1, "Du er ikke koblet til en Zisson-agent (Admin → Dialer → Agent-kobling).", null);
+
+        // Forhåndssjekk: click-to-call ringer bare hvis agenten er pålogget en enhet i Zisson.
+        Paalogget = await _zisson.ErAgentPaaloggetAsync(agent!);
+        if (Paalogget == false)
+        {
+            Varsle();
+            return new(false, -1, "Du er ikke pålogget Zisson. Trykk «Logg på Zisson» og logg inn i softphone/agentklienten først.", null);
+        }
 
         var r = await _zisson.ClickToCallAsync(agent, nummer);
         if (!r.Ok)
