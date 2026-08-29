@@ -470,6 +470,8 @@ else if (_active == "Dialer")
         <div class="rule-builder">
             <div class="rb-field"><label>zid</label><input class="rb-input" style="width:320px" @bind="_zLookupZid" placeholder="a6af588f-…" /></div>
             <button class="btn-sm rb-add" @onclick="SlaaOppSamtale" disabled="@_zLookupKjorer">@(_zLookupKjorer ? "Slår opp…" : "Slå opp")</button>
+            <div class="rb-field"><label>Agent (guid/brukernavn)</label><input class="rb-input" style="width:200px" @bind="_zAgentSjekk" placeholder="f.eks. 59768" /></div>
+            <button class="btn-sm rb-add" @onclick="SjekkAgentStatus" disabled="@_zAgentKjorer">@(_zAgentKjorer ? "Sjekker…" : "Sjekk agent-status")</button>
         </div>
         @if (!string.IsNullOrEmpty(_zLookupResultat))
         {
@@ -2103,6 +2105,19 @@ else if (_active == "GDPR")
         _zLookupKjorer = true; _zLookupResultat = null; StateHasChanged();
         try { _zLookupResultat = await Zisson.SlaaOppSamtaleAsync(_zLookupZid!.Trim()); }
         finally { _zLookupKjorer = false; }
+    }
+
+    private string? _zAgentSjekk;
+    private bool _zAgentKjorer;
+    private async Task SjekkAgentStatus()
+    {
+        var agent = string.IsNullOrWhiteSpace(_zAgentSjekk)
+            ? await Users.ZissonAgentGuidAsync(Session.UserId)
+            : _zAgentSjekk!.Trim();
+        if (string.IsNullOrWhiteSpace(agent)) { _zLookupResultat = "Ingen agent å sjekke (skriv inn, eller koble deg selv)."; return; }
+        _zAgentKjorer = true; _zLookupResultat = null; StateHasChanged();
+        try { _zLookupResultat = await Zisson.AgentStatusAsync(agent!); }
+        finally { _zAgentKjorer = false; }
     }
 
     private string? _zTestAgent;

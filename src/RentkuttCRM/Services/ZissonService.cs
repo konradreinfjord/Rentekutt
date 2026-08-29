@@ -546,6 +546,42 @@ public class ZissonService
         return sb.ToString();
     }
 
+    /// <summary>Feilsøking: er agenten pålogget/tilgjengelig i Zisson? click-to-call ringer bare hvis
+    /// agenten har en aktiv enhet/økt. Ser på logon-/available-økter siste 12 t for agentens loginGuid.</summary>
+    public async Task<string> AgentStatusAsync(string agent)
+    {
+        if (string.IsNullOrWhiteSpace(agent)) return "Mangler agent.";
+        var http = await KlientAsync();
+        if (http is null) return "Zisson er ikke konfigurert.";
+        var guid = await LøsAgentGuidAsync(agent);
+        var sb = new StringBuilder();
+        sb.AppendLine($"Agent «{agent}» → guid {guid}");
+        if (!Guid.TryParse(guid, out _)) { sb.AppendLine("(kunne ikke løse til guid — kan ikke sjekke pålogging)"); return sb.ToString(); }
+
+        var fra = DateTime.UtcNow.AddHours(-12);
+        var til = DateTime.UtcNow.AddMinutes(2);
+        foreach (var (navn, ep) in new[] { ("Pålogging", "AgentLogonSessions"), ("Tilgjengelig", "AgentAvailableSessions") })
+        {
+            try
+            {
+                var q = $"/external-api/v1/external-statdb/{ep}?from={Uri.EscapeDataString(fra.ToString("o"))}&to={Uri.EscapeDataString(til.ToString("o"))}&includeStarted=true";
+                using var resp = await http.GetAsync(q);
+                if (!resp.IsSuccessStatusCode) { sb.AppendLine($"{navn}: HTTP {(int)resp.StatusCode}"); continue; }
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                int treff = 0; string? siste = null;
+                foreach (var e in doc.RootElement.EnumerateArray())
+                {
+                    if (!string.Equals(LesStreng(e, "loginGuid"), guid, StringComparison.OrdinalIgnoreCase)) continue;
+                    treff++; siste = LesStreng(e, "eventName") ?? siste;
+                }
+                sb.AppendLine($"{navn}: {treff} økt(er) siste 12 t" + (siste is null ? "" : $" (siste hendelse: {siste})"));
+            }
+            catch (Exception ex) { sb.AppendLine($"{navn}: feil {ex.Message}"); }
+        }
+        sb.AppendLine("→ 0 påloggings-økter = agenten er trolig IKKE pålogget en enhet (da ringer ingenting selv om click-to-call svarer OK).");
+        return sb.ToString();
+    }
+
     // ---- CDR / utfall (brukes av ZissonCdrWorker) ---------------------------------------
 
     public record SamtaleUtfall(bool Funnet, bool Avsluttet, bool Svart, int TaletidSek);
