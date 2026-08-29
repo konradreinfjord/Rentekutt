@@ -17,6 +17,13 @@
         }
         else
         {
+            @if (a.Tilstand == RentkuttCRM.Services.DialerCallService.Tilstand.Feil)
+            {
+                <button class="rb-btn rb-kutt" @onclick="Kutt" disabled="@_jobber"
+                        title="Logger agenten av i Zisson for å nullstille en fastlåst tilstand (OutgoingInit)">
+                    @(_jobber ? "…" : "Nullstill agent")
+                </button>
+            }
             <button class="rb-btn" @onclick="() => Dialer.Lukk()">Lukk</button>
         }
         @if (!string.IsNullOrWhiteSpace(a.Melding)) { <span class="rb-msg">@a.Melding</span> }
