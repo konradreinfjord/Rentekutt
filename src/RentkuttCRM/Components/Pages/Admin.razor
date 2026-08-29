@@ -416,10 +416,14 @@ else if (_active == "Dialer")
 
     <div class="section">
         <h2>Agent-kobling</h2>
-        <p class="page-sub">Legg inn hver CRM-brukers <strong>Zisson brukernavn / bruker-kode</strong> (f.eks. <code>3657</code>). Guid-en er felles for hele avtalen og settes ikke per bruker. Uten kobling kan ikke brukeren ringe fra kundekortet.
+        <p class="page-sub">Velg hver CRM-brukers <strong>Zisson-bruker</strong> fra lista. Lagres automatisk ved valg.
         @if (_dialerLaster) { <text>Laster fra Zisson…</text> }</p>
+        @if (!_dialerLaster && _zAgenter.Count == 0)
+        {
+            <p class="page-sub">Fant ingen Zisson-brukere å velge fra (agentlista kunne ikke hentes). Bruk «Hent agenter fra Zisson» over, eller sjekk tilkoblingen.</p>
+        }
         <table class="data-table">
-            <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson brukernavn (bruker-kode)</th><th></th><th></th></tr></thead>
+            <thead><tr><th>CRM-bruker</th><th>E-post</th><th>Zisson-bruker</th><th></th><th></th></tr></thead>
             <tbody>
                 @foreach (var u in _userRows.Where(x => x.Active))
                 {
@@ -427,21 +431,26 @@ else if (_active == "Dialer")
                         <td>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</td>
                         <td class="mono-cell">@u.Email</td>
                         <td>
-                            <span class="token-row">
-                                <input class="inline-input" style="width:200px" placeholder="brukernavn / kode, f.eks. 3657"
-                                       value="@AgentInput(u)" @onchange="e => SetAgentInput(u.Id, e)" />
-                                @if (_zAgenter.Count > 0)
-                                {
-                                    <select class="inline-select" @onchange="e => VelgAgent(u.Id, e)" title="Velg fra Zisson-lista">
-                                        <option value="">— velg fra Zisson —</option>
-                                        @foreach (var a in _zAgenter)
-                                        {
-                                            <option value="@(a.Username ?? a.LoginId ?? a.Guid)">@a.Navn@(string.IsNullOrWhiteSpace(a.Username) ? "" : $" ({a.Username})")</option>
-                                        }
-                                    </select>
-                                }
-                                <button class="btn-sm" @onclick="() => SaveAgent(u)">Lagre</button>
-                            </span>
+                            @if (_zAgenter.Count > 0)
+                            {
+                                @* value-styrt (ikke selected) så select-en HUSKER valgt bruker etter lagring/relasting.
+                                   Kun dropdown = umulig å skrive inn feil verdi. *@
+                                <select class="inline-select" style="min-width:240px" value="@ValgtVerdi(u)" @onchange="e => VelgAgent(u, e)">
+                                    <option value="">— velg Zisson-bruker —</option>
+                                    @foreach (var a in _zAgenter)
+                                    {
+                                        <option value="@AgentVerdi(a)">@a.Navn@(AgentKode(a) is { } k ? $" ({k})" : "")</option>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(u.ZissonAgentGuid) && !_zAgenter.Any(a => AgentErValgt(u, a)))
+                                    {
+                                        <option value="@u.ZissonAgentGuid">@u.ZissonAgentGuid (ukjent i lista)</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <span class="page-sub">— agentliste ikke hentet —</span>
+                            }
                         </td>
                         <td>@if (!string.IsNullOrWhiteSpace(u.ZissonAgentGuid)) { <span class="status on">Koblet</span> }</td>
                         <td>@if (!string.IsNullOrWhiteSpace(u.ZissonAgentGuid)) { <button class="btn-sm btn-danger" @onclick="() => FjernAgent(u)">Fjern</button> }</td>
@@ -465,10 +474,10 @@ else if (_active == "Dialer")
             <p class="page-sub" style="margin-top:10px">@_zTestMsg</p>
         }
 
-        <h3 style="margin:22px 0 8px">Feilsøk samtale (zid)</h3>
-        <p class="page-sub" style="margin:0 0 10px">Lim inn <code>zid</code> fra ringebaren for å se hva Zisson gjorde med samtalen — hvilke ben (agent/kunde) som ble opprettet og hvorfor de ev. falt.</p>
+        <h3 style="margin:22px 0 8px">Feilsøk samtale</h3>
+        <p class="page-sub" style="margin:0 0 10px">Søk på <strong>telefonnummer</strong> (anbefalt) eller conversationId. Viser om kunde-benet ble opprettet i CDR, og totalt antall ben siste 2 t.</p>
         <div class="rule-builder">
-            <div class="rb-field"><label>zid</label><input class="rb-input" style="width:320px" @bind="_zLookupZid" placeholder="a6af588f-…" /></div>
+            <div class="rb-field"><label>Nummer eller id</label><input class="rb-input" style="width:320px" @bind="_zLookupZid" placeholder="f.eks. 99451195" /></div>
             <button class="btn-sm rb-add" @onclick="SlaaOppSamtale" disabled="@_zLookupKjorer">@(_zLookupKjorer ? "Slår opp…" : "Slå opp")</button>
             <div class="rb-field"><label>Agent (guid/brukernavn)</label><input class="rb-input" style="width:200px" @bind="_zAgentSjekk" placeholder="f.eks. 59768" /></div>
             <button class="btn-sm rb-add" @onclick="SjekkAgentStatus" disabled="@_zAgentKjorer">@(_zAgentKjorer ? "Sjekker…" : "Sjekk agent-status")</button>
@@ -2064,33 +2073,40 @@ else if (_active == "GDPR")
         await Zisson.SettNummerFormatAsync(_zNummerFormat);
     }
 
-    private readonly Dictionary<Guid, string> _agentInputs = new();
     private string? _agentMsg;
 
-    private string AgentInput(UserRow u) => _agentInputs.TryGetValue(u.Id, out var v) ? v : (u.ZissonAgentGuid ?? "");
-    private void SetAgentInput(Guid id, ChangeEventArgs e) => _agentInputs[id] = e.Value?.ToString() ?? "";
-    // Valg fra Zisson-lista fyller bare inputfeltet (lagres ved «Lagre»).
-    private void VelgAgent(Guid id, ChangeEventArgs e)
+    // Dropdown: verdien vi lagrer (bruker-kode/brukernavn, ellers guid), visning og valgt-sjekk.
+    private static string AgentVerdi(ZissonService.ZAgent a) => a.LoginId ?? a.Username ?? a.Guid;
+    private static string? AgentKode(ZissonService.ZAgent a) => a.LoginId ?? a.Username;
+    private static bool AgentErValgt(UserRow u, ZissonService.ZAgent a)
     {
-        var v = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(v)) _agentInputs[id] = v;
+        var s = u.ZissonAgentGuid;
+        return !string.IsNullOrWhiteSpace(s) && (
+            string.Equals(s, a.LoginId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(s, a.Username, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(s, a.Guid, StringComparison.OrdinalIgnoreCase));
     }
 
-    private async Task SaveAgent(UserRow u)
+    // Verdien select-en skal vise for en bruker: den matchende agentens kanoniske verdi (så den
+    // huskes selv om lagret verdi er en annen form, f.eks. guid), ellers råverdien.
+    private string? ValgtVerdi(UserRow u)
     {
-        var verdi = AgentInput(u);
-        await Users.SetZissonAgentAsync(u.Id, verdi);
-        _agentInputs.Remove(u.Id);
-        _agentMsg = string.IsNullOrWhiteSpace(verdi)
-            ? $"Zisson-agent fjernet for {u.Email}."
-            : $"{u.Email} koblet til Zisson-agent «{verdi}».";
+        var a = _zAgenter.FirstOrDefault(x => AgentErValgt(u, x));
+        return a is not null ? AgentVerdi(a) : u.ZissonAgentGuid;
+    }
+
+    // Valg fra dropdown lagres med en gang.
+    private async Task VelgAgent(UserRow u, ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        await Users.SetZissonAgentAsync(u.Id, v);
+        _agentMsg = string.IsNullOrWhiteSpace(v) ? $"Kobling fjernet for {u.Email}." : $"{u.Email} koblet til Zisson-bruker «{v}».";
         _userRows = await Users.ListUsersAsync();
     }
 
     private async Task FjernAgent(UserRow u)
     {
         await Users.SetZissonAgentAsync(u.Id, null);
-        _agentInputs.Remove(u.Id);
         _agentMsg = $"Zisson-agent fjernet for {u.Email}.";
         _userRows = await Users.ListUsersAsync();
     }

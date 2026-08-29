@@ -42,12 +42,12 @@ public class ZissonCdrWorker : BackgroundService
                     foreach (var a in uavklarte)
                     {
                         if (ct.IsCancellationRequested) break;
-                        if (string.IsNullOrWhiteSpace(a.Zid)) continue;
+                        if (string.IsNullOrWhiteSpace(a.TilNummer)) continue;
 
-                        // Litt margin rundt starttidspunktet, til «nå».
+                        // Litt margin rundt starttidspunktet, til «nå». Korreler på nummeret (kunde-benet).
                         var fra = a.StartetAt.AddMinutes(-2);
                         var til = DateTime.UtcNow.AddMinutes(2);
-                        var r = await zisson.HentUtfallAsync(a.Zid!, fra, til);
+                        var r = await zisson.HentUtfallAsync(a.TilNummer, fra, til);
                         if (!r.Funnet || !r.Avsluttet) continue;   // ikke i CDR ennå / pågår fortsatt
 
                         var utfall = r.Svart ? DialerService.UtfallSvart : DialerService.UtfallIkkeSvart;

@@ -147,11 +147,12 @@ public class DialerCallService : IDisposable
         if (Aktiv is null) return;
         _tick++;
         // Poll CDR hvert 4. sekund så lenge samtalen ikke er avsluttet.
-        if (Aktiv.Tilstand is Tilstand.Ringer or Tilstand.Besvart && !string.IsNullOrWhiteSpace(Aktiv.Zid) && _tick % 4 == 0)
+        if (Aktiv.Tilstand is Tilstand.Ringer or Tilstand.Besvart && _tick % 4 == 0)
         {
             try
             {
-                var u = await _zisson.HentUtfallAsync(Aktiv.Zid!, Aktiv.StartUtc.AddMinutes(-2), DateTime.UtcNow.AddMinutes(1));
+                // Korreler på det oppringte nummeret (kunde-benet), ikke zid.
+                var u = await _zisson.HentUtfallAsync(Aktiv.Nummer, Aktiv.StartUtc.AddMinutes(-2), DateTime.UtcNow.AddMinutes(1));
                 if (u.Funnet)
                 {
                     if (u.Avsluttet && (u.TaletidSek > 0 || Aktiv.GaattSek > 25))

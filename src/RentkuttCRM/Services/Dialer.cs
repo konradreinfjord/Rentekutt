@@ -76,7 +76,7 @@ public class DialerService
     {
         var grense = DateTime.UtcNow.AddHours(-timer);
         if (!IsConfigured)
-            return _staging.Where(x => x.Status == StatusUavklart && x.StartetAt >= grense && !string.IsNullOrEmpty(x.Zid)).ToList();
+            return _staging.Where(x => x.Status == StatusUavklart && x.StartetAt >= grense && !string.IsNullOrEmpty(x.TilNummer)).ToList();
         try
         {
             await EnsureInitAsync();
@@ -84,7 +84,7 @@ public class DialerService
                 .Where(x => x.Status == StatusUavklart)
                 .Filter("startet_at", Constants.Operator.GreaterThanOrEqual, grense.ToString("o"))
                 .Get()).Models;
-            return rader.Where(x => !string.IsNullOrEmpty(x.Zid)).ToList();
+            return rader.Where(x => !string.IsNullOrEmpty(x.TilNummer)).ToList();
         }
         catch (Exception ex) { _log.LogError(ex, "Henting av uavklarte anrop feilet"); return new(); }
     }

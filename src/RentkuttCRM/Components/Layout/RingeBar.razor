@@ -24,13 +24,9 @@
     {
         <span class="rb-status" title="@StatusTittel">
             <span class="rb-dot @(Dialer.Paalogget == true ? "on" : Dialer.Paalogget == false ? "off" : "ukjent")"></span>
-            <span class="rb-status-tekst">@(Dialer.Paalogget == true ? "Pålogget Zisson" : Dialer.Paalogget == false ? "Ikke pålogget" : "Zisson…")</span>
+            <span class="rb-status-tekst">@(Dialer.Paalogget == true ? "Pålogget Zisson" : Dialer.Paalogget == false ? "Ikke pålogget Zisson" : "Zisson…")</span>
+            <button class="rb-refresh" @onclick="Oppdater" disabled="@_sjekker" title="Sjekk pålogging mot Zisson på nytt">@(_sjekker ? "…" : "⟳")</button>
         </span>
-        @if (Dialer.Paalogget != true)
-        {
-            <a class="rb-btn rb-loggpaa" href="@Dialer.AgentKlientUrl" target="_blank" rel="noopener">Logg på Zisson</a>
-        }
-        <button class="rb-btn" @onclick="Oppdater" disabled="@_sjekker" title="Sjekk pålogging på nytt">@(_sjekker ? "…" : "⟳")</button>
 
         <span class="rb-sep"></span>
         <span class="rb-label">Ring:</span>
@@ -62,7 +58,7 @@
     .rb-dot.on { background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18); }
     .rb-dot.off { background:#dc2626; }
     .rb-dot.ukjent { background:#cbd5e1; }
-    .rb-loggpaa { background:#0ea5e9; color:#fff; border-color:#0ea5e9; text-decoration:none; }
+    .rb-refresh { border:none; background:none; cursor:pointer; font-size:13px; color:#64748b; padding:0 2px; }
     .rb-sep { width:1px; height:20px; background:var(--border,#e5e7eb); margin:0 4px; }
     .rb-badge { padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
     .rb-ringer   { background:#fef9c3; color:#854d0e; }
