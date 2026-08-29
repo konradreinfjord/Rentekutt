@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -41,9 +40,6 @@ public class ZissonService
 
     private string BaseUrl => (_config["Zisson:BaseUrl"] ?? "https://app2.zisson.com").TrimEnd('/');
 
-    /// <summary>Adressen agenten logger seg inn i Zisson-agentklienten på (softphone). API-et har
-    /// ikke noe logg-på-endepunkt, så påloggingen skjer her.</summary>
-    public string AgentKlientUrl => _config["Zisson:AgentUrl"] ?? BaseUrl;
     private string? LoginId => _config["Zisson:Id"];
     private string? RefreshTokenConfig => _config["Zisson:RefreshToken"];
 
@@ -554,28 +550,6 @@ public class ZissonService
         return sb.ToString();
     }
 
-    /// <summary>True hvis agenten har en påloggings-økt i Zisson (proxy for «pålogget en enhet»).
-    /// Best-effort mot CDR (kan henge litt). 0 økter = ikke pålogget → click-to-call ringer ingenting.</summary>
-    public async Task<bool> ErAgentPaaloggetAsync(string agent)
-    {
-        if (string.IsNullOrWhiteSpace(agent)) return false;
-        var http = await KlientAsync();
-        if (http is null) return false;
-        var guid = await LøsAgentGuidAsync(agent);
-        if (!Guid.TryParse(guid, out _)) return false;
-        var fra = DateTime.UtcNow.AddHours(-16);
-        var til = DateTime.UtcNow.AddMinutes(2);
-        try
-        {
-            var q = $"/external-api/v1/external-statdb/AgentLogonSessions?from={Uri.EscapeDataString(fra.ToString("o"))}&to={Uri.EscapeDataString(til.ToString("o"))}&includeStarted=true";
-            using var resp = await http.GetAsync(q);
-            if (!resp.IsSuccessStatusCode) return false;
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-            return doc.RootElement.EnumerateArray().Any(e => string.Equals(LesStreng(e, "loginGuid"), guid, StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception ex) { _log.LogWarning(ex, "Sjekk av agent-pålogging feilet"); return false; }
-    }
-
     /// <summary>Feilsøking: er agenten pålogget/tilgjengelig i Zisson? click-to-call ringer bare hvis
     /// agenten har en aktiv enhet/økt. Ser på logon-/available-økter siste 12 t for agentens loginGuid.</summary>
     public async Task<string> AgentStatusAsync(string agent)
@@ -612,60 +586,10 @@ public class ZissonService
         return sb.ToString();
     }
 
-    // ---- CDR / utfall (brukes av ZissonCdrWorker) ---------------------------------------
-
-    public record SamtaleUtfall(bool Funnet, bool Avsluttet, bool Svart, int TaletidSek);
-
-    /// <summary>Slår opp utfallet for en samtale (zid). Bruker ConversationSessions i et
-    /// tidsvindu og matcher på conversationId. Svart ≈ samtalen har en avslutning med varighet.</summary>
-    /// <summary>Utfall for en utgående samtale — korrelert på det OPPRINGTE NUMMERET (kunde-benet i
-    /// ConversationPeerSessions), ikke på click-to-call sin «zid» (som ikke er en conversationId).
-    /// Ser etter den eksterne peer-en med matchende pstnNumber i tidsvinduet.</summary>
-    public async Task<SamtaleUtfall> HentUtfallAsync(string? nummer, DateTime fra, DateTime til)
-    {
-        var http = await KlientAsync();
-        var sifre = SisteSifre(nummer, 8);
-        if (http is null || sifre.Length == 0) return new(false, false, false, 0);
-        try
-        {
-            var q = $"/external-api/v1/external-statdb/ConversationPeerSessions?from={Uri.EscapeDataString(fra.ToString("o"))}&to={Uri.EscapeDataString(til.ToString("o"))}";
-            using var resp = await http.GetAsync(q);
-            if (!resp.IsSuccessStatusCode) return new(false, false, false, 0);
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-
-            JsonElement? treff = null;
-            foreach (var e in doc.RootElement.EnumerateArray())
-            {
-                var pn = new string((LesStreng(e, "pstnNumber") ?? "").Where(char.IsDigit).ToArray());
-                if (pn.Length >= sifre.Length && pn.EndsWith(sifre)) treff = e;   // siste match vinner
-            }
-            if (treff is null) return new(false, false, false, 0);   // ikke i CDR ennå
-
-            var talt = ParseSekunder(LesStreng(treff.Value, "totalTalkTime"));
-            var left = LesStreng(treff.Value, "peerLeftTimestamp");
-            if (string.IsNullOrWhiteSpace(left)) return new(true, false, talt > 0, talt);   // pågår
-            return new(true, true, talt > 0, talt);                                          // avsluttet
-        }
-        catch (Exception ex) { _log.LogError(ex, "Henting av samtale-utfall feilet"); return new(false, false, false, 0); }
-    }
-
     // Siste N sifre av et nummer (for å matche pstnNumber uansett landkode-format).
     private static string SisteSifre(string? s, int n)
     {
         var d = new string((s ?? "").Where(char.IsDigit).ToArray());
         return d.Length <= n ? d : d[^n..];
     }
-
-    // Tolker taletid som «HH:MM:SS», TimeSpan eller rene sekunder.
-    private static int ParseSekunder(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return 0;
-        if (TimeSpan.TryParse(s, CultureInfo.InvariantCulture, out var ts)) return (int)ts.TotalSeconds;
-        if (int.TryParse(new string(s.Where(char.IsDigit).ToArray()), out var n)) return n;
-        return 0;
-    }
-
-    private static DateTime? LesTid(JsonElement e, string navn)
-        => e.TryGetProperty(navn, out var v) && v.ValueKind == JsonValueKind.String && DateTime.TryParse(v.GetString(), out var t)
-            ? t.ToUniversalTime() : null;
 }

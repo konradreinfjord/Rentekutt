@@ -6,13 +6,14 @@
     {
         <span class="rb-badge rb-@(a.Tilstand.ToString().ToLowerInvariant())">@StatusTekst(a)</span>
         <span class="rb-nr">📞 @a.Nummer</span>
-        <span class="rb-timer">@Varighet(a)</span>
-        @if (a.Tilstand is RentkuttCRM.Services.DialerCallService.Tilstand.Ringer or RentkuttCRM.Services.DialerCallService.Tilstand.Besvart)
+        @if (a.Tilstand == RentkuttCRM.Services.DialerCallService.Tilstand.Pagaar)
         {
+            <span class="rb-timer">@Varighet(a)</span>
             <button class="rb-btn rb-kutt" @onclick="Kutt" disabled="@_jobber"
                     title="Kutter samtalen ved å logge agenten AV i Zisson (agenten må logge inn igjen i softphone)">
                 @(_jobber ? "…" : "✕ Kutt")
             </button>
+            <button class="rb-btn" @onclick="() => Dialer.Lukk()" title="Skjul baren (samtalen påvirkes ikke)">Lukk</button>
         }
         else
         {
@@ -22,16 +23,8 @@
     }
     else
     {
-        <span class="rb-status" title="@StatusTittel">
-            <span class="rb-dot @(Dialer.Paalogget == true ? "on" : "ukjent")"></span>
-            <span class="rb-status-tekst">@(Dialer.Paalogget == true ? "Pålogget Zisson" : "Pålogging ukjent")</span>
-            <button class="rb-refresh" @onclick="Oppdater" disabled="@_sjekker" title="Sjekk pålogging mot Zisson på nytt">@(_sjekker ? "…" : "⟳")</button>
-        </span>
-
-        <span class="rb-sep"></span>
         <span class="rb-label">Ring:</span>
-        <input class="rb-input" @bind="_nr" @bind:event="oninput" placeholder="mobilnummer…"
-               @onkeydown="Enter" />
+        <input class="rb-input" @bind="_nr" @bind:event="oninput" placeholder="mobilnummer…" @onkeydown="Enter" />
         <button class="rb-btn rb-ring" @onclick="Ring" disabled="@(_jobber || string.IsNullOrWhiteSpace(_nr))">
             @(_jobber ? "Ringer…" : "📞 Ring")
         </button>
@@ -52,17 +45,8 @@
     .rb-nr { font-weight:600; }
     .rb-timer { font-variant-numeric:tabular-nums; font-weight:600; color:#0f172a; }
     .rb-msg { color:#64748b; }
-    .rb-status { display:flex; align-items:center; gap:6px; }
-    .rb-status-tekst { color:#475569; }
-    .rb-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
-    .rb-dot.on { background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18); }
-    .rb-dot.off { background:#dc2626; }
-    .rb-dot.ukjent { background:#cbd5e1; }
-    .rb-refresh { border:none; background:none; cursor:pointer; font-size:13px; color:#64748b; padding:0 2px; }
-    .rb-sep { width:1px; height:20px; background:var(--border,#e5e7eb); margin:0 4px; }
     .rb-badge { padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
-    .rb-ringer   { background:#fef9c3; color:#854d0e; }
-    .rb-besvart  { background:#dcfce7; color:#166534; }
+    .rb-pagaar   { background:#dcfce7; color:#166534; }
     .rb-avsluttet{ background:#e2e8f0; color:#334155; }
     .rb-feil     { background:#fee2e2; color:#991b1b; }
 </style>
@@ -71,29 +55,8 @@
     private string? _nr;
     private string? _msg;
     private bool _jobber;
-    private bool _sjekker;
 
     protected override void OnInitialized() => Dialer.OnChange += Endret;
-
-    // Sjekk pålogging én gang når baren lastes (API-kall → etter første render).
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && Dialer.Paalogget is null && Dialer.Aktiv is null)
-            await Oppdater();
-    }
-
-    private async Task Oppdater()
-    {
-        _sjekker = true;
-        try { await Dialer.SjekkPaaloggingAsync(); }
-        finally { _sjekker = false; }
-    }
-
-    private string StatusTittel => Dialer.Paalogget switch
-    {
-        true => "Zisson bekrefter at agenten er pålogget en enhet.",
-        _ => "Kunne ikke bekrefte pålogging via Zisson-statistikk (kan henge, eller ulik guid). Du kan ringe likevel — er agenten ikke klar, sier Zisson fra ved oppringing.",
-    };
 
     private void Endret() => InvokeAsync(StateHasChanged);
 
@@ -124,15 +87,14 @@
 
     private static string StatusTekst(RentkuttCRM.Services.DialerCallService.Anrop a) => a.Tilstand switch
     {
-        RentkuttCRM.Services.DialerCallService.Tilstand.Ringer => "Ringer opp…",
-        RentkuttCRM.Services.DialerCallService.Tilstand.Besvart => "Samtale pågår",
+        RentkuttCRM.Services.DialerCallService.Tilstand.Pagaar => "Anrop pågår",
         RentkuttCRM.Services.DialerCallService.Tilstand.Avsluttet => "Avsluttet",
         _ => "Feil",
     };
 
     private static string Varighet(RentkuttCRM.Services.DialerCallService.Anrop a)
     {
-        var s = a.Tilstand == RentkuttCRM.Services.DialerCallService.Tilstand.Avsluttet && a.TaletidSek is int t ? t : a.GaattSek;
+        var s = a.GaattSek;
         return $"{s / 60}:{s % 60:00}";
     }
 

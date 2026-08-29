@@ -1,4 +1,3 @@
-using Supabase.Postgrest;
 using Supabase.Postgrest.Attributes;
 using Supabase.Postgrest.Models;
 
@@ -69,46 +68,6 @@ public class DialerService
             return (await _client.From<DialerAnrop>().Insert(rad)).Models.FirstOrDefault();
         }
         catch (Exception ex) { _log.LogWarning(ex, "Lagring av dialer-anrop feilet"); return null; }
-    }
-
-    /// <summary>Uavklarte anrop med zid, startet innenfor siste <paramref name="timer"/> timer.</summary>
-    public async Task<List<DialerAnrop>> UavklarteAsync(int timer = 12)
-    {
-        var grense = DateTime.UtcNow.AddHours(-timer);
-        if (!IsConfigured)
-            return _staging.Where(x => x.Status == StatusUavklart && x.StartetAt >= grense && !string.IsNullOrEmpty(x.TilNummer)).ToList();
-        try
-        {
-            await EnsureInitAsync();
-            var rader = (await _client.From<DialerAnrop>()
-                .Where(x => x.Status == StatusUavklart)
-                .Filter("startet_at", Constants.Operator.GreaterThanOrEqual, grense.ToString("o"))
-                .Get()).Models;
-            return rader.Where(x => !string.IsNullOrEmpty(x.TilNummer)).ToList();
-        }
-        catch (Exception ex) { _log.LogError(ex, "Henting av uavklarte anrop feilet"); return new(); }
-    }
-
-    /// <summary>Setter utfall/varighet og markerer anropet som ferdig (eller feilet).</summary>
-    public async Task SettUtfallAsync(Guid id, string status, string? utfall, int? taletidSek)
-    {
-        if (!IsConfigured)
-        {
-            var r = _staging.FirstOrDefault(x => x.Id == id);
-            if (r is not null) { r.Status = status; r.Utfall = utfall; r.TaletidSek = taletidSek; r.FerdigAt = DateTime.UtcNow; }
-            return;
-        }
-        try
-        {
-            await EnsureInitAsync();
-            await _client.From<DialerAnrop>().Where(x => x.Id == id)
-                .Set(x => x.Status, status)
-                .Set(x => x.Utfall!, utfall!)
-                .Set(x => x.TaletidSek!, taletidSek)
-                .Set(x => x.FerdigAt!, DateTime.UtcNow)
-                .Update();
-        }
-        catch (Exception ex) { _log.LogError(ex, "Oppdatering av dialer-anrop feilet"); }
     }
 
     private async Task EnsureInitAsync()
