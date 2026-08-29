@@ -73,13 +73,11 @@ public class DialerCallService : IDisposable
         if (string.IsNullOrWhiteSpace(agent))
             return new(false, -1, "Du er ikke koblet til en Zisson-agent (Admin → Dialer → Agent-kobling).", null);
 
-        // Forhåndssjekk: click-to-call ringer bare hvis agenten er pålogget en enhet i Zisson.
+        // Oppdater pålogging-statusen (rådgivende) – men BLOKKER IKKE på den. Statdb kan gi falsk
+        // «ikke pålogget» (login-guid ≠ bruker-guid / forsinkelse). Den autoritative kilden er Zissons
+        // egen responseCode 3 («opptatt/ikke pålogget/klar»), som ClickToCall tolker.
         Paalogget = await _zisson.ErAgentPaaloggetAsync(agent!);
-        if (Paalogget == false)
-        {
-            Varsle();
-            return new(false, -1, "Du er ikke pålogget Zisson. Trykk «Logg på Zisson» og logg inn i softphone/agentklienten først.", null);
-        }
+        Varsle();
 
         var r = await _zisson.ClickToCallAsync(agent, nummer);
         if (!r.Ok)

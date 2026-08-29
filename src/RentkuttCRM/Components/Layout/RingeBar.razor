@@ -23,8 +23,8 @@
     else
     {
         <span class="rb-status" title="@StatusTittel">
-            <span class="rb-dot @(Dialer.Paalogget == true ? "on" : Dialer.Paalogget == false ? "off" : "ukjent")"></span>
-            <span class="rb-status-tekst">@(Dialer.Paalogget == true ? "Pålogget Zisson" : Dialer.Paalogget == false ? "Ikke pålogget Zisson" : "Zisson…")</span>
+            <span class="rb-dot @(Dialer.Paalogget == true ? "on" : "ukjent")"></span>
+            <span class="rb-status-tekst">@(Dialer.Paalogget == true ? "Pålogget Zisson" : "Pålogging ukjent")</span>
             <button class="rb-refresh" @onclick="Oppdater" disabled="@_sjekker" title="Sjekk pålogging mot Zisson på nytt">@(_sjekker ? "…" : "⟳")</button>
         </span>
 
@@ -91,9 +91,8 @@
 
     private string StatusTittel => Dialer.Paalogget switch
     {
-        true => "Agenten er pålogget Zisson — click-to-call kan ringe.",
-        false => "Agenten er ikke pålogget Zisson. Logg inn i softphone/agentklienten før du ringer.",
-        _ => "Sjekker pålogging mot Zisson…",
+        true => "Zisson bekrefter at agenten er pålogget en enhet.",
+        _ => "Kunne ikke bekrefte pålogging via Zisson-statistikk (kan henge, eller ulik guid). Du kan ringe likevel — er agenten ikke klar, sier Zisson fra ved oppringing.",
     };
 
     private void Endret() => InvokeAsync(StateHasChanged);
