@@ -79,11 +79,14 @@ public class GdprKjoringService
             return _staging.Where(x => x.Jobb == jobb && x.FullfortAt is not null).Max(x => (DateTime?)x.FullfortAt);
         try
         {
-            var rad = (await _client.From<GdprJobbKjoring>()
-                .Where(x => x.Jobb == jobb && x.FullfortAt != null)
+            // NB: IKKE bruk «x.FullfortAt != null» i Where — PostgREST oversetter det til «neq.null»,
+            // som gir HTTP 400 (ugyldig null-sammenligning) → spørringen feiler → falsk «aldri fullført».
+            // Vi henter siste kjøringer for jobben og finner nyeste fullførte klient-side.
+            var rader = (await _client.From<GdprJobbKjoring>()
+                .Where(x => x.Jobb == jobb)
                 .Order(x => x.FullfortAt!, Constants.Ordering.Descending, Constants.NullPosition.Last)
-                .Limit(1).Get()).Models.FirstOrDefault();
-            return rad?.FullfortAt;
+                .Limit(100).Get()).Models;
+            return rader.Count == 0 ? null : rader.Max(x => x.FullfortAt);
         }
         catch (Exception ex) { _log.LogWarning(ex, "Oppslag av siste fullførte GDPR-kjøring feilet ({Jobb})", jobb); return null; }
     }

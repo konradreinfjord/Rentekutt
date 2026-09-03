@@ -621,6 +621,91 @@ public class KundekortService
             .ToList();
     }
 
+    private static readonly HashSet<string> MergeHoppOver = new(StringComparer.OrdinalIgnoreCase)
+    { "Id", "KundeId", "Status", "Eier", "EierNavn", "EierTattAt", "Kilde", "KundeType", "CreatedAt", "SendtBankAt", "AnonymisertAt" };
+
+    // Fyller survivor sine TOMME felt (null / tom streng) fra et annet kort. Rører ikke bool/dato/guid
+    // (unngår å over-sette samtykke-flagg o.l.), og overskriver aldri et felt som allerede har verdi.
+    private static void FyllTommeFelt(Kundekort survivor, Kundekort other)
+    {
+        foreach (var p in typeof(Kundekort).GetProperties())
+        {
+            if (!p.CanRead || !p.CanWrite || MergeHoppOver.Contains(p.Name)) continue;
+            var t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+            if (t != typeof(string) && t != typeof(decimal) && t != typeof(int)) continue;
+            var ov = p.GetValue(other);
+            if (ov is null || (ov is string os && string.IsNullOrWhiteSpace(os))) continue;
+            var sv = p.GetValue(survivor);
+            var tom = sv is null || (sv is string s && string.IsNullOrWhiteSpace(s));
+            if (tom) p.SetValue(survivor, ov);
+        }
+    }
+
+    // Flytter alle barn-poster (logg/notat/oppfølging/banksending/samtykke/anrop) fra ett kort til et annet.
+    private async Task<(bool ok, string? feil)> FlyttBarnAsync(Guid fra, Guid til)
+    {
+        try
+        {
+            await _client.From<KundekortLogg>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
+            await _client.From<Saksnotat>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
+            await _client.From<OppfolgingOppgave>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
+            await _client.From<BankSending>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId!, til).Update();
+            await _client.From<Samtykke>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
+            await _client.From<SamtykkeGodkjenning>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
+            await _client.From<DialerAnrop>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
+            return (true, null);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Flytting av barn-poster feilet ({Fra}→{Til})", fra, til); return (false, ex.Message); }
+    }
+
+    /// <summary>Slår sammen en duplikat-gruppe (samme kilde+kundetype+nummer) til ETT kort: beholder
+    /// det mest avanserte/nyeste, fyller manglende felt fra de andre, flytter barn-poster over, og
+    /// sletter duplikatene. Sletter aldri et kort hvis flyttingen av barn-postene feilet (ingen datatap).</summary>
+    public async Task<(bool ok, string melding)> MergeGruppeAsync(string kilde, string kundeType, string nummerTail, string? aktor)
+    {
+        static string Hale8(string? s) { var d = new string((s ?? "").Where(char.IsDigit).ToArray()); return d.Length <= 8 ? d : d[^8..]; }
+        var gruppe = (await ListAsync())
+            .Where(k => (k.Kilde ?? "") == kilde && (k.KundeType ?? "") == kundeType && Hale8(k.Mobilnummer) == nummerTail)
+            .ToList();
+        if (gruppe.Count < 2) return (false, "Fant ingen duplikater å slå sammen.");
+
+        int Rang(string? st) => Array.IndexOf(Statuser, st ?? "");
+        var survivor = gruppe
+            .OrderByDescending(k => Rang(k.Status))
+            .ThenByDescending(k => !string.IsNullOrWhiteSpace(k.Eier))
+            .ThenByDescending(k => k.CreatedAt)
+            .First();
+        var andre = gruppe.Where(k => k.Id != survivor.Id).ToList();
+
+        foreach (var o in andre.OrderByDescending(k => k.CreatedAt)) FyllTommeFelt(survivor, o);
+
+        int slettet = 0; var feil = new List<string>();
+        foreach (var o in andre)
+        {
+            var (ok, f) = await FlyttBarnAsync(o.Id, survivor.Id);
+            if (!ok) { feil.Add(f ?? "flytting feilet"); continue; }   // behold kortet ved feil – ingen datatap
+            var (dok, derr) = await DeleteAsync(o.Id);
+            if (dok) slettet++; else feil.Add(derr ?? "sletting feilet");
+        }
+
+        await SaveAsync(survivor, aktor: aktor ?? "System (merge)");
+        try
+        {
+            await _client.From<KundekortLogg>().Insert(new KundekortLogg
+            {
+                KundekortId = survivor.Id, Aktor = aktor,
+                Tekst = $"Slo sammen {slettet} duplikat(er) inn i dette kortet (kilde {kilde}, {kundeType}).",
+                Kategori = "kobling",
+            });
+        }
+        catch { /* logg er best-effort */ }
+        InvaliderCache();
+
+        return feil.Count == 0
+            ? (true, $"Slo sammen {slettet} duplikat(er) inn i ett kort.")
+            : (false, $"Slo sammen {slettet}, men {feil.Count} feilet: {string.Join("; ", feil.Distinct())}");
+    }
+
     public async Task SetStatusAsync(Guid id, string status, string? aktor = null)
     {
         // Når en sak settes til «Sendt - I prosess», stemple tidspunktet — brukes av timeout-jobben.
@@ -784,8 +869,11 @@ public class KundekortService
         try
         {
             await EnsureReadyAsync();
-            return (await _client.From<Kundekort>().Select("id")
-                .Where(k => k.AnonymisertAt == null && k.CreatedAt < grense).Get()).Models.Count;
+            // NB: «k.AnonymisertAt == null» i Where blir «eq.null» i PostgREST → HTTP 400. Filtrer på
+            // created_at i spørringen og «ikke anonymisert» klient-side.
+            var rader = (await _client.From<Kundekort>().Select("id,anonymisert_at")
+                .Where(k => k.CreatedAt < grense).Get()).Models;
+            return rader.Count(k => k.AnonymisertAt == null);
         }
         catch (Exception ex) { _log.LogError(ex, "Telling ikke-anonymisert over tid feilet"); return -1; }
     }

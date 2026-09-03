@@ -1088,8 +1088,24 @@ else if (_active == "Duplikater")
 {
     <div class="section">
         <h2>Duplikater <span class="pill pill-warn">@_duplikater.Count</span></h2>
-        <p class="page-sub">Kort som deler mobilnummer <strong>innen samme kilde</strong> (reelle duplikater). Kort fra ulike kilder (Prismatch vs Rentekutt.no) regnes ikke som duplikater og vises ikke her. Åpne hvert kort for å slå sammen / slette.</p>
-        <button class="btn-sm" @onclick="LastDuplikater" disabled="@_duplikaterLaster">@(_duplikaterLaster ? "Søker…" : "Oppdater")</button>
+        <p class="page-sub">Kort som deler mobilnummer <strong>innen samme kilde og kundetype</strong> (reelle duplikater). Ulik kilde (Prismatch vs Rentekutt.no) eller ulik type (bedrift vs privat) regnes ikke som duplikater. «Slå sammen» beholder det mest avanserte kortet, flytter logg/notater/oppfølging/banksending/samtykke/anrop over, fyller manglende felt, og sletter resten.</p>
+        <span class="token-row">
+            <button class="btn-sm" @onclick="LastDuplikater" disabled="@(_duplikaterLaster || _merger)">@(_duplikaterLaster ? "Søker…" : "Oppdater")</button>
+            @if (_duplikater.Count > 0)
+            {
+                @if (_mergeBekreft == "ALLE")
+                {
+                    <span class="page-sub" style="margin:0 6px">Slå sammen ALLE @_duplikater.Count gruppene?</span>
+                    <button class="btn-danger-solid btn-sm" @onclick="MergeAlle" disabled="@_merger">@(_merger ? "Slår sammen…" : "Ja, slå sammen alle")</button>
+                    <button class="btn-sm" @onclick="@(() => _mergeBekreft = null)">Avbryt</button>
+                }
+                else
+                {
+                    <button class="btn-primary btn-sm" @onclick="@(() => _mergeBekreft = "ALLE")" disabled="@_merger">Slå sammen alle</button>
+                }
+            }
+        </span>
+        @if (!string.IsNullOrEmpty(_mergeMsg)) { <p class="page-sub" style="margin-top:8px">@_mergeMsg</p> }
         @if (!_duplikaterLaster && _duplikater.Count == 0)
         {
             <p class="page-sub" style="margin-top:10px">Ingen duplikater funnet. 🎉</p>
@@ -1103,6 +1119,15 @@ else if (_active == "Duplikater")
                     <span class="pill">@g.Kilde</span>
                     <span class="pill">@(g.KundeType == "B2B" ? "Bedrift" : "Privat")</span>
                     <span class="pill pill-warn">@g.Antall kort</span>
+                    @if (_mergeBekreft == GruppeKey(g))
+                    {
+                        <button class="btn-danger-solid btn-sm" @onclick="() => MergeGruppe(g)" disabled="@_merger">@(_merger ? "…" : "Ja, slå sammen")</button>
+                        <button class="btn-sm" @onclick="@(() => _mergeBekreft = null)">Avbryt</button>
+                    }
+                    else
+                    {
+                        <button class="btn-sm" @onclick="@(() => _mergeBekreft = GruppeKey(g))" disabled="@_merger">Slå sammen</button>
+                    }
                     <table class="data-table" style="margin-top:8px">
                         <thead><tr><th>Navn</th><th>Status</th><th>Opprettet</th><th></th></tr></thead>
                         <tbody>
@@ -2052,11 +2077,48 @@ else if (_active == "GDPR")
 
     private List<KundekortService.DuplikatGruppe> _duplikater = new();
     private bool _duplikaterLaster;
+    private string? _mergeBekreft;   // GruppeKey eller "ALLE"
+    private bool _merger;
+    private string? _mergeMsg;
+
     private async Task LastDuplikater()
     {
         _duplikaterLaster = true; StateHasChanged();
         try { _duplikater = await Kunder.FinnDuplikaterAsync(); }
         finally { _duplikaterLaster = false; }
+    }
+
+    private static string GruppeKey(KundekortService.DuplikatGruppe g) => $"{g.Kilde}|{g.KundeType}|{g.Nummer}";
+
+    private async Task MergeGruppe(KundekortService.DuplikatGruppe g)
+    {
+        _merger = true; StateHasChanged();
+        try
+        {
+            var (_, m) = await Kunder.MergeGruppeAsync(g.Kilde, g.KundeType, g.Nummer, Session.UserName ?? Session.Email);
+            _mergeMsg = m;
+            _mergeBekreft = null;
+            await LastDuplikater();
+        }
+        finally { _merger = false; }
+    }
+
+    private async Task MergeAlle()
+    {
+        _merger = true; StateHasChanged();
+        try
+        {
+            int ok = 0; var feil = 0;
+            foreach (var g in _duplikater.ToList())
+            {
+                var (o, _) = await Kunder.MergeGruppeAsync(g.Kilde, g.KundeType, g.Nummer, Session.UserName ?? Session.Email);
+                if (o) ok++; else feil++;
+            }
+            _mergeMsg = $"Slo sammen {ok} gruppe(r)." + (feil > 0 ? $" {feil} gruppe(r) feilet delvis." : "");
+            _mergeBekreft = null;
+            await LastDuplikater();
+        }
+        finally { _merger = false; }
     }
 
     private async Task LastDialerData()
