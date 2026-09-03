@@ -558,17 +558,25 @@ public class KundekortService
     /// KUN entydige kriterier: 1) mobilnummer (siste 8 sifre), 2) e-post. Navn brukes IKKE
     /// som matchkriterium (ikke entydig — kunne koblet en Vipps-sesjon til feil persons søknad).
     /// Returnerer utkastet og hvilket felt som matchet (for revisjonssporet).</summary>
-    public async Task<(Kundekort? utkast, string? felt)> FinnPaabegyntAsync(string? mobil, string? epost)
+    /// <summary>Finn et eksisterende kort å gjenbruke (dedup ved mottak) — begrenset til SAMME kilde
+    /// og de gitte statusene, matchet på mobil (siste 8 sifre) eller e-post. Kilde-begrensningen
+    /// sikrer at leads fra prismatch og rentekutt.no forblir separate kort (vises hver for seg).</summary>
+    public async Task<(Kundekort? kort, string? felt)> FinnEksisterendeAsync(string? mobil, string? epost, string? kilde, string? kundeType, params string[] statuser)
     {
-        var utkast = (await ListAsync()).Where(k => k.Status == StatusPaabegynt).ToList();
-        if (utkast.Count == 0) return (null, null);
+        var kandidater = (await ListAsync())
+            .Where(k => (statuser.Length == 0 || statuser.Contains(k.Status))
+                     && (string.IsNullOrWhiteSpace(kilde) || string.Equals(k.Kilde, kilde, StringComparison.OrdinalIgnoreCase))
+                     // B2B og B2C på samme nummer/kilde er TO søknader — regnes ikke som samme.
+                     && (string.IsNullOrWhiteSpace(kundeType) || string.Equals(k.KundeType, kundeType, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (kandidater.Count == 0) return (null, null);
 
         // 1) Mobilnummer — match på de siste 8 sifrene (tåler +47/landkode).
         var mDig = new string((mobil ?? "").Where(char.IsDigit).ToArray());
         if (mDig.Length >= 8)
         {
             var tail = mDig[^8..];
-            var m = utkast.FirstOrDefault(k =>
+            var m = kandidater.FirstOrDefault(k =>
             {
                 var d = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
                 return d.Length >= 8 && d[^8..] == tail;
@@ -579,13 +587,38 @@ public class KundekortService
         // 2) E-post (uten hensyn til store/små bokstaver).
         if (!string.IsNullOrWhiteSpace(epost))
         {
-            var e = utkast.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k.Epost)
+            var e = kandidater.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k.Epost)
                 && string.Equals(k.Epost.Trim(), epost.Trim(), StringComparison.OrdinalIgnoreCase));
             if (e is not null) return (e, "e-post");
         }
-
-        // Ingen entydig match → ingen kobling (utkastet blir stående som «Påbegynt søknad»).
         return (null, null);
+    }
+
+    /// <summary>Bakoverkompatibel: påbegynte utkast (uansett kilde/kundetype), matchet på mobil/e-post.</summary>
+    public Task<(Kundekort? utkast, string? felt)> FinnPaabegyntAsync(string? mobil, string? epost)
+        => FinnEksisterendeAsync(mobil, epost, null, null, StatusPaabegynt);
+
+    public record DuplikatKort(Guid Id, string Navn, string Status, DateTime Opprettet);
+    public record DuplikatGruppe(string Kilde, string KundeType, string Nummer, int Antall, List<DuplikatKort> Kort);
+
+    /// <summary>Finner kort som deler mobilnummer (siste 8 sifre) INNEN samme kilde OG kundetype —
+    /// altså reelle duplikater. Ulik kilde (prismatch vs rentekutt.no) eller ulik kundetype
+    /// (B2B vs B2C) regnes IKKE som duplikater; de er separate søknader.</summary>
+    public async Task<List<DuplikatGruppe>> FinnDuplikaterAsync()
+    {
+        static string Hale8(string? s) { var d = new string((s ?? "").Where(char.IsDigit).ToArray()); return d.Length <= 8 ? d : d[^8..]; }
+        var alle = await ListAsync();
+        return alle
+            .Where(k => !string.IsNullOrWhiteSpace(k.Mobilnummer))
+            .Select(k => new { k, tail = Hale8(k.Mobilnummer) })
+            .Where(x => x.tail.Length == 8)
+            .GroupBy(x => (Kilde: x.k.Kilde ?? "", Type: x.k.KundeType ?? "", x.tail))
+            .Where(g => g.Count() > 1)
+            .Select(g => new DuplikatGruppe(g.Key.Kilde, g.Key.Type, g.Key.tail, g.Count(),
+                g.Select(x => new DuplikatKort(x.k.Id, string.IsNullOrWhiteSpace(x.k.FulltNavn) ? "—" : x.k.FulltNavn!, x.k.Status ?? "", x.k.CreatedAt))
+                 .OrderBy(d => d.Opprettet).ToList()))
+            .OrderByDescending(g => g.Antall)
+            .ToList();
     }
 
     public async Task SetStatusAsync(Guid id, string status, string? aktor = null)

@@ -104,10 +104,13 @@ public class WebhookController : ControllerBase
                 var fnrUgyldig = !string.IsNullOrWhiteSpace(k.Foedselsnummer) && !Fnr.ErGyldig(k.Foedselsnummer);
                 var medsokerFnrUgyldig = !string.IsNullOrWhiteSpace(k.MedsokerFoedselsnummer) && !Fnr.ErGyldig(k.MedsokerFoedselsnummer);
 
-                // Match mot et påbegynt Vipps-utkast: KUN entydige kriterier (mobil → e-post; navn
-                // brukes ikke). Treff = komplettér utkastet (samme rad) og løft status til «Åpen».
-                // Ingen match → utkastet (om det finnes) blir stående som «Påbegynt søknad».
-                var (utkast, matchFelt) = await _kundekort.FinnPaabegyntAsync(k.Mobilnummer, k.Epost);
+                // Dedup ved mottak — KUN innen SAMME kilde (mobil → e-post), så prismatch og
+                // rentekutt.no forblir separate kort. Rentekutt-søknad kobles til et påbegynt
+                // utkast (fra Vipps/BankID); gjentatt prismatch kobles til eksisterende «Nytt lead».
+                var dedupStatuser = hook.Name == WebhookService.PrismatchName
+                    ? new[] { KundekortService.StatusNyttLead }
+                    : new[] { KundekortService.StatusPaabegynt };
+                var (utkast, matchFelt) = await _kundekort.FinnEksisterendeAsync(k.Mobilnummer, k.Epost, k.Kilde, k.KundeType, dedupStatuser);
                 string? aktor = null;
                 if (utkast is not null)
                 {
@@ -256,6 +259,12 @@ public class WebhookController : ControllerBase
             }
             else
             {
+                // Dedup: finnes det allerede et påbegynt utkast for samme mobil/e-post OG samme kilde,
+                // gjenbruk raden i stedet for å opprette et nytt kort — så gjentatte Vipps/BankID-
+                // bekreftelser (eller webhook-retries) ikke lager duplikater.
+                var (eksisterende, _) = await _kundekort.FinnEksisterendeAsync(k.Mobilnummer, k.Epost, k.Kilde, k.KundeType, KundekortService.StatusPaabegynt);
+                if (eksisterende is not null) k.Id = eksisterende.Id;
+
                 var (ok, error) = await _kundekort.SaveAsync(k, aktor: kildeLabel);
                 if (!ok) feil = error ?? "Lagring av utkast feilet.";
                 else

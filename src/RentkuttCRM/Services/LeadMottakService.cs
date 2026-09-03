@@ -66,6 +66,13 @@ public class LeadMottakService
                     new string(k.Foedselsnummer.Where(char.IsDigit).ToArray()).Length != 11)
                     k.Foedselsnummer = null;
 
+                // Dedup innen samme kilde, så re-kjøring ikke lager duplikater av et lead som alt finnes.
+                var dedupStatuser = erPrismatch
+                    ? new[] { KundekortService.StatusNyttLead }
+                    : new[] { KundekortService.StatusPaabegynt };
+                var (eks, _) = await _kundekort.FinnEksisterendeAsync(k.Mobilnummer, k.Epost, k.Kilde, k.KundeType, dedupStatuser);
+                if (eks is not null) k.Id = eks.Id;
+
                 var (ok, error) = await _kundekort.SaveAsync(k, aktor: aktor ?? "Re-kjørt fra payload");
                 if (!ok) { feil = error; continue; }
 

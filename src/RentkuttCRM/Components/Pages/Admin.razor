@@ -1084,6 +1084,44 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
             "Kredittsjekk__ClientId      = <klient-ID>\nKredittsjekk__ClientSecret  = <hemmelighet>\nKredittsjekk__ApiUrl        = <endepunkt>")
     }
 }
+else if (_active == "Duplikater")
+{
+    <div class="section">
+        <h2>Duplikater <span class="pill pill-warn">@_duplikater.Count</span></h2>
+        <p class="page-sub">Kort som deler mobilnummer <strong>innen samme kilde</strong> (reelle duplikater). Kort fra ulike kilder (Prismatch vs Rentekutt.no) regnes ikke som duplikater og vises ikke her. Åpne hvert kort for å slå sammen / slette.</p>
+        <button class="btn-sm" @onclick="LastDuplikater" disabled="@_duplikaterLaster">@(_duplikaterLaster ? "Søker…" : "Oppdater")</button>
+        @if (!_duplikaterLaster && _duplikater.Count == 0)
+        {
+            <p class="page-sub" style="margin-top:10px">Ingen duplikater funnet. 🎉</p>
+        }
+        else
+        {
+            @foreach (var g in _duplikater)
+            {
+                <div class="section" style="margin-top:12px">
+                    <strong>•••• @(g.Nummer.Length >= 4 ? g.Nummer[^4..] : g.Nummer)</strong>
+                    <span class="pill">@g.Kilde</span>
+                    <span class="pill">@(g.KundeType == "B2B" ? "Bedrift" : "Privat")</span>
+                    <span class="pill pill-warn">@g.Antall kort</span>
+                    <table class="data-table" style="margin-top:8px">
+                        <thead><tr><th>Navn</th><th>Status</th><th>Opprettet</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var k in g.Kort)
+                            {
+                                <tr>
+                                    <td>@k.Navn</td>
+                                    <td>@k.Status</td>
+                                    <td>@k.Opprettet.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
+                                    <td><a class="btn-sm" href="/crm/ny-kunde?Id=@k.Id" target="_blank">Åpne</a></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+}
 else if (_active == "Hendelseslogg")
 {
     <div class="section">
@@ -2009,6 +2047,16 @@ else if (_active == "GDPR")
     {
         _active = t;
         if (t == "Dialer" && !_dialerLastet) await LastDialerData();
+        if (t == "Duplikater" && _duplikater.Count == 0 && !_duplikaterLaster) await LastDuplikater();
+    }
+
+    private List<KundekortService.DuplikatGruppe> _duplikater = new();
+    private bool _duplikaterLaster;
+    private async Task LastDuplikater()
+    {
+        _duplikaterLaster = true; StateHasChanged();
+        try { _duplikater = await Kunder.FinnDuplikaterAsync(); }
+        finally { _duplikaterLaster = false; }
     }
 
     private async Task LastDialerData()
@@ -2234,7 +2282,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
+    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Duplikater", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
     private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
