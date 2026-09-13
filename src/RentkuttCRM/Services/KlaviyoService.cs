@@ -17,12 +17,18 @@ public class KlaviyoService
 
     private readonly IHttpClientFactory _http;
     private readonly IConfiguration _cfg;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<KlaviyoService> _log;
 
-    public KlaviyoService(IHttpClientFactory http, IConfiguration cfg, ILogger<KlaviyoService> log)
+    // Cache av «klaviyo_enabled» (unngår en DB-lesning per event). Oppdateres hvert minutt.
+    private bool _aktivertCache;
+    private DateTime _aktivertUtløper = DateTime.MinValue;
+
+    public KlaviyoService(IHttpClientFactory http, IConfiguration cfg, IServiceScopeFactory scopeFactory, ILogger<KlaviyoService> log)
     {
         _http = http;
         _cfg = cfg;
+        _scopeFactory = scopeFactory;
         _log = log;
     }
 
@@ -97,6 +103,105 @@ public class KlaviyoService
             return (false, (int)res.StatusCode, Kort(body));
         }
         catch (Exception ex) { _log.LogWarning(ex, "Klaviyo-event kastet unntak"); return (false, 0, ex.Message); }
+    }
+
+    /// <summary>Master-bryteren (klaviyo_enabled) fra innstillinger, cachet i 60 s.</summary>
+    public async Task<bool> AktivertAsync()
+    {
+        if (DateTime.UtcNow < _aktivertUtløper) return _aktivertCache;
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var settings = scope.ServiceProvider.GetRequiredService<SettingsService>();
+            _aktivertCache = await settings.GetBoolAsync(KeyEnabled, false);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke lese klaviyo_enabled"); }
+        _aktivertUtløper = DateTime.UtcNow.AddSeconds(60);
+        return _aktivertCache;
+    }
+
+    /// <summary>Oppretter/oppdaterer en profil (kunde) i Klaviyo via profile-import (upsert på
+    /// e-post/telefon/external_id). 201 = ny, 200 = oppdatert.</summary>
+    public async Task<(bool Ok, int Status, string Detalj)> UpsertProfilAsync(
+        string? epost, string? telefon, string? navn, string? externalId,
+        IDictionary<string, object?>? egenskaper = null, CancellationToken ct = default)
+    {
+        if (!ErKonfigurert) return (false, 0, "Klaviyo er ikke konfigurert.");
+        var tlf = NormaliserTelefon(telefon);
+        if (string.IsNullOrWhiteSpace(epost) && string.IsNullOrWhiteSpace(tlf) && string.IsNullOrWhiteSpace(externalId))
+            return (false, 0, "Mangler e-post/telefon/external_id — kan ikke identifisere profil.");
+
+        var (fornavn, etternavn) = DelNavn(navn);
+        var attrs = new Dictionary<string, object?>();
+        if (!string.IsNullOrWhiteSpace(epost)) attrs["email"] = epost.Trim();
+        if (!string.IsNullOrWhiteSpace(tlf)) attrs["phone_number"] = tlf;
+        if (!string.IsNullOrWhiteSpace(externalId)) attrs["external_id"] = externalId;
+        if (!string.IsNullOrWhiteSpace(fornavn)) attrs["first_name"] = fornavn;
+        if (!string.IsNullOrWhiteSpace(etternavn)) attrs["last_name"] = etternavn;
+        if (egenskaper is { Count: > 0 })
+            attrs["properties"] = egenskaper.Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        var payload = new { data = new { type = "profile", attributes = attrs } };
+        try
+        {
+            using var c = Klient();
+            using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            using var res = await c.PostAsync("api/profile-import/", content, ct);
+            var body = await res.Content.ReadAsStringAsync(ct);
+            if (res.IsSuccessStatusCode) return (true, (int)res.StatusCode, "Profil opprettet/oppdatert i Klaviyo.");
+            _log.LogWarning("Klaviyo profile-import feilet {Status}: {Body}", (int)res.StatusCode, body);
+            return (false, (int)res.StatusCode, Kort(body));
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Klaviyo profile-import kastet unntak"); return (false, 0, ex.Message); }
+    }
+
+    /// <summary>Opprett/oppdater kunde + send event — fire-and-forget (blokkerer aldri hovedflyten,
+    /// og gjør ingenting hvis Klaviyo er av eller ukonfigurert). Trygg å kalle fra hvor som helst.</summary>
+    public void Fyr(Kundekort k, string metric, IDictionary<string, object?>? ekstraEventEgenskaper = null)
+    {
+        if (k is null || !ErKonfigurert) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (!await AktivertAsync()) return;
+                var epost = k.Epost;
+
+                // Dataminimering: kun navn + kontaktinfo + lånetype sendes til Klaviyo. external_id er
+                // kundekort-id-en (teknisk matchingsnøkkel for upsert, ikke persondata).
+                var profilEgenskaper = new Dictionary<string, object?> { ["laanetype"] = k.Laanetype };
+                await UpsertProfilAsync(epost, k.Mobilnummer, k.FulltNavn, k.Id.ToString(), profilEgenskaper);
+
+                if (!string.IsNullOrWhiteSpace(epost))
+                {
+                    var eventEgen = new Dictionary<string, object?> { ["laanetype"] = k.Laanetype };
+                    if (ekstraEventEgenskaper is not null)
+                        foreach (var kv in ekstraEventEgenskaper) eventEgen[kv.Key] = kv.Value;
+                    await SendEventAsync(metric, epost, eventEgen);
+                }
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Klaviyo Fyr({Metric}) feilet", metric); }
+        });
+    }
+
+    // Enkel norsk E.164-normalisering; returnerer null hvis nummeret ikke gir mening (så Klaviyo ikke avviser).
+    private static string? NormaliserTelefon(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var plus = raw.TrimStart().StartsWith("+");
+        var d = new string(raw.Where(char.IsDigit).ToArray());
+        if (plus && d.Length >= 8) return "+" + d;
+        if (d.Length == 8) return "+47" + d;
+        if (d.StartsWith("47") && d.Length == 10) return "+" + d;
+        if (d.StartsWith("00") && d.Length >= 10) return "+" + d[2..];
+        return null;   // ukjent format → utelat (unngår 400 fra Klaviyo)
+    }
+
+    private static (string? fornavn, string? etternavn) DelNavn(string? navn)
+    {
+        if (string.IsNullOrWhiteSpace(navn)) return (null, null);
+        var deler = navn.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return deler.Length == 1 ? (deler[0], null) : (deler[0], deler[1]);
     }
 
     private static string Kort(string? s) => string.IsNullOrEmpty(s) ? "" : (s.Length > 300 ? s[..300] + "…" : s);

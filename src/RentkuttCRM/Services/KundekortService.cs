@@ -85,7 +85,9 @@ public class KundekortService
     private static readonly List<Kundekort> _staging = new();
     private bool _initialized;
 
-    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, AlarmService alarm, DatabaseMigrator migrator, IConfiguration cfg, ILogger<KundekortService> log)
+    private readonly KlaviyoService _klaviyo;
+
+    public KundekortService(Supabase.Client client, PostnummerService postnr, LoggService logg, CryptoService krypto, AlarmService alarm, DatabaseMigrator migrator, KlaviyoService klaviyo, IConfiguration cfg, ILogger<KundekortService> log)
     {
         _client = client;
         _postnr = postnr;
@@ -93,6 +95,7 @@ public class KundekortService
         _krypto = krypto;
         _alarm = alarm;
         _migrator = migrator;
+        _klaviyo = klaviyo;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"])
                        && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
@@ -724,6 +727,10 @@ public class KundekortService
             await q.Update();
             InvaliderCache();
             await _logg.LoggAsync(id, aktor, $"Endret status til {status}");
+
+            // Klaviyo: oppdater kunde + send «Status endret» (no-op hvis Klaviyo av/ukonfigurert).
+            var kort = await GetAsync(id);
+            if (kort is not null) { kort.Status = status; _klaviyo.Fyr(kort, "Status endret"); }
         }
         catch (Exception ex) { _log.LogError(ex, "Endring av status feilet"); }
     }

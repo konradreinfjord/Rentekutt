@@ -58,9 +58,14 @@ public class BankSendingService
     private static readonly List<BankSending> _staging = new();
     private bool _initialized;
 
-    public BankSendingService(Supabase.Client client, IConfiguration cfg, ILogger<BankSendingService> log)
+    private readonly KundekortService _kundekort;
+    private readonly KlaviyoService _klaviyo;
+
+    public BankSendingService(Supabase.Client client, KundekortService kundekort, KlaviyoService klaviyo, IConfiguration cfg, ILogger<BankSendingService> log)
     {
         _client = client;
+        _kundekort = kundekort;
+        _klaviyo = klaviyo;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"]) && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
     }
@@ -78,7 +83,13 @@ public class BankSendingService
         {
             await EnsureInitAsync();
             var resp = await _client.From<BankSending>().Insert(s);
-            return (resp.Models.FirstOrDefault() ?? s, null);
+            var lagret = resp.Models.FirstOrDefault() ?? s;
+
+            // Klaviyo: send «Søknad sendt til bank» (med banknavn) + oppdater kunde.
+            if (lagret.KundekortId is Guid kid && await _kundekort.GetAsync(kid) is { } kort)
+                _klaviyo.Fyr(kort, "Søknad sendt til bank");
+
+            return (lagret, null);
         }
         catch (Exception ex) { _log.LogError(ex, "Logging av banksending feilet"); return (s, ex.Message); }
     }

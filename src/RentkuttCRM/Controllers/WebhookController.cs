@@ -22,9 +22,11 @@ public class WebhookController : ControllerBase
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<WebhookController> _log;
 
+    private readonly KlaviyoService _klaviyo;
+
     public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
         SmsMalService sms, SamtykkeService samtykke, AlarmService alarm, WebhookPayloadService payloads,
-        LoggService logg, IWebHostEnvironment env, ILogger<WebhookController> log)
+        LoggService logg, KlaviyoService klaviyo, IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
@@ -34,6 +36,7 @@ public class WebhookController : ControllerBase
         _alarm = alarm;
         _payloads = payloads;
         _logg = logg;
+        _klaviyo = klaviyo;
         _env = env;
         _log = log;
     }
@@ -159,6 +162,10 @@ public class WebhookController : ControllerBase
                     await _samtykke.RegistrerAsync(k.Id, SamtykkeService.FormaalKreditt, KildeLabel(hook.Name), tekstversjon: SamtykkeService.SamtykketekstVersjon, ip: clientIp);
 
                 await _sms.MaybeSendAutomatikkAsync(k);
+
+                // Klaviyo: opprett/oppdater kunde + send event ved mottak (no-op hvis av/ukonfigurert).
+                _klaviyo.Fyr(k, k.Status == KundekortService.StatusPaabegynt ? "Påbegynt søknad" : "Nytt lead");
+
                 opprettet++;
                 forsteId ??= k.Id;
                 var belop = k.OnsketLaanebelop.HasValue ? $" · {k.OnsketLaanebelop:N0} kr" : "";
@@ -276,6 +283,8 @@ public class WebhookController : ControllerBase
                         $"Påbegynt søknad opprettet via {kildeLabel}-autentisering — subjekt/sesjon: {sesjonsRef}", kategori: "kobling");
                     await _hooks.RecordReceiptAsync(hook, $"{kildeLabel}-bekreftelse (påbegynt søknad)");
                     await _events.LogAsync(kildeLabel, $"Påbegynt søknad opprettet fra {kildeLabel}-bekreftelse", hook.Name);
+                    // Klaviyo: opprett/oppdater kunde + send «Påbegynt søknad».
+                    _klaviyo.Fyr(k, "Påbegynt søknad");
                 }
             }
         }
