@@ -23,6 +23,7 @@
 @inject RentkuttCRM.Services.DatabaseMigrator Migrator
 @inject RentkuttCRM.Services.AlarmService Alarm
 @inject RentkuttCRM.Services.ZissonService Zisson
+@inject RentkuttCRM.Services.NextcomService Nextcom
 @inject Microsoft.Extensions.Hosting.IHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -857,6 +858,67 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                 🔒 Brukernavn/passord leses kun fra server-config (Azure), aldri fra databasen. Miljø og på/av lagres i innstillinger.
                 Test bruker <span class="mono">netbankpp.instabank.no</span>, produksjon <span class="mono">netbank.instabank.no</span>.
             </p>
+        </div>
+
+        @* ---- Soknedal Sparebank (Nextcom webhook) ---- *@
+        @if (Soknedal is { } sok)
+        {
+            <div class="bank-widget @(!string.IsNullOrWhiteSpace(sok.WebhookUrl) && sok.AutoSend ? "aktiv" : "")">
+                <div class="bw-head">
+                    <div class="bw-logo">SS</div>
+                    <div class="bw-titles">
+                        <div class="bw-title">Soknedal Sparebank <span class="ww-tag">Webhook · Nextcom</span></div>
+                        <div class="bw-sub">Lead-overlevering via Nextcom-landingsside (form-POST): navn, e-post, telefon, nåværende bank/rente og lånesum.</div>
+                    </div>
+                    <span class="bw-status status @(!string.IsNullOrWhiteSpace(sok.WebhookUrl) && sok.AutoSend ? "on" : "off")">@(!string.IsNullOrWhiteSpace(sok.WebhookUrl) && sok.AutoSend ? "Aktiv" : "Av")</span>
+                </div>
+
+                <div class="kv-list" style="margin-bottom:16px">
+                    <span class="k">Webhook-URL</span>
+                    <span class="v">@(string.IsNullOrWhiteSpace(sok.WebhookUrl) ? "Ikke satt" : "Satt ✓")</span>
+                    <span class="k">Auto-send</span>
+                    <span class="v">@(sok.AutoSend ? "På — matchende leads sendes automatisk" : "Av — vises kun som foreslått bank")</span>
+                    <span class="k">Felt sendt</span>
+                    <span class="v">FirstName · SecondName · Email · CellPhone · Extra2 (bank) · Extra3 (rente) · Extra4 (lånesum)</span>
+                </div>
+
+                <h3 class="ww-h">Styring</h3>
+                <div class="rb-field" style="margin-bottom:8px">
+                    <label>Webhook-URL (Nextcom landingsside)</label>
+                    <input class="rb-input mono" @bind="_soknedalUrl" placeholder="https://…nextcom.no/…?id=1&friendlyUrl=…" />
+                </div>
+                <div class="rule-builder" style="align-items:flex-end; margin-bottom:8px">
+                    <button class="btn-sm" @onclick="() => LagreSoknedalUrl(sok)">Lagre URL</button>
+                    <div class="rb-field" style="max-width:150px">
+                        <label>Auto-send</label>
+                        <div class="seg onoff">
+                            <button class="@(!sok.AutoSend ? "active av" : "")" @onclick="() => SettSoknedalAuto(sok, false)">AV</button>
+                            <button class="@(sok.AutoSend ? "active" : "")" @onclick="() => SettSoknedalAuto(sok, true)">PÅ</button>
+                        </div>
+                    </div>
+                    <button class="btn-primary rb-add" @onclick="() => TestSoknedal(sok)" disabled="@_soknedalTester">@(_soknedalTester ? "Tester…" : "Test webhook")</button>
+                </div>
+                @if (!string.IsNullOrEmpty(_soknedalMsg))
+                {
+                    <p class="page-sub" style="margin:0 0 8px; font-size:12px; color:@(_soknedalOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_soknedalMsg</p>
+                }
+                <p class="page-sub" style="margin:0; font-size:12px">Ruting (hvilke leads → Soknedal) styres i Logikk-matrisen. Auto-send krever både PÅ her og en matchende regel. «Test webhook» sender en testkontakt til Nextcom.</p>
+            </div>
+        }
+
+        @* ---- Frittstående webhook-test (Nextcom) — alltid tilgjengelig ---- *@
+        <div class="section">
+            <h3 class="ww-h">Test webhook (Nextcom)</h3>
+            <p class="page-sub" style="margin:0 0 8px; font-size:12px">Send en testkontakt til en Nextcom-landingsside for å bekrefte at URL-en virker — uavhengig av bank-kortet. Sender navn «Test Testesen», e-post/telefon/beløp som testverdier.</p>
+            <div class="rb-field" style="margin-bottom:8px">
+                <label>Webhook-URL</label>
+                <input class="rb-input mono" @bind="_nextcomTestUrl" placeholder="https://…nextcom.no/…?id=1&friendlyUrl=…" />
+            </div>
+            <button class="btn-primary btn-sm" @onclick="TestNextcom" disabled="@(_nextcomTester || string.IsNullOrWhiteSpace(_nextcomTestUrl))">@(_nextcomTester ? "Sender…" : "Send test")</button>
+            @if (!string.IsNullOrEmpty(_nextcomMsg))
+            {
+                <p class="page-sub" style="margin:8px 0 0; font-size:12px; color:@(_nextcomOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_nextcomMsg</p>
+            }
         </div>
 
         @* ---- Siste søknader sendt til bank ---- *@
@@ -1832,6 +1894,8 @@ else if (_active == "GDPR")
         _userRows = usersTask.Result;
         _loadingUsers = false;   // brukerlista er hentet – vis tabellen (ellers står den på «Laster …»)
         _banks = banksTask.Result;
+        _soknedalUrl = _banks.FirstOrDefault(b => string.Equals(b.Navn, "Soknedal Sparebank", StringComparison.OrdinalIgnoreCase))?.WebhookUrl;
+        _nextcomTestUrl = _soknedalUrl;   // forhåndsfyll frittstående test med Soknedal-URL hvis satt
         _produkter = produktTask.Result;
 
         // Selvhelbredende: garanter at alle Instabank-partnere har standardproduktene
@@ -2073,6 +2137,67 @@ else if (_active == "GDPR")
         _active = t;
         if (t == "Dialer" && !_dialerLastet) await LastDialerData();
         if (t == "Duplikater" && _duplikater.Count == 0 && !_duplikaterLaster) await LastDuplikater();
+    }
+
+    // ---- Soknedal Sparebank (Nextcom webhook) ----
+    private Partner? Soknedal => _banks.FirstOrDefault(b => string.Equals(b.Navn, "Soknedal Sparebank", StringComparison.OrdinalIgnoreCase));
+    private string? _soknedalUrl;
+    private bool _soknedalTester;
+    private bool _soknedalOk;
+    private string? _soknedalMsg;
+
+    private async Task LagreSoknedalUrl(Partner sok)
+    {
+        await Partners.UpdateWebhookUrlAsync(sok.Id, _soknedalUrl);
+        sok.WebhookUrl = string.IsNullOrWhiteSpace(_soknedalUrl) ? null : _soknedalUrl.Trim();
+        _soknedalOk = true; _soknedalMsg = "Webhook-URL lagret.";
+    }
+
+    private async Task SettSoknedalAuto(Partner sok, bool på)
+    {
+        await Partners.UpdateAutoSendAsync(sok.Id, på);
+        sok.AutoSend = på;
+    }
+
+    private async Task TestSoknedal(Partner sok)
+    {
+        _soknedalTester = true; _soknedalMsg = null; StateHasChanged();
+        try
+        {
+            var url = string.IsNullOrWhiteSpace(_soknedalUrl) ? sok.WebhookUrl : _soknedalUrl!.Trim();
+            var testK = new Kundekort
+            {
+                FulltNavn = "Test Testesen", Epost = "test@rentekutt.no", Mobilnummer = "99999999",
+                NavarendeBank = "Testbank", NaavaerendeRente = 5.99m, OnsketLaanebelop = 1_000_000m,
+            };
+            var r = await Nextcom.SendAsync(url, testK);
+            _soknedalOk = r.Ok;
+            _soknedalMsg = (r.Ok ? "✓ " : "✗ ") + r.Detalj;
+        }
+        finally { _soknedalTester = false; }
+    }
+
+    // Frittstående Nextcom-webhook-test (uavhengig av bank-kortet).
+    private string? _nextcomTestUrl;
+    private bool _nextcomTester;
+    private bool _nextcomOk;
+    private string? _nextcomMsg;
+    private async Task TestNextcom()
+    {
+        if (string.IsNullOrWhiteSpace(_nextcomTestUrl)) return;
+        _nextcomTester = true; _nextcomMsg = null; StateHasChanged();
+        try
+        {
+            var testK = new Kundekort
+            {
+                FulltNavn = "Test Testesen", Epost = "test@rentekutt.no", Mobilnummer = "99999999",
+                NavarendeBank = "Testbank", NaavaerendeRente = 5.99m, OnsketLaanebelop = 1_000_000m,
+            };
+            var r = await Nextcom.SendAsync(_nextcomTestUrl!.Trim(), testK);
+            _nextcomOk = r.Ok;
+            _nextcomMsg = (r.Ok ? "✓ " : "✗ ") + r.Detalj;
+        }
+        finally { _nextcomTester = false; }
     }
 
     private List<KundekortService.DuplikatGruppe> _duplikater = new();

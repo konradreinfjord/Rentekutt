@@ -137,7 +137,9 @@ public class BankSendWorker : BackgroundService
                     var instabank = scope.ServiceProvider.GetRequiredService<InstabankService>();
                     var samtykke = scope.ServiceProvider.GetRequiredService<SamtykkeService>();
                     var krypto = scope.ServiceProvider.GetRequiredService<CryptoService>();
-                    utfall = await BehandleAsync(neste, ko, kunder, instabank, samtykke, krypto);
+                    var partnere = scope.ServiceProvider.GetRequiredService<PartnerService>();
+                    var nextcom = scope.ServiceProvider.GetRequiredService<NextcomService>();
+                    utfall = await BehandleAsync(neste, ko, kunder, instabank, samtykke, krypto, partnere, nextcom);
                 }
             }
             catch (Exception ex) { _log.LogError(ex, "Sendekø-syklus feilet"); }
@@ -176,15 +178,19 @@ public class BankSendWorker : BackgroundService
         }
     }
 
-    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank, SamtykkeService samtykke, CryptoService krypto)
+    private async Task<Utfall> BehandleAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank, SamtykkeService samtykke, CryptoService krypto, PartnerService partnere, NextcomService nextcom)
     {
-        // Banker uten hardkodet API-sending registreres som manuelt videresendt (ingen API-kall).
         if (!InstabankService.ErInstabankNavn(s.Bank))
         {
+            // Webhook-bank (f.eks. Nextcom): har banken en webhook-URL, sendes leadet dit (form-POST).
+            var partner = string.IsNullOrWhiteSpace(s.Bank) ? null : await partnere.HentByNavnAsync(s.Bank);
+            if (partner is { WebhookUrl: { Length: > 0 } url } && s.KundekortId is { } wid && await kunder.GetAsync(wid) is { } wkort)
+                return await SendWebhookAsync(s, url, wkort, ko, kunder, nextcom);
+
+            // Ingen webhook → registrer som manuelt videresendt (ingen API-kall), som før.
             s.Status = SendStatus.Manuelt;
             s.Detalj = "Videresendt manuelt til banken.";
             await ko.OppdaterAsync(s);
-            // Sendt til bank (manuelt) → utled kundekortstatus fra bankene («Sendt - I prosess»).
             if (s.KundekortId is { } mid)
             {
                 var alle = await ko.ForKundeAsync(mid);
@@ -194,6 +200,48 @@ public class BankSendWorker : BackgroundService
             return Utfall.IngenApiKall;
         }
 
+        return await BehandleInstabankAsync(s, ko, kunder, instabank, samtykke, krypto);
+    }
+
+    // Levering via webhook (Nextcom o.l.). Ingen samtykke-sperre (lead-overlevering uten fnr).
+    private async Task<Utfall> SendWebhookAsync(BankSending s, string url, Kundekort k, BankSendingService ko, KundekortService kunder, NextcomService nextcom)
+    {
+        var r = await nextcom.SendAsync(url, k);
+        s.Forsok += 1;
+        Utfall utfall;
+        if (r.Ok)
+        {
+            s.Status = SendStatus.Sendt;
+            s.EksternRef = r.EksternRef;
+            s.Detalj = r.Detalj;
+            utfall = Utfall.Ok;
+        }
+        else if (ErForbigaaende(r.Detalj) && s.Forsok < MaxForsok)
+        {
+            s.Status = SendStatus.IKo;
+            s.Detalj = $"Forsøk {s.Forsok} utsatt: {r.Detalj}";
+            utfall = Utfall.Forbigaaende;
+        }
+        else
+        {
+            s.Status = SendStatus.Feilet;
+            s.Detalj = r.Detalj;
+            utfall = ErForbigaaende(r.Detalj) ? Utfall.Forbigaaende : Utfall.Varig;
+            if (s.KundekortId is { } fid) await kunder.SetStatusAsync(fid, KundekortService.StatusTekniskFeil);
+            await AlarmAsync("Banksending", $"Sending til {s.Bank} feilet",
+                $"{s.KundeNavn ?? "Kunde"}: {r.Detalj}", AlarmService.Alvorlighet.Advarsel, $"banksending-feilet-{s.KundekortId}");
+        }
+        await ko.OppdaterAsync(s);
+        if (utfall == Utfall.Ok && s.KundekortId is { } id)
+        {
+            var alle = await ko.ForKundeAsync(id);
+            await kunder.OppdaterStatusFraBankerAsync(id, k.Status, alle, "System (sendt til bank)");
+        }
+        return utfall;
+    }
+
+    private async Task<Utfall> BehandleInstabankAsync(BankSending s, BankSendingService ko, KundekortService kunder, InstabankService instabank, SamtykkeService samtykke, CryptoService krypto)
+    {
         if (s.KundekortId is not { } id)
         {
             s.Status = SendStatus.Feilet; s.Detalj = "Mangler kundekort.";

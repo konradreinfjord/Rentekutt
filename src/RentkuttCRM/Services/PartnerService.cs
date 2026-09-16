@@ -21,6 +21,9 @@ public class Partner : BaseModel
     // false = banken vises som «foreslått bank» i markedet (menneske bestemmer).
     [Column("auto_send")] public bool AutoSend { get; set; }
 
+    // Webhook-URL for banker som mottar leads via form-POST (f.eks. Nextcom). Tom = ingen webhook.
+    [Column("webhook_url")] public string? WebhookUrl { get; set; }
+
     // Transient (ikke persistert) — metode-valg i API-fanen. JsonIgnore så den
     // ikke sendes til databasen (ingen Method-kolonne der).
     [JsonIgnore] public string Method { get; set; } = "Webhook";
@@ -137,6 +140,31 @@ public class PartnerService
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av auto-send feilet"); }
+    }
+
+    public async Task UpdateWebhookUrlAsync(Guid id, string? url)
+    {
+        url = string.IsNullOrWhiteSpace(url) ? null : url.Trim();
+        if (!IsConfigured)
+        {
+            var p = _staging.FirstOrDefault(x => x.Id == id);
+            if (p is not null) p.WebhookUrl = url;
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<Partner>().Where(x => x.Id == id).Set(x => x.WebhookUrl!, url!).Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av webhook-URL feilet"); }
+    }
+
+    /// <summary>Henter en partner på navn (uansett store/små bokstaver). Brukes av sendekøen for å
+    /// finne webhook-URL for banken.</summary>
+    public async Task<Partner?> HentByNavnAsync(string navn)
+    {
+        if (string.IsNullOrWhiteSpace(navn)) return null;
+        return (await ListAsync()).FirstOrDefault(p => string.Equals(p.Navn, navn, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task EnsureInitAsync()

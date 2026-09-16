@@ -113,6 +113,9 @@ builder.Services.AddScoped<SettingsService>();
 // Fagforeninger (dropdown på kundekort, dynamisk utvidbar).
 builder.Services.AddScoped<FagforeningService>();
 
+// Nextcom webhook-levering (bank-autosending, f.eks. Soknedal Sparebank).
+builder.Services.AddScoped<NextcomService>();
+
 // Dialer (Zisson/Wave click-to-call).
 builder.Services.AddScoped<ZissonService>();
 builder.Services.AddScoped<DialerService>();
