@@ -32,17 +32,26 @@ public static class Produktkategori
         if (k.KundeType == "B2B")
             return t.Contains("kassa") || t.Contains("kasse") ? Kassakreditt : Bedriftslaan;
 
-        // Privat: styr etter LÅNETYPE (ikke boligverdi — mange forbrukslån-kunder eier bolig).
+        // Privat: styr etter LÅNETYPE. Eksplisitte typer først.
         if (t.Contains("førstehjem") || t.Contains("forstehjem")) return Forstehjem;
         if (t.Contains("rammel")) return Rammelaan;
         if (t.Contains("kassa") || t.Contains("kasse")) return Kassakreditt;
         if (t.Contains("bolig")) return ErUng(k) ? BoliglaanUng : Boliglaan;
-        if (t.Contains("forbruk") || t.Contains("refinansi") || t.Contains("kreditt")) return Forbrukslaan;
+        // «Kredittkort»/eksplisitt forbruk = usikret → forbrukslån.
+        if (t.Contains("forbruk") || t.Contains("kredittkort")) return Forbrukslaan;
 
-        // Ukjent lånetype: boliggjeld indikerer boliglån-kunde, ellers forbrukslån som standard.
-        if ((k.Boliggjeld ?? 0) > 0) return ErUng(k) ? BoliglaanUng : Boliglaan;
+        // «Refinansiering» og ukjent lånetype er tvetydige: refinansiering av boliglån (sikret,
+        // store beløp) hører til Boliglån, mens refinansiering av smågjeld er forbrukslån. Skill
+        // på boligindikatorer — boliggjeld/boligverdi registrert, eller lånebeløp over
+        // forbrukslånstaket (~1 MNOK). Datagrunnlaget viser at ~alle «Refinansiering» er boliglån.
+        if (ErBoligindikert(k)) return ErUng(k) ? BoliglaanUng : Boliglaan;
         return Forbrukslaan;
     }
+
+    // Boligindikator: registrert boliggjeld/boligverdi, eller lånebeløp over forbrukslånstaket.
+    // Forbrukslån i Norge ligger typisk under ~600k; et lån på ≥ 1 MNOK er reelt et boliglån.
+    private static bool ErBoligindikert(Kundekort k) =>
+        (k.Boliggjeld ?? 0) > 0 || (k.Boligverdi ?? 0) > 0 || (k.OnsketLaanebelop ?? 0) >= 1_000_000m;
 
     // «Ung» = født 1993 eller senere (samme definisjon som «Boliglån ung»-merknaden).
     private static bool ErUng(Kundekort k) => BeregningService.FnrFodselsaar(k.Foedselsnummer) is int a && a >= 1993;
