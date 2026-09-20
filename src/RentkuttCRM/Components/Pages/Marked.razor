@@ -152,7 +152,7 @@ else
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
                     <td class="mono-cell">@(ErBedrift
                         ? (string.IsNullOrWhiteSpace(k.Orgnr) ? "—" : k.Orgnr)
-                        : (string.IsNullOrWhiteSpace(k.Foedselsnummer) ? (string.IsNullOrWhiteSpace(k.KundeId) ? "—" : k.KundeId) : k.Foedselsnummer))</td>
+                        : (string.IsNullOrWhiteSpace(k.Foedselsnummer) ? "—" : k.Foedselsnummer))</td>
                     <td>@(string.IsNullOrWhiteSpace(k.NavarendeBank) ? "—" : k.NavarendeBank)</td>
                     <td>
                         @{ var forslag = Forslag(k); }
@@ -396,7 +396,7 @@ else
             Func<Kundekort, object?> key = _sortField switch
             {
                 "navn" => k => k.FulltNavn ?? "",
-                "personnr" => k => ErBedrift ? (k.Orgnr ?? "") : (k.Foedselsnummer ?? k.KundeId ?? ""),
+                "personnr" => k => ErBedrift ? (k.Orgnr ?? "") : (k.Foedselsnummer ?? ""),
                 "telefon" => k => k.Mobilnummer ?? "",
                 "epost" => k => k.Epost ?? "",
                 "kommune" => k => k.Kommune ?? "",
