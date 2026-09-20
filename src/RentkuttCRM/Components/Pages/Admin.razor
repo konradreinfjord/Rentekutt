@@ -896,6 +896,13 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                             <button class="@(sok.AutoSend ? "active" : "")" @onclick="() => SettSoknedalAuto(sok, true)">PÅ</button>
                         </div>
                     </div>
+                    <div class="rb-field" style="max-width:190px">
+                        <label>Send uferdige etter 30 min</label>
+                        <div class="seg onoff">
+                            <button class="@(!sok.AutoPaabegynt ? "active av" : "")" @onclick="() => SettSoknedalAutoPaabegynt(sok, false)">AV</button>
+                            <button class="@(sok.AutoPaabegynt ? "active" : "")" @onclick="() => SettSoknedalAutoPaabegynt(sok, true)">PÅ</button>
+                        </div>
+                    </div>
                     <button class="btn-primary rb-add" @onclick="() => TestSoknedal(sok)" disabled="@_soknedalTester">@(_soknedalTester ? "Tester…" : "Test webhook")</button>
                 </div>
                 @if (!string.IsNullOrEmpty(_soknedalMsg))
@@ -1145,6 +1152,10 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
             new[] { "Kredittscore og risikoklasse", "Betalingsanmerkninger og inkasso", "Bekreftet inntekt (skattedata)" },
             "Kredittsjekk__ClientId      = <klient-ID>\nKredittsjekk__ClientSecret  = <hemmelighet>\nKredittsjekk__ApiUrl        = <endepunkt>")
     }
+}
+else if (_active == "Kommunikasjon")
+{
+    <KommunikasjonPanel />
 }
 else if (_active == "Duplikater")
 {
@@ -1401,12 +1412,12 @@ else if (_active == "Logikk-matrise")
             person-/bedriftsmarkedet. Hvilke søknader som treffer styres av rutingsreglene over (f.eks. postnummer).
         </p>
         @{ var hardkodet = _banks.Where(b => InstabankService.ErInstabankNavn(b.Navn)).ToList(); }
-        <table class="data-table" style="max-width:520px">
-            <thead><tr><th>Bank</th><th>Automatisk sending</th></tr></thead>
+        <table class="data-table" style="max-width:720px">
+            <thead><tr><th>Bank</th><th>Automatisk sending</th><th>Send uferdige etter 30 min</th></tr></thead>
             <tbody>
                 @if (hardkodet.Count == 0)
                 {
-                    <tr><td colspan="2" class="empty-row">Ingen banker med konfigurert sending ennå — kun Instabank støttes.</td></tr>
+                    <tr><td colspan="3" class="empty-row">Ingen banker med konfigurert sending ennå — kun Instabank støttes.</td></tr>
                 }
                 @foreach (var b in hardkodet)
                 {
@@ -1418,10 +1429,21 @@ else if (_active == "Logikk-matrise")
                                 <button class="@(b.AutoSend ? "active" : "")" @onclick="() => SettAutoSend(b, true)">PÅ</button>
                             </div>
                         </td>
+                        <td>
+                            <div class="seg onoff">
+                                <button class="@(!b.AutoPaabegynt ? "active av" : "")" @onclick="() => SettAutoPaabegynt(b, false)">AV</button>
+                                <button class="@(b.AutoPaabegynt ? "active" : "")" @onclick="() => SettAutoPaabegynt(b, true)">PÅ</button>
+                            </div>
+                        </td>
                     </tr>
                 }
             </tbody>
         </table>
+        <p class="page-sub" style="margin:12px 0 0; font-size:12px">
+            <strong>Send uferdige etter 30 min:</strong> er den PÅ, sendes leads som fortsatt står i
+            «Påbegynt søknad» 30 minutter etter registrering automatisk til banken (hvis de matcher
+            logikk-matrisen). Kun nye leads etter at bryteren ble slått på — gamle søknader sendes aldri.
+        </p>
     </div>
 }
 else if (_active == "Merknad lån")
@@ -2159,6 +2181,12 @@ else if (_active == "GDPR")
         sok.AutoSend = på;
     }
 
+    private async Task SettSoknedalAutoPaabegynt(Partner sok, bool på)
+    {
+        await Partners.UpdateAutoPaabegyntAsync(sok.Id, på);
+        sok.AutoPaabegynt = på;
+    }
+
     private async Task TestSoknedal(Partner sok)
     {
         _soknedalTester = true; _soknedalMsg = null; StateHasChanged();
@@ -2469,7 +2497,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Duplikater", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
+    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Kommunikasjon", "Duplikater", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
     private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
@@ -3228,6 +3256,12 @@ else if (_active == "GDPR")
     {
         b.AutoSend = på;
         await Partners.UpdateAutoSendAsync(b.Id, på);
+    }
+
+    private async Task SettAutoPaabegynt(Partner b, bool på)
+    {
+        b.AutoPaabegynt = på;
+        await Partners.UpdateAutoPaabegyntAsync(b.Id, på);
     }
 
     private async Task SaveProvisjon(Partner b, ChangeEventArgs e)

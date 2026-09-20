@@ -24,6 +24,10 @@ public class Partner : BaseModel
     // Webhook-URL for banker som mottar leads via form-POST (f.eks. Nextcom). Tom = ingen webhook.
     [Column("webhook_url")] public string? WebhookUrl { get; set; }
 
+    // Auto-send av uferdige søknader: true = matchende leads som fortsatt står i «Påbegynt søknad»
+    // 30 min etter registrering sendes automatisk til banken. Uavhengig av AutoSend.
+    [Column("auto_paabegynt")] public bool AutoPaabegynt { get; set; }
+
     // Transient (ikke persistert) — metode-valg i API-fanen. JsonIgnore så den
     // ikke sendes til databasen (ingen Method-kolonne der).
     [JsonIgnore] public string Method { get; set; } = "Webhook";
@@ -140,6 +144,24 @@ public class PartnerService
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av auto-send feilet"); }
+    }
+
+    public async Task UpdateAutoPaabegyntAsync(Guid id, bool på)
+    {
+        if (!IsConfigured)
+        {
+            var p = _staging.FirstOrDefault(x => x.Id == id);
+            if (p is not null) p.AutoPaabegynt = på;
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<Partner>().Where(x => x.Id == id)
+                .Set(x => x.AutoPaabegynt, på)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av auto-påbegynt feilet"); }
     }
 
     public async Task UpdateWebhookUrlAsync(Guid id, string? url)

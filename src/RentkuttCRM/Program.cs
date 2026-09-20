@@ -170,6 +170,10 @@ builder.Services.AddHostedService<GdprOvervaakWorker>();
 // SMS-løp: 24-timers påminnelse til søknader som fortsatt står i «Påbegynt søknad».
 builder.Services.AddHostedService<Paamindelse24tWorker>();
 
+// Auto-send av uferdige søknader: leads som står i «Påbegynt søknad» 30 min etter registrering
+// sendes automatisk til matchende banker med bryteren «Send uferdige etter 30 min» PÅ (kun prod).
+builder.Services.AddHostedService<AutoPaabegyntWorker>();
+
 // Auto-timeout: «Sendt bank» → «Sendt til bank - Timeout» etter innstilt antall dager.
 builder.Services.AddHostedService<SendtBankTimeoutWorker>();
 
