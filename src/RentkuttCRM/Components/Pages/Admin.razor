@@ -379,6 +379,12 @@ else if (_active == "Dialer")
                     @if (!string.IsNullOrWhiteSpace(_zCallerId) && !_zNumre.Any(n => n.Nummer == _zCallerId)) { <option value="@_zCallerId" selected>@_zCallerId</option> }
                 </select>
             </div>
+            <div class="rb-field" style="max-width:260px"><label>… eller skriv inn godkjent alias</label>
+                <div style="display:flex; gap:6px">
+                    <input class="rb-input mono" @bind="_zCallerIdManuell" placeholder="+4793400601" />
+                    <button class="btn-sm" @onclick="SettManuellCallerId">Lagre</button>
+                </div>
+            </div>
             <div class="rb-field" style="max-width:230px"><label>Nummerformat (utgående)</label>
                 <select class="rb-input" @onchange="ChangeNummerFormat">
                     <option value="e164" selected="@(_zNummerFormat == "e164")">E.164 (+4799…)</option>
@@ -2143,6 +2149,7 @@ else if (_active == "GDPR")
     private bool _zEnabled = true;
     private bool _zAutoAnswer = true;
     private string? _zCallerId;
+    private string? _zCallerIdManuell;
     private string? _zCustomerGuid;
     private string? _zCustomerMsg;
     private string _zNummerFormat = "e164";
@@ -2287,6 +2294,7 @@ else if (_active == "GDPR")
             _zEnabled = await Zisson.AktivertAsync();
             _zAutoAnswer = await Zisson.AutoAnswerAsync();
             _zCallerId = await Zisson.DefaultCallerIdAsync();
+            _zCallerIdManuell = _zCallerId;
             _zCustomerGuid = await Zisson.CustomerGuidAsync();
             _zNummerFormat = await Zisson.NummerFormatAsync();
             _zAgenter = await Zisson.HentAgenterAlleAsync();
@@ -2327,7 +2335,18 @@ else if (_active == "GDPR")
     private async Task ChangeCallerId(ChangeEventArgs e)
     {
         _zCallerId = e.Value?.ToString();
+        _zCallerIdManuell = _zCallerId;
         await Zisson.SettDefaultCallerIdAsync(_zCallerId);
+    }
+
+    // Manuell inntasting av utgående visningsnummer — for Zisson-godkjente alias som ikke
+    // dukker opp i «service-numbers»-lista (aliaser ≠ tjenestenumre hos Zisson).
+    private async Task SettManuellCallerId()
+    {
+        var v = string.IsNullOrWhiteSpace(_zCallerIdManuell) ? null : _zCallerIdManuell.Trim();
+        _zCallerId = v;
+        _zCallerIdManuell = v;
+        await Zisson.SettDefaultCallerIdAsync(v);
     }
 
     private async Task ChangeNummerFormat(ChangeEventArgs e)
