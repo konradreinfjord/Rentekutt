@@ -30,13 +30,15 @@ public class NextcomService
         if (string.IsNullOrWhiteSpace(url)) return new(false, null, "Mangler webhook-URL for banken.");
 
         var (fornavn, etternavn) = DelNavn(k.FulltNavn);
+        // Mobil sendes som rene siffer uten landkode (8-sifret norsk nummer) i feltet CellPhone.
+        var mobil = Kutt(Sifre(k.Mobilnummer), 15);
         // Nextcom-mapping (med maks-lengder fra skjemaet; verdier avkortes).
         var form = new Dictionary<string, string>
         {
             ["FirstName"] = Kutt(fornavn, 100),
             ["SecondName"] = Kutt(etternavn, 100),
             ["Email"] = Kutt(k.Epost, 100),
-            ["CellPhone"] = Kutt(Sifre(k.Mobilnummer), 15),
+            ["CellPhone"] = mobil,
             ["Extra2"] = Kutt(k.NavarendeBank, 15),                                  // Nåværende bank
             ["Extra3"] = Kutt(k.NaavaerendeRente?.ToString("0.##", Inv), 15),        // Nåværende rente
             ["Extra4"] = Kutt(k.OnsketLaanebelop?.ToString("0", Inv), 15),           // Lånesum
@@ -48,6 +50,11 @@ public class NextcomService
             var c = _http.CreateClient();
             c.Timeout = TimeSpan.FromSeconds(25);
             using var content = new FormUrlEncodedContent(form);
+            // Logg utgående felt (bevis på hva vi faktisk sender — bl.a. CellPhone). Nyttig når en
+            // bank sier «mangler mobil»: da kan vi vise nøyaktig payload mot Nextcom.
+            _log.LogInformation("Nextcom-sending → felt: CellPhone={CellPhone}, FirstName={FirstName}, SecondName={SecondName}, Email satt={HarEpost}",
+                form.GetValueOrDefault("CellPhone", "(tom)"), form.GetValueOrDefault("FirstName", "(tom)"),
+                form.GetValueOrDefault("SecondName", "(tom)"), !string.IsNullOrEmpty(form.GetValueOrDefault("Email")));
             using var res = await c.PostAsync(url, content, ct);
             var body = await res.Content.ReadAsStringAsync(ct);
 
