@@ -1464,20 +1464,18 @@ else if (_active == "Merknad lån")
         </p>
         <table class="data-table">
             <thead>
-                <tr><th>#</th><th>Parameter</th><th>Operator</th><th>Verdi</th><th>Merknad (badge)</th><th>Status</th><th></th></tr>
+                <tr><th>#</th><th>Betingelser (alle må matche)</th><th>Merknad (badge)</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
                 @if (_merknadsregler.Count == 0)
                 {
-                    <tr><td colspan="7" class="empty-row">Ingen merknadsregler ennå — legg til under.</td></tr>
+                    <tr><td colspan="5" class="empty-row">Ingen merknadsregler ennå — legg til under.</td></tr>
                 }
                 @foreach (var r in _merknadsregler.OrderBy(r => r.Prioritet))
                 {
                     <tr>
                         <td class="mono-cell">@r.Prioritet</td>
-                        <td>@LabelFor(r.FeltNokkel)</td>
-                        <td class="mono-cell">@r.Operator</td>
-                        <td>@r.Verdi</td>
+                        <td>@BetingelseTekst(r)</td>
                         <td>@MerknadBadge(r.BadgeTekst, r.BadgeFarge)</td>
                         <td>
                             <label class="toggle">
@@ -1494,50 +1492,74 @@ else if (_active == "Merknad lån")
 
     <div class="section">
         <h2>Ny merknadsregel</h2>
-        <div class="rule-builder">
-            <div class="rb-field">
-                <label>Felt (kundedata)</label>
-                <select class="rb-input" value="@_mkFieldKey" @onchange="OnMkFieldChanged">
-                    @foreach (var cat in Catalog.Categories)
-                    {
-                        <optgroup label="@cat">
-                            @foreach (var f in Catalog.InCategory(cat)) { <option value="@f.Key">@f.Label</option> }
-                        </optgroup>
-                    }
-                </select>
-            </div>
-            <div class="rb-field rb-op">
-                <label>Operator</label>
-                <select class="rb-input" @bind="_mkOp">
-                    @foreach (var o in MkOperators) { <option value="@o">@o</option> }
-                </select>
-            </div>
-            @{ var mnf = MkField; }
-            @if (_mkOp == "mellom")
-            {
-                <div class="rb-field rb-op" style="max-width:130px">
-                    <label>Fra</label>
-                    <div class="input-unit"><input class="rb-input" @bind="_mkFra" placeholder="fra" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+        <p class="page-sub" style="margin:-4px 0 12px; font-size:12.5px">
+            Legg til én eller flere premisser. <strong>Alle</strong> må matche (OG) før badgen vises —
+            f.eks. <em>Fødselsår &gt; 1993</em> OG <em>Lånetype inneholder «bolig»</em> → «Boliglån UNG».
+        </p>
+
+        @for (var i = 0; i < _mkRader.Count; i++)
+        {
+            var rad = _mkRader[i];
+            var mnf = MkFeltFor(rad);
+            <div class="rule-builder" style="margin-bottom:8px; align-items:flex-end">
+                <div class="rb-field" style="max-width:60px">
+                    <label>@(i == 0 ? "Hvis" : "OG")</label>
+                    <div style="height:38px; display:flex; align-items:center; font-weight:700; color:var(--text-2)">@(i == 0 ? "Hvis" : "OG")</div>
                 </div>
-                <div class="rb-field rb-op" style="max-width:130px">
-                    <label>Til</label>
-                    <div class="input-unit"><input class="rb-input" @bind="_mkTil" placeholder="til" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
-                </div>
-            }
-            else
-            {
                 <div class="rb-field">
-                    <label>Verdi</label>
-                    @if (mnf?.Type == FieldType.Enum && mnf.Options is not null)
+                    <label>Felt (kundedata)</label>
+                    <select class="rb-input" value="@rad.Felt" @onchange="e => OnMkRadFeltChanged(rad, e)">
+                        @foreach (var cat in Catalog.Categories)
+                        {
+                            <optgroup label="@cat">
+                                @foreach (var f in Catalog.InCategory(cat)) { <option value="@f.Key">@f.Label</option> }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+                <div class="rb-field rb-op">
+                    <label>Operator</label>
+                    <select class="rb-input" @bind="rad.Op">
+                        @foreach (var o in MkOpsFor(rad)) { <option value="@o">@o</option> }
+                    </select>
+                </div>
+                @if (rad.Op == "mellom")
+                {
+                    <div class="rb-field rb-op" style="max-width:130px">
+                        <label>Fra</label>
+                        <div class="input-unit"><input class="rb-input" @bind="rad.Fra" placeholder="fra" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                    </div>
+                    <div class="rb-field rb-op" style="max-width:130px">
+                        <label>Til</label>
+                        <div class="input-unit"><input class="rb-input" @bind="rad.Til" placeholder="til" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="rb-field">
+                        <label>Verdi</label>
+                        @if (mnf?.Type == FieldType.Enum && mnf.Options is not null)
+                        {
+                            <select class="rb-input" @bind="rad.Verdi">@foreach (var v in mnf.Options) { <option value="@v">@v</option> }</select>
+                        }
+                        else
+                        {
+                            <div class="input-unit"><input class="rb-input" @bind="rad.Verdi" placeholder="@(mnf?.Placeholder ?? "Verdi")" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                        }
+                    </div>
+                }
+                <div class="rb-field rb-op" style="max-width:44px">
+                    <label>&nbsp;</label>
+                    @if (_mkRader.Count > 1)
                     {
-                        <select class="rb-input" @bind="_mkValue">@foreach (var v in mnf.Options) { <option value="@v">@v</option> }</select>
-                    }
-                    else
-                    {
-                        <div class="input-unit"><input class="rb-input" @bind="_mkValue" placeholder="@(mnf?.Placeholder ?? "Verdi")" />@if (!string.IsNullOrEmpty(mnf?.Unit)) { <span class="unit-suffix">@mnf.Unit</span> }</div>
+                        <button class="btn-sm btn-danger" title="Fjern premiss" @onclick="() => FjernPremiss(rad)">✕</button>
                     }
                 </div>
-            }
+            </div>
+        }
+        <button class="btn-sm" style="margin-bottom:14px" @onclick="LeggTilPremiss">+ Legg til premiss (OG)</button>
+
+        <div class="rule-builder" style="align-items:flex-end">
             <div class="rb-arrow">→</div>
             <div class="rb-field">
                 <label>Merknad-tekst (badge)</label>
@@ -3070,17 +3092,24 @@ else if (_active == "GDPR")
 
     // ---- Merknad lån (universalfilter → fargebadge i markedet) ----
     private List<Merknadsregel> _merknadsregler = new();
-    private string _mkFieldKey = "alder";
-    private string _mkOp = "<";
-    private string _mkValue = "34";
-    private string _mkFra = "", _mkTil = "";
+
+    // Én redigerbar premiss-rad i «Ny merknadsregel»-byggeren. Første rad er hovedbetingelsen,
+    // øvrige er OG-premisser. Alle må matche for at badgen skal vises.
+    private sealed class MkRad
+    {
+        public string Felt = "alder";
+        public string Op = "<";
+        public string Verdi = "";
+        public string Fra = "", Til = "";
+    }
+    private List<MkRad> _mkRader = new() { new() };
     private string _mkBadgeTekst = "";
     private string _mkFarge = "gronn";
     private string? _mkMsg;
     private bool _mkOk;
 
-    private FieldDef? MkField => Catalog.Get(_mkFieldKey);
-    private string[] MkOperators => CustomerFieldCatalog.OperatorsFor(MkField?.Type ?? FieldType.Text);
+    private FieldDef? MkFeltFor(MkRad r) => Catalog.Get(r.Felt);
+    private string[] MkOpsFor(MkRad r) => CustomerFieldCatalog.OperatorsFor(MkFeltFor(r)?.Type ?? FieldType.Text);
 
     private RenderFragment MerknadBadge(string tekst, string fargeKey) => builder =>
     {
@@ -3091,33 +3120,55 @@ else if (_active == "GDPR")
         builder.CloseElement();
     };
 
-    private void OnMkFieldChanged(ChangeEventArgs e)
+    // Samlet, lesbar betingelse for tabellen: hovedbetingelse + tilleggspremisser med «OG».
+    private string BetingelseTekst(Merknadsregel r)
     {
-        _mkFieldKey = e.Value?.ToString() ?? "";
-        var f = MkField;
-        _mkOp = MkOperators.First();
-        _mkValue = f?.Type == FieldType.Enum && f.Options is { Length: > 0 } ? f.Options[0] : "";
-        _mkFra = _mkTil = "";
+        var deler = new List<string> { $"{LabelFor(r.FeltNokkel)} {r.Operator} {r.Verdi}" };
+        deler.AddRange(r.TilleggsListe.Select(p => $"{LabelFor(p.FeltNokkel)} {p.Operator} {p.Verdi}"));
+        return string.Join("  OG  ", deler);
     }
+
+    private void OnMkRadFeltChanged(MkRad r, ChangeEventArgs e)
+    {
+        r.Felt = e.Value?.ToString() ?? "";
+        var f = MkFeltFor(r);
+        r.Op = MkOpsFor(r).First();
+        r.Verdi = f?.Type == FieldType.Enum && f.Options is { Length: > 0 } ? f.Options[0] : "";
+        r.Fra = r.Til = "";
+    }
+
+    private void LeggTilPremiss() => _mkRader.Add(new());
+    private void FjernPremiss(MkRad r) { if (_mkRader.Count > 1) _mkRader.Remove(r); }
+
+    // Trekker ut (felt, operator, verdi) fra en rad; verdi settes sammen for «mellom»-intervall.
+    private static (string Felt, string Op, string Verdi) LesRad(MkRad r)
+        => (r.Felt, r.Op, r.Op == "mellom" ? $"{r.Fra.Trim()}-{r.Til.Trim()}" : (r.Verdi ?? "").Trim());
+
+    private static bool RadMangler(MkRad r)
+        => r.Op == "mellom" ? (string.IsNullOrWhiteSpace(r.Fra) || string.IsNullOrWhiteSpace(r.Til)) : string.IsNullOrWhiteSpace(r.Verdi);
 
     private async Task AddMerknad()
     {
-        _mkMsg = null;
-        var verdi = _mkOp == "mellom" ? $"{_mkFra.Trim()}-{_mkTil.Trim()}" : _mkValue?.Trim() ?? "";
-        if (string.IsNullOrWhiteSpace(_mkBadgeTekst)) { _mkMsg = "Fyll inn merknad-tekst (badge)."; _mkOk = false; return; }
-        if (_mkOp == "mellom" ? (string.IsNullOrWhiteSpace(_mkFra) || string.IsNullOrWhiteSpace(_mkTil)) : string.IsNullOrWhiteSpace(verdi))
-        { _mkMsg = "Fyll inn verdi (Fra/Til for intervall)."; _mkOk = false; return; }
+        _mkMsg = null; _mkOk = false;
+        if (string.IsNullOrWhiteSpace(_mkBadgeTekst)) { _mkMsg = "Fyll inn merknad-tekst (badge)."; return; }
+        if (_mkRader.Any(RadMangler)) { _mkMsg = "Fyll inn verdi på alle premisser (Fra/Til for intervall)."; return; }
+
+        var hoved = LesRad(_mkRader[0]);
+        var tillegg = _mkRader.Skip(1).Select(LesRad).Select(x => new Mpremiss(x.Felt, x.Op, x.Verdi)).ToList();
 
         var prioritet = _merknadsregler.Count == 0 ? 1 : _merknadsregler.Max(r => r.Prioritet) + 1;
-        var (lagret, feil) = await Merknad.AddAsync(prioritet, _mkFieldKey, _mkOp, verdi, _mkBadgeTekst.Trim(), _mkFarge);
+        var (lagret, feil) = await Merknad.AddAsync(prioritet, hoved.Felt, hoved.Op, hoved.Verdi, _mkBadgeTekst.Trim(), _mkFarge, tillegg);
         if (lagret is not null)
         {
             _merknadsregler = await Merknad.ListAsync();
-            _mkMsg = $"Merknadsregel lagret: {LabelFor(_mkFieldKey)} {_mkOp} {verdi} → «{_mkBadgeTekst.Trim()}»";
+            var betingelse = string.Join(" OG ", new[] { $"{LabelFor(hoved.Felt)} {hoved.Op} {hoved.Verdi}" }
+                .Concat(tillegg.Select(p => $"{LabelFor(p.FeltNokkel)} {p.Operator} {p.Verdi}")));
+            _mkMsg = $"Merknadsregel lagret: {betingelse} → «{_mkBadgeTekst.Trim()}»";
             _mkOk = true;
-            _mkBadgeTekst = ""; _mkFra = _mkTil = "";
+            _mkBadgeTekst = "";
+            _mkRader = new() { new() };
         }
-        else { _mkMsg = "Kunne ikke lagre: " + (feil ?? "ukjent databasefeil"); _mkOk = false; }
+        else { _mkMsg = "Kunne ikke lagre: " + (feil ?? "ukjent databasefeil"); }
     }
 
     private async Task ToggleMerknad(Merknadsregel r, bool aktiv)
