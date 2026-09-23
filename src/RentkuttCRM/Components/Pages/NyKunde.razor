@@ -54,6 +54,12 @@
                     <a class="btn-sm" href="@BrregUrl" target="_blank" rel="noopener noreferrer"
                        style="display:inline-flex; align-items:center; gap:5px; text-decoration:none"
                        title="Åpne i Brønnøysund (nettleser)">↗ Åpne i brreg</a>
+                    @if (HarOrgnr)
+                    {
+                        <a class="btn-sm" href="@LosoreUrl" target="_blank" rel="noopener noreferrer"
+                           style="display:inline-flex; align-items:center; gap:5px; text-decoration:none"
+                           title="Slå opp heftelser/rettsstiftelser i Løsøreregisteret (org.nr @BrregOrgnr)">⚖ Heftelser (Løsøre)</a>
+                    }
                 </div>
             }
             <div class="kk-head-chips">
@@ -130,8 +136,15 @@
                 <div><span>Adresse</span><strong>@Vis(e.Adresse)</strong></div>
             </div>
             <p class="page-sub" style="margin:12px 0 0; font-size:11.5px">
-                Kilde: Enhetsregisteret (data.brreg.no). <strong>Heftelser/pant</strong> ligger i Løsøreregisteret og vises ikke her.
-                <a href="@BrregUrl" target="_blank" rel="noopener noreferrer">Åpne i brreg ↗</a>
+                Kilde: Enhetsregisteret (data.brreg.no). <strong>Heftelser/pant</strong> ligger i Løsøreregisteret —
+                @if (HarOrgnr)
+                {
+                    <a href="@LosoreUrl" target="_blank" rel="noopener noreferrer">slå opp heftelser i Løsøreregisteret ↗</a>
+                }
+                else
+                {
+                    <text>krever org.nr for oppslag.</text>
+                }
             </p>
         }
         else if (_brreg.Treff.Count > 1)
@@ -1478,6 +1491,8 @@
     private string BrregUrl => HarOrgnr
         ? $"https://virksomhet.brreg.no/nb/oppslag/enheter/{BrregOrgnr}"
         : "https://virksomhet.brreg.no/nb/oppslag/enheter?q=" + Uri.EscapeDataString((_k.FulltNavn ?? "").Trim());
+    // Deep-link til Løsøreregisteret (heftelser/rettsstiftelser) for orgnr — krever gyldig orgnr.
+    private string LosoreUrl => $"https://rettsstiftelser.brreg.no/nb/oppslag/virksomhet/{BrregOrgnr}";
 
     private BrregService.Resultat? _brreg;
     private bool _brregLaster;
