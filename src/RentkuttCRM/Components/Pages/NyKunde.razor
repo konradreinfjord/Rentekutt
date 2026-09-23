@@ -15,6 +15,7 @@
 @inject RentkuttCRM.Services.FagforeningService Fagforeninger
 @inject RentkuttCRM.Services.DialerCallService DialerCall
 @inject RentkuttCRM.Services.SupabaseUserService Brukere
+@inject RentkuttCRM.Services.BrregService Brreg
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -41,10 +42,18 @@
             <div class="kk-head-name">@(string.IsNullOrWhiteSpace(_k.FulltNavn) ? "Ny kunde" : _k.FulltNavn)</div>
             @if (_k.KundeType == "B2B")
             {
-                <div class="kk-head-sub" style="font-size:13px; color:var(--muted,#64748b); margin:-2px 0 4px">
+                <div class="kk-head-sub" style="font-size:13px; color:var(--muted,#64748b); margin:-2px 0 6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
                     @if (!string.IsNullOrWhiteSpace(_k.Orgnr)) { <span>Org.nr <strong>@_k.Orgnr</strong></span> }
                     @if (!string.IsNullOrWhiteSpace(_k.Orgnr) && !string.IsNullOrWhiteSpace(_k.KontaktpersonNavn)) { <span> · </span> }
                     @if (!string.IsNullOrWhiteSpace(_k.KontaktpersonNavn)) { <span>Kontaktperson: <strong>@_k.KontaktpersonNavn</strong></span> }
+                    <button class="btn-sm" @onclick="SlaaOppBrreg" disabled="@_brregLaster"
+                            style="display:inline-flex; align-items:center; gap:5px"
+                            title="Hent firma-status (konkurs/avvikling) og nøkkelfakta fra Brønnøysund">
+                        🔎 @(_brregLaster ? "Slår opp…" : "Slå opp firma")
+                    </button>
+                    <a class="btn-sm" href="@BrregUrl" target="_blank" rel="noopener noreferrer"
+                       style="display:inline-flex; align-items:center; gap:5px; text-decoration:none"
+                       title="Åpne i Brønnøysund (nettleser)">↗ Åpne i brreg</a>
                 </div>
             }
             <div class="kk-head-chips">
@@ -86,6 +95,68 @@
         <div><span>Kommune</span><strong>@Vis(_k.Kommune)</strong></div>
     </div>
 </div>
+
+@* Brønnøysund-oppslag (Enhetsregisteret) — firma-status + nøkkelfakta, kun B2B *@
+@if (_k.KundeType == "B2B" && _brreg is not null)
+{
+    <div class="form-card" style="margin:0 0 14px; border-left:4px solid @(_brreg.Ok && _brreg.Enhet is { HarRisiko: true } ? "#b42318" : _brreg.Ok ? "#2f8a3e" : "#c2740a")">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px">
+            <h2 style="margin:0">Brønnøysund-oppslag</h2>
+            <button class="btn-sm" @onclick="() => _brreg = null">Lukk</button>
+        </div>
+
+        @if (!_brreg.Ok)
+        {
+            <p class="page-sub" style="margin:8px 0 0; color:var(--danger,#b42318)">@_brreg.Feil</p>
+        }
+        else if (_brreg.Enhet is { } e)
+        {
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0 4px">
+                <strong style="font-size:15px">@e.Navn</strong>
+                <span class="muted" style="font-size:12px">Org.nr @e.Orgnr@(string.IsNullOrWhiteSpace(e.Organisasjonsform) ? "" : $" · {e.Organisasjonsform}")</span>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 12px">
+                @if (e.Konkurs) { <span class="status off">⚠ Konkurs</span> }
+                @if (e.UnderAvvikling) { <span class="status off">⚠ Under avvikling</span> }
+                @if (e.UnderTvangsavvikling) { <span class="status off">⚠ Tvangsavvikling/-oppløsning</span> }
+                @if (!e.HarRisiko) { <span class="status on">✓ Ingen konkurs/avvikling registrert</span> }
+            </div>
+            <div class="kk-head-facts" style="margin:0">
+                <div><span>Næring</span><strong>@Vis(e.Naeringskode)</strong></div>
+                <div><span>Ansatte</span><strong>@(e.AntallAnsatte?.ToString() ?? "—")</strong></div>
+                <div><span>Stiftet</span><strong>@Vis(e.Stiftelsesdato)</strong></div>
+                <div><span>Reg. i Enhetsreg.</span><strong>@Vis(e.RegistrertDato)</strong></div>
+                <div><span>Siste årsregnskap</span><strong>@Vis(e.SisteAarsregnskap)</strong></div>
+                <div><span>Adresse</span><strong>@Vis(e.Adresse)</strong></div>
+            </div>
+            <p class="page-sub" style="margin:12px 0 0; font-size:11.5px">
+                Kilde: Enhetsregisteret (data.brreg.no). <strong>Heftelser/pant</strong> ligger i Løsøreregisteret og vises ikke her.
+                <a href="@BrregUrl" target="_blank" rel="noopener noreferrer">Åpne i brreg ↗</a>
+            </p>
+        }
+        else if (_brreg.Treff.Count > 1)
+        {
+            <p class="page-sub" style="margin:8px 0 6px">Flere treff på firmanavnet — velg riktig foretak:</p>
+            <div class="table-scroll">
+                <table class="data-table">
+                    <thead><tr><th>Firma</th><th>Org.nr</th><th>Form</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var t in _brreg.Treff)
+                        {
+                            <tr>
+                                <td>@t.Navn</td>
+                                <td class="mono-cell">@t.Orgnr</td>
+                                <td>@Vis(t.Organisasjonsform)</td>
+                                <td>@(t.HarRisiko ? (MarkupString)"<span class=\"status off\">⚠ Se detaljer</span>" : (MarkupString)"<span class=\"status on\">✓ OK</span>")</td>
+                                <td><button class="btn-sm" @onclick="() => VelgBrregTreff(t)">Vis</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
 
 <div class="kk-grid">
 <div class="kk-side">
@@ -1399,6 +1470,29 @@
     }
     // True når ønsket beløp overstiger grensen for valgt Instabank-produkt (blokkerer sending).
     private bool OverMaks { get { var m = GjeldendeMaks(); return m > 0 && (_k.OnsketLaanebelop ?? 0) > m; } }
+
+    // Brønnøysund-oppslag: har vi et gyldig 9-sifret orgnr, deep-linker vi rett til foretaket;
+    // ellers søker vi på firmanavn i enhetsregisteret.
+    private string BrregOrgnr => new((_k.Orgnr ?? "").Where(char.IsDigit).ToArray());
+    private bool HarOrgnr => BrregOrgnr.Length == 9;
+    private string BrregUrl => HarOrgnr
+        ? $"https://virksomhet.brreg.no/nb/oppslag/enheter/{BrregOrgnr}"
+        : "https://virksomhet.brreg.no/nb/oppslag/enheter?q=" + Uri.EscapeDataString((_k.FulltNavn ?? "").Trim());
+
+    private BrregService.Resultat? _brreg;
+    private bool _brregLaster;
+
+    // In-app-oppslag mot Enhetsregisteret (server-side) — henter status + fakta.
+    private async Task SlaaOppBrreg()
+    {
+        _brregLaster = true;
+        _brreg = await Brreg.SlaaOppAsync(_k.Orgnr, _k.FulltNavn);
+        _brregLaster = false;
+    }
+
+    // Velg ett foretak fra trefflista (navnesøk med flere treff).
+    private void VelgBrregTreff(BrregService.Enhet e)
+        => _brreg = new BrregService.Resultat(true, null, e, _brreg?.Treff ?? new());
 
     private async Task SendTilBank()
     {

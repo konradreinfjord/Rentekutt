@@ -127,6 +127,10 @@ builder.Services.AddScoped<EventService>();
 // Bankpartnere.
 builder.Services.AddScoped<PartnerService>();
 
+// Brønnøysund-oppslag (Enhetsregisteret, åpent API) — firma-status/fakta på B2B-kundekort.
+builder.Services.AddHttpClient("brreg", c => c.BaseAddress = new Uri("https://data.brreg.no/"));
+builder.Services.AddScoped<BrregService>();
+
 // Produkter per bankpartner (provisjon per produkt, segment privat/bedrift).
 builder.Services.AddScoped<PartnerProduktService>();
 
