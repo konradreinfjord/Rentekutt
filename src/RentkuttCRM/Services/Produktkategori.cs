@@ -48,10 +48,18 @@ public static class Produktkategori
         return Forbrukslaan;
     }
 
-    // Boligindikator: registrert boliggjeld/boligverdi, eller lånebeløp over forbrukslånstaket.
-    // Forbrukslån i Norge ligger typisk under ~600k; et lån på ≥ 1 MNOK er reelt et boliglån.
-    private static bool ErBoligindikert(Kundekort k) =>
-        (k.Boliggjeld ?? 0) > 0 || (k.Boligverdi ?? 0) > 0 || (k.OnsketLaanebelop ?? 0) >= 1_000_000m;
+    // Boligindikator: reell boliggjeld/boligverdi, eller lånebeløp over forbrukslånstaket.
+    // Terskler settes bevisst høyt nok til å ignorere «søppelverdier» (f.eks. boliggjeld 2 323 kr
+    // eller boligverdi 10 000 kr) som ellers feilklassifiserer et forbrukslån som boliglån.
+    // Forbrukslån i Norge ligger typisk under ~600k; et lån ≥ 1 MNOK er reelt et boliglån.
+    // En høy rente (≥ 10 %) er dessuten et sterkt forbrukslån-signal og overstyrer.
+    private static bool ErBoligindikert(Kundekort k)
+    {
+        if ((k.NaavaerendeRente ?? 0) >= 10m) return false; // 10 %+ ⇒ usikret/forbruk, ikke boliglån
+        return (k.Boliggjeld ?? 0) >= 100_000m
+            || (k.Boligverdi ?? 0) >= 500_000m
+            || (k.OnsketLaanebelop ?? 0) >= 1_000_000m;
+    }
 
     // «Ung» = født 1993 eller senere (samme definisjon som «Boliglån ung»-merknaden).
     private static bool ErUng(Kundekort k) => BeregningService.FnrFodselsaar(k.Foedselsnummer) is int a && a >= 1993;

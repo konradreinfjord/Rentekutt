@@ -12,7 +12,7 @@
 <div class="wide-page"></div>
 
 <h1 class="page-title">Markedsinnsikt</h1>
-<p class="page-sub">Rentenivå kundene har oppgitt fra søknad (rentkutt.no), sammenlignet med Norges Banks styringsrente over tid. Velg produktkategori for å se pris per produkt.</p>
+<p class="page-sub">Rentene kundene oppgir i søknaden, sammenlignet med Norges Banks styringsrente. Velg en produktkategori for å se prisbildet for akkurat det produktet.</p>
 
 @if (_loading)
 {
@@ -20,24 +20,40 @@
 }
 else
 {
-    <div class="seg typeseg" style="margin-bottom:16px; flex-wrap:wrap; gap:6px">
-        @foreach (var kat in Produktkategori.Alle)
+    @* Kategorivelger — viser kun kategorier som faktisk har data (pluss den valgte). *@
+    <div class="mi-tabs">
+        @foreach (var kat in Produktkategori.Alle.Where(k => k == _kategori || _allePunkter.Any(p => p.Kategori == k)))
         {
-            <button class="@(_kategori == kat ? "active" : "")" @onclick="() => VelgKategori(kat)">@kat (@_allePunkter.Count(p => p.Kategori == kat))</button>
+            var n = _allePunkter.Count(p => p.Kategori == kat);
+            <button class="mi-tab @(_kategori == kat ? "active" : "")" @onclick="() => VelgKategori(kat)">
+                @kat <span class="mi-tab-count">@n</span>
+            </button>
         }
     </div>
 
+    @if (_punkter.Count == 0)
+    {
+        <div class="mi-empty">
+            <div class="mi-empty-ic">📊</div>
+            <div>
+                <strong>Ingen registrerte renter for @_kategori ennå.</strong>
+                <p class="page-sub" style="margin:4px 0 0">Rentene kommer inn automatisk fra søknadene, og fra «Lagre bank &amp; rente» på kundekortet.</p>
+            </div>
+        </div>
+    }
+    else
+    {
     <div class="db-stats">
         <div class="db-box"><span class="db-box-num">@_punkter.Count</span><span class="db-box-lbl">Registrerte renter</span></div>
         <div class="db-box"><span class="db-box-num">@_banker.Count</span><span class="db-box-lbl">Banker</span></div>
-        <div class="db-box accent-blue"><span class="db-box-num">@(_punkter.Count > 0 ? _snittRente.ToString("N2", Nb) + " %" : "—")</span><span class="db-box-lbl">Snitt kunderente</span></div>
-        <div class="db-box accent-amber"><span class="db-box-num">@(_punkter.Count > 0 ? _snittMargin.ToString("N2", Nb) + " pp" : "—")</span><span class="db-box-lbl">Snitt over styringsrente</span></div>
-        <div class="db-box accent-purple"><span class="db-box-num">@(_antLtv > 0 ? _snittLtv.ToString("N0", Nb) + " %" : "—")</span><span class="db-box-lbl">Snitt LTV@(_antLtv > 0 ? $" ({_antLtv})" : "")</span></div>
+        <div class="db-box accent-blue"><span class="db-box-num">@_snittRente.ToString("N2", Nb)<span class="db-box-unit">%</span></span><span class="db-box-lbl">Snitt kunderente</span></div>
+        <div class="db-box accent-amber"><span class="db-box-num">+@_snittMargin.ToString("N2", Nb)<span class="db-box-unit">pp</span></span><span class="db-box-lbl">Over styringsrente</span></div>
+        <div class="db-box accent-purple"><span class="db-box-num">@(_antLtv > 0 ? _snittLtv.ToString("N0", Nb) : "—")<span class="db-box-unit">@(_antLtv > 0 ? "%" : "")</span></span><span class="db-box-lbl">Snitt LTV@(_antLtv > 0 ? $" ({_antLtv})" : "")</span></div>
     </div>
 
     <div class="section">
         <h2>Siste 12 måneder</h2>
-        <p class="page-sub">Styringsrenten som referanse, med kundenes registrerte rente rundt. Boblestørrelse følger lånebeløpet.</p>
+        <p class="page-sub">Hver boble er en kunde plassert på tidspunkt (x) og rente (y). Den <span style="color:#266f32;font-weight:600">grønne linjen</span> er snittrenten per måned, og den <span style="color:#c2740a;font-weight:600">oransje</span> er Norges Banks styringsrente. Boblestørrelsen følger lånebeløpet.</p>
         @if (_punkter12.Count == 0)
         {
             <p class="page-sub">Ingen registrerte renter siste 12 måneder. De kommer inn fra søknadene og fra «Lagre bank &amp; rente» på kundekortet.</p>
@@ -60,8 +76,8 @@ else
     </div>
 
     <div class="section">
-        <h2>Rente vs lånebeløp</h2>
-        <p class="page-sub">Hvert punkt er en kunde: lånebeløp (MNOK) mot oppgitt rente. Viser rentespredning på tvers av lånestørrelse.</p>
+        <h2>Rente vs. lånebeløp</h2>
+        <p class="page-sub">Hvert punkt er en kunde: lånebeløp i millioner (x) mot oppgitt rente (y). Den <span style="color:#c2740a;font-weight:600">stiplede linjen</span> er dagens styringsrente. Viser om renten henger sammen med lånestørrelsen.</p>
         @if (_belopPunkter == 0)
         {
             <p class="page-sub">Ingen kunder med både lånebeløp og rente registrert ennå.</p>
@@ -142,6 +158,7 @@ else
         </table>
         </div>
     </div>
+    } @* /_punkter.Count > 0 *@
 }
 
 @code {
@@ -291,9 +308,9 @@ else
         if (_belopPunkter > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-belop", "mi-tip-belop");
     }
 
-    // Bobleradius etter lånebeløp (2.5–9 px).
+    // Bobleradius etter lånebeløp (2.5–7 px) — holdt nede så boblene ikke overlapper for mye.
     private double Radius(decimal? belop) =>
-        _maxBelop <= 0 || belop is not > 0 ? 3 : 2.5 + Math.Sqrt((double)belop.Value / _maxBelop) * 6.5;
+        _maxBelop <= 0 || belop is not > 0 ? 3 : 2.5 + Math.Sqrt((double)belop.Value / _maxBelop) * 4.5;
 
     // ---- Bilde 1: siste 12 måneder (tid → rente) ----
     private void ByggTrend()
@@ -341,13 +358,17 @@ else
             prev = (double)s.Rente;
         }
         sb.Append(" L ").Append(Num(X(xMax))).Append(' ').Append(Num(Y(prev)));
-        svg.Append($"<path d=\"{sb}\" fill=\"none\" stroke=\"#c2740a\" stroke-width=\"2.5\" stroke-linejoin=\"round\" />");
+        var styringsti = sb.ToString();
+        // Svakt referansebånd under styringsrenten + selve linjen.
+        svg.Append($"<path d=\"{styringsti} L {Num(X(xMax))} {Num(Y(0))} L {Num(X(xMin))} {Num(Y(0))} Z\" fill=\"#c2740a\" fill-opacity=\"0.05\" stroke=\"none\" />");
+        svg.Append($"<path d=\"{styringsti}\" fill=\"none\" stroke=\"#c2740a\" stroke-width=\"2.5\" stroke-linejoin=\"round\" />");
 
-        // Kundepunkter — farge = kilde, størrelse = lånebeløp, tooltip med detaljer
+        // Kundepunkter — farge = kilde, størrelse = lånebeløp, tooltip med detaljer.
+        // Lav opasitet + tynn kant så de leses som en «sky» og lar snittlinja stå frem.
         foreach (var p in _punkter12)
-            svg.Append($"<circle cx=\"{Num(X(p.Dato))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.45\"><title>{PunktTekst(p)}</title></circle>");
+            svg.Append($"<circle cx=\"{Num(X(p.Dato))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.28\" stroke=\"{Farge(p.Soknad)}\" stroke-opacity=\"0.5\" stroke-width=\"0.75\"><title>{PunktTekst(p)}</title></circle>");
 
-        // Snitt kunderente per måned
+        // Snitt kunderente per måned — fremhevet trendlinje med markører.
         var mnd = _punkter12
             .GroupBy(p => new DateTime(p.Dato.Year, p.Dato.Month, 15))
             .Select(g => (Dato: g.Key, Snitt: (double)g.Average(x => x.Rente)))
@@ -357,7 +378,9 @@ else
             var tb = new StringBuilder();
             for (var i = 0; i < mnd.Count; i++)
                 tb.Append(i == 0 ? "M " : " L ").Append(Num(X(mnd[i].Dato))).Append(' ').Append(Num(Y(mnd[i].Snitt)));
-            svg.Append($"<path d=\"{tb}\" fill=\"none\" stroke=\"#266f32\" stroke-width=\"2\" stroke-linejoin=\"round\" />");
+            svg.Append($"<path d=\"{tb}\" fill=\"none\" stroke=\"#266f32\" stroke-width=\"2.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\" />");
+            foreach (var m in mnd)
+                svg.Append($"<circle cx=\"{Num(X(m.Dato))}\" cy=\"{Num(Y(m.Snitt))}\" r=\"3\" fill=\"#266f32\" stroke=\"#fff\" stroke-width=\"1.5\" />");
         }
 
         // Hover-crosshair (styres av mi-chart.js)
@@ -400,7 +423,7 @@ else
 
         // Punkter: x = lånebeløp, y = rente, farge = kilde, tooltip med detaljer
         foreach (var p in pts)
-            svg.Append($"<circle cx=\"{Num(X((double)p.Belop!.Value / 1_000_000.0))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"4\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.5\"><title>{PunktTekst(p)}</title></circle>");
+            svg.Append($"<circle cx=\"{Num(X((double)p.Belop!.Value / 1_000_000.0))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"4.5\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.35\" stroke=\"{Farge(p.Soknad)}\" stroke-opacity=\"0.6\" stroke-width=\"0.75\"><title>{PunktTekst(p)}</title></circle>");
 
         // Hover-crosshair (styres av mi-chart.js)
         svg.Append($"<line class=\"mi-cross\" x1=\"{Num(PadL)}\" x2=\"{Num(W - PadR)}\" y1=\"0\" y2=\"0\" stroke=\"var(--text-2)\" stroke-width=\"1\" stroke-dasharray=\"4 3\" />");
