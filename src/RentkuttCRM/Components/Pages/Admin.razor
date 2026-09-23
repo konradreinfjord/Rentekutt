@@ -555,11 +555,11 @@ else if (_active == "API og Data")
 
             <h3 class="stat-subhead">Banker</h3>
             <table class="data-table">
-                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
+                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Send uferdige etter 30 min</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
                 <tbody>
                     @if (_banks.Count == 0)
                     {
-                        <tr><td colspan="5" class="empty-row">Ingen bankpartnere ennå.</td></tr>
+                        <tr><td colspan="6" class="empty-row">Ingen bankpartnere ennå.</td></tr>
                     }
                     @foreach (var b in _banks)
                     {
@@ -567,12 +567,24 @@ else if (_active == "API og Data")
                         <tr>
                             <td><span class="lampe @(DataSiste3Dogn(sisteSendt) ? "on" : "off")"></span></td>
                             <td>@b.Navn</td><td>Bank API</td>
+                            <td>
+                                <div class="seg onoff">
+                                    <button class="@(!b.AutoPaabegynt ? "active av" : "")" @onclick="() => SettAutoPaabegynt(b, false)">AV</button>
+                                    <button class="@(b.AutoPaabegynt ? "active" : "")" @onclick="() => SettAutoPaabegynt(b, true)">PÅ</button>
+                                </div>
+                            </td>
                             <td>@(sisteSendt is { } t ? $"Sist sendt {t.TilOslo():dd.MM HH:mm}" : "Ingen sendinger")</td>
                             @SisteOppdatertCelle(sisteSendt)
                         </tr>
                     }
                 </tbody>
             </table>
+            <p class="page-sub" style="margin:10px 0 0; font-size:12px">
+                <strong>Send uferdige etter 30 min:</strong> er den <strong>PÅ</strong>, sendes en søknad som fortsatt
+                står i «Påbegynt søknad» 30 minutter etter registrering automatisk til banken — så vi ikke mister leadet
+                selv om kunden ikke fullfører. Fullfører kunden innen 30 min, følger søknaden vanlig flyt med full data.
+                Kun nye leads etter at bryteren ble slått på; gamle søknader sendes aldri. Standard: <strong>PÅ for Soknedal</strong>, av for øvrige.
+            </p>
         </div>
     }
     else if (_apiTab == "Supabase")
@@ -1418,12 +1430,12 @@ else if (_active == "Logikk-matrise")
             person-/bedriftsmarkedet. Hvilke søknader som treffer styres av rutingsreglene over (f.eks. postnummer).
         </p>
         @{ var hardkodet = _banks.Where(b => InstabankService.ErInstabankNavn(b.Navn)).ToList(); }
-        <table class="data-table" style="max-width:720px">
-            <thead><tr><th>Bank</th><th>Automatisk sending</th><th>Send uferdige etter 30 min</th></tr></thead>
+        <table class="data-table" style="max-width:520px">
+            <thead><tr><th>Bank</th><th>Automatisk sending</th></tr></thead>
             <tbody>
                 @if (hardkodet.Count == 0)
                 {
-                    <tr><td colspan="3" class="empty-row">Ingen banker med konfigurert sending ennå — kun Instabank støttes.</td></tr>
+                    <tr><td colspan="2" class="empty-row">Ingen banker med konfigurert sending ennå — kun Instabank støttes.</td></tr>
                 }
                 @foreach (var b in hardkodet)
                 {
@@ -1435,20 +1447,12 @@ else if (_active == "Logikk-matrise")
                                 <button class="@(b.AutoSend ? "active" : "")" @onclick="() => SettAutoSend(b, true)">PÅ</button>
                             </div>
                         </td>
-                        <td>
-                            <div class="seg onoff">
-                                <button class="@(!b.AutoPaabegynt ? "active av" : "")" @onclick="() => SettAutoPaabegynt(b, false)">AV</button>
-                                <button class="@(b.AutoPaabegynt ? "active" : "")" @onclick="() => SettAutoPaabegynt(b, true)">PÅ</button>
-                            </div>
-                        </td>
                     </tr>
                 }
             </tbody>
         </table>
         <p class="page-sub" style="margin:12px 0 0; font-size:12px">
-            <strong>Send uferdige etter 30 min:</strong> er den PÅ, sendes leads som fortsatt står i
-            «Påbegynt søknad» 30 minutter etter registrering automatisk til banken (hvis de matcher
-            logikk-matrisen). Kun nye leads etter at bryteren ble slått på — gamle søknader sendes aldri.
+            «Send uferdige etter 30 min» styres per bank under <strong>API og Data → Banker</strong>.
         </p>
     </div>
 }
