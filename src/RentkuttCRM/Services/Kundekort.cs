@@ -75,6 +75,8 @@ public class Kundekort : BaseModel
     [Column("forbruksgjeld")] public decimal? Forbruksgjeld { get; set; }
     [Column("refinansieres_belop")] public decimal? RefinansieresBelop { get; set; }
     [Column("aktiv_inkasso")] public bool AktivInkasso { get; set; }
+    // Ja/nei fra skjema v2: har kunden usikret gjeld / kredittkort.
+    [Column("har_usikret_gjeld")] public bool HarUsikretGjeld { get; set; }
 
     // G. Lånedetaljer
     [Column("onsket_laanebelop")] public decimal? OnsketLaanebelop { get; set; }
@@ -114,6 +116,9 @@ public class Kundekort : BaseModel
     [Column("kommune")] public string? Kommune { get; set; }
     [Column("fylke")] public string? Fylke { get; set; }
     [Column("boligverdi")] public decimal? Boligverdi { get; set; }
+    // Skjema v2 (bolig): belåningsgrad (LTV %) kunden oppga, og nåværende lånebeløp.
+    [Column("belaaningsgrad")] public decimal? Belaaningsgrad { get; set; }
+    [Column("naavaerende_laanebelop")] public decimal? NaavaerendeLaanebelop { get; set; }
 
     // G. Boliglån — eiendom/sikkerhet. Kreves av Instabank boliglån (produkt 180). Matrikkel
     // (kommune/gnr/bnr/fnr/snr) er påkrevd for selveier; borettslag-feltene for andel/sameie.

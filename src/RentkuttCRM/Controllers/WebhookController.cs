@@ -546,6 +546,8 @@ public class WebhookController : ControllerBase
             SamletGjeld = GetDec(f, "samlet_gjeld"),
             RefinansieresBelop = GetDec(f, "refinansieres_belop", "refinansiering", "refinance"),
             AktivInkasso = GetBool(f, "aktiv_inkasso", "inkasso", "debtcollection"),
+            // Skjema v2: usikret gjeld / kredittkort (ja/nei).
+            HarUsikretGjeld = GetBool(f, "har_usikret_gjeld_eller_kredittkort", "har_usikret_gjeld", "usikret_gjeld"),
 
             // Lånedetaljer
             OnsketLaanebelop = GetDec(f, "onsket_laanebelop", "sum_laan", "sum_lan", "laanebelop", "lanebelop", "belop", "amount", "loanamount", "sum", "lanesum"),
@@ -557,6 +559,12 @@ public class WebhookController : ControllerBase
                 "boliglånsrente", "nåværende boliglånsrente", "rentesats", "nominell rente", "rente"),
             NavarendeBank = Get(f, "naavarende_bank", "navarende_bank", "naavaerende_bank", "nåværende_bank", "currentbank", "bank"),
             Kontonummer = Get(f, "kontonummer", "konto", "accountnumber"),
+
+            // Bolig (skjema v2, nøstet under «bolig»/«lanedetaljer» — flatteneren gir bare-nøkler).
+            // Boligverdi hentes fra anslaatt_verdi (tidligere aldri lest → boligverdi var nesten alltid tom).
+            Boligverdi = GetDec(f, "anslaatt_verdi", "anslatt_verdi", "boligverdi", "boligens_verdi", "eiendomsverdi"),
+            Belaaningsgrad = GetDec(f, "beregnet_belaaningsgrad_prosent", "belaaningsgrad", "belaningsgrad", "ltv"),
+            NaavaerendeLaanebelop = GetDec(f, "naavaerende_laanebelop", "navaerende_laanebelop", "naavaerende_lanebelop"),
 
             // Medsøker (sti-prefikset for å unngå kollisjon med søker)
             HarMedsoker = harMedsoker,

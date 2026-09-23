@@ -818,7 +818,18 @@
         <div class="ff"><label>Forbrukslån/kredittkort/inkasso (kr)</label><input type="number" @bind="_k.Forbruksgjeld" /></div>
         <div class="ff"><label>Samlet gjeld (kr)</label><input type="number" @bind="_k.SamletGjeld" /></div>
         <div class="ff"><label>Beløp som skal refinansieres (kr)</label><input type="number" @bind="_k.RefinansieresBelop" /></div>
+    </div>
+</div>
+
+@* Boliglån — snapshot fra søknaden (verdi, belåningsgrad, gjeldsflagg) *@
+<div class="form-card">
+    <h2>Boliglån <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(fra søknaden)</span></h2>
+    <div class="form-grid">
+        <div class="ff"><label>Anslått verdi (kr)</label><input type="number" @bind="_k.Boligverdi" /></div>
+        <div class="ff"><label>Belåningsgrad (LTV %)</label><input type="number" step="0.01" @bind="_k.Belaaningsgrad" /></div>
+        <div class="ff"><label>Nåværende lånebeløp (kr)</label><input type="number" @bind="_k.NaavaerendeLaanebelop" /></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.AktivInkasso" /> Aktiv inkassosak</label></div>
+        <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.HarUsikretGjeld" /> Har usikret gjeld / kredittkort</label></div>
     </div>
 </div>
 
