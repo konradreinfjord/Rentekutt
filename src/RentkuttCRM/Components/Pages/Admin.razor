@@ -555,7 +555,7 @@ else if (_active == "API og Data")
 
             <h3 class="stat-subhead">Banker</h3>
             <table class="data-table">
-                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Send uferdige etter 30 min</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
+                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Auto-send etter 30 min</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
                 <tbody>
                     @if (_banks.Count == 0)
                     {
@@ -580,10 +580,11 @@ else if (_active == "API og Data")
                 </tbody>
             </table>
             <p class="page-sub" style="margin:10px 0 0; font-size:12px">
-                <strong>Send uferdige etter 30 min:</strong> er den <strong>PÅ</strong>, sendes en søknad som fortsatt
-                står i «Påbegynt søknad» 30 minutter etter registrering automatisk til banken — så vi ikke mister leadet
-                selv om kunden ikke fullfører. Fullfører kunden innen 30 min, følger søknaden vanlig flyt med full data.
-                Kun nye leads etter at bryteren ble slått på; gamle søknader sendes aldri. Standard: <strong>PÅ for Soknedal</strong>, av for øvrige.
+                <strong>Auto-send etter 30 min:</strong> er den <strong>PÅ</strong>, sendes en matchende søknad automatisk
+                til banken 30 minutter etter registrering — enten den fortsatt er «Påbegynt søknad» (uferdig) eller er
+                fullført til «Ny søknad». Forsinkelsen gir kunden tid til å fullføre (mer data); fullfører den, sendes den
+                med full data. Krever treff i logikk-matrisen. Kun nye leads etter at bryteren ble slått på; gamle sendes aldri.
+                Standard: <strong>PÅ for Soknedal</strong>, av for øvrige.
             </p>
         </div>
     }
@@ -915,7 +916,7 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                         </div>
                     </div>
                     <div class="rb-field" style="max-width:190px">
-                        <label>Send uferdige etter 30 min</label>
+                        <label>Auto-send etter 30 min</label>
                         <div class="seg onoff">
                             <button class="@(!sok.AutoPaabegynt ? "active av" : "")" @onclick="() => SettSoknedalAutoPaabegynt(sok, false)">AV</button>
                             <button class="@(sok.AutoPaabegynt ? "active" : "")" @onclick="() => SettSoknedalAutoPaabegynt(sok, true)">PÅ</button>
@@ -1452,7 +1453,7 @@ else if (_active == "Logikk-matrise")
             </tbody>
         </table>
         <p class="page-sub" style="margin:12px 0 0; font-size:12px">
-            «Send uferdige etter 30 min» styres per bank under <strong>API og Data → Banker</strong>.
+            «Auto-send etter 30 min» styres per bank under <strong>API og Data → Banker</strong>.
         </p>
     </div>
 }

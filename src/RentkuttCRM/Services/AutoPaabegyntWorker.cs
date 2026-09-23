@@ -1,10 +1,12 @@
 namespace RentkuttCRM.Services;
 
 /// <summary>
-/// Auto-send av uferdige søknader: sender lead som fortsatt står i status «Påbegynt søknad»
-/// til bank(er) automatisk ~30 minutter etter registrering, dersom
+/// Forsinket auto-send: sender lead til bank(er) automatisk ~30 minutter etter registrering,
+/// dersom leadet fortsatt står i «Påbegynt søknad» ELLER «Ny søknad» (dvs. ikke tatt videre av
+/// en agent / sendt / lukket). Forsinkelsen gir kunden tid til å fullføre søknaden (mer data);
+/// fullfører den (→ «Ny søknad») sendes den likevel, nå med full data. Betingelser:
 ///   (1) leadet matcher logikk-matrisen for banken, OG
-///   (2) banken har bryteren «Send uferdige etter 30 min» (auto_paabegynt) PÅ.
+///   (2) banken har bryteren (auto_paabegynt) PÅ.
 /// Sendingen legges i den vanlige sendekøen (BankSendWorker), som håndterer throttling,
 /// samtykke-sperre (Instabank) og webhook-levering (Nextcom).
 ///
@@ -13,7 +15,7 @@ namespace RentkuttCRM.Services;
 ///  • Aktiveringssperre: kun leads registrert ETTER at funksjonen ble aktivert sendes
 ///    («ikke send gamle søknader, kun nye som kommer inn»).
 ///  • Dedup: sender ikke til en bank leadet allerede er kølagt/sendt til, og flytter leadet
-///    ut av «Påbegynt søknad» ved kølegging, så det ikke plukkes to ganger.
+///    ut av kandidat-statusene ved kølegging, så det ikke plukkes to ganger.
 /// </summary>
 public class AutoPaabegyntWorker : BackgroundService
 {
@@ -88,7 +90,7 @@ public class AutoPaabegyntWorker : BackgroundService
 
         var kundekort = scope.ServiceProvider.GetRequiredService<KundekortService>();
         var kandidater = (await kundekort.ListLettAsync()).Where(k =>
-            k.Status == KundekortService.StatusPaabegynt &&
+            ErKandidatStatus(k.Status) &&
             k.CreatedAt <= oevreGrense &&
             k.CreatedAt >= nedreEffektiv).ToList();
         if (kandidater.Count == 0) return;
@@ -106,7 +108,7 @@ public class AutoPaabegyntWorker : BackgroundService
 
             // Full henting: rutingsreglene og produktvalget trenger alle felt (og dekryptert fnr).
             var k = await kundekort.GetAsync(lett.Id);
-            if (k is null || k.Status != KundekortService.StatusPaabegynt) continue;
+            if (k is null || !ErKandidatStatus(k.Status)) continue;
 
             // Banker leadet matcher i logikk-matrisen, avgrenset til de med bryteren PÅ.
             var matchende = RutingEval.MatchendeBanker(regler, k)
@@ -150,9 +152,9 @@ public class AutoPaabegyntWorker : BackgroundService
                 if (feil is not null) { _log.LogWarning("Auto-påbegynt: kunne ikke kølegge {Bank} for {Id}: {Feil}", bankNavn, k.Id, feil); continue; }
 
                 await logg.LoggAsync(k.Id, "System (auto 30 min)",
-                    $"Auto-sendt til sendekø etter 30 min uten fullføring: {bankNavn}{(produkt is null ? "" : $" · {produkt}")}",
+                    $"Auto-sendt til sendekø 30 min etter registrering ({k.Status}): {bankNavn}{(produkt is null ? "" : $" · {produkt}")}",
                     kategori: "avgjørelse",
-                    begrunnelse: "Automatisk ruting (uferdig søknad, logikk-matrise + bank-bryter)");
+                    begrunnelse: "Automatisk ruting etter forsinkelse (logikk-matrise + bank-bryter)");
                 kølagt.Add(bankNavn);
             }
 
@@ -192,6 +194,11 @@ public class AutoPaabegyntWorker : BackgroundService
 
         return (true, valgt.Navn, valgt.Kode, null);
     }
+
+    // Statuser som fortsatt er «i vente» og kan auto-rutes: påbegynt (uferdig) eller ny søknad
+    // (fullført, men ikke tatt videre av agent / sendt / lukket).
+    private static bool ErKandidatStatus(string? status)
+        => status == KundekortService.StatusPaabegynt || status == KundekortService.StatusNySoknad;
 
     private static async Task<DateTime?> LesAktivertFraAsync(SettingsService settings)
     {
