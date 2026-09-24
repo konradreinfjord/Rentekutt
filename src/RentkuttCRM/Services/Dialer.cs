@@ -70,6 +70,21 @@ public class DialerService
         catch (Exception ex) { _log.LogWarning(ex, "Lagring av dialer-anrop feilet"); return null; }
     }
 
+    /// <summary>Alle dialer-anrop for én søknad (nyeste først) — ringelogg på kundekortet.</summary>
+    public async Task<List<DialerAnrop>> ListForKundekortAsync(Guid kundekortId)
+    {
+        if (!IsConfigured) return _staging.Where(a => a.KundekortId == kundekortId).OrderByDescending(a => a.StartetAt).ToList();
+        try
+        {
+            await EnsureInitAsync();
+            return (await _client.From<DialerAnrop>()
+                .Where(x => x.KundekortId == kundekortId)
+                .Order(x => x.StartetAt, Supabase.Postgrest.Constants.Ordering.Descending, Supabase.Postgrest.Constants.NullPosition.Last)
+                .Get()).Models;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av dialer-anrop for kundekort feilet"); return new(); }
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;

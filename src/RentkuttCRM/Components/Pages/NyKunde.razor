@@ -14,6 +14,7 @@
 @inject RentkuttCRM.Services.OppfolgingService Oppf
 @inject RentkuttCRM.Services.FagforeningService Fagforeninger
 @inject RentkuttCRM.Services.DialerCallService DialerCall
+@inject RentkuttCRM.Services.DialerService Dialer
 @inject RentkuttCRM.Services.SupabaseUserService Brukere
 @inject RentkuttCRM.Services.BrregService Brreg
 @inject NavigationManager Nav
@@ -253,6 +254,36 @@
         <button class="btn-primary" @onclick="SendSms" disabled="@(_smsSending || !KanEndre || string.IsNullOrWhiteSpace(_k.Mobilnummer))">@(_smsSending ? "Sender…" : "Send SMS")</button>
         @if (!string.IsNullOrEmpty(_smsMsg)) { <span class="form-msg @(_smsOk ? "ok" : "err")">@_smsMsg</span> }
     </div>
+</div>
+
+@* Ringelogg — anrop gjort via dialeren på denne søknaden (ringeforsøk + samtaletid) *@
+<div class="form-card">
+    <h2>Ringelogg@(_ringelogg.Count > 0 ? $" ({_ringelogg.Count} forsøk)" : "")</h2>
+    @if (_ringelogg.Count == 0)
+    {
+        <p class="notat-empty">Ingen anrop via dialeren ennå.</p>
+    }
+    else
+    {
+        <div class="table-scroll">
+        <table class="data-table">
+            <thead><tr><th>Tidspunkt</th><th>Ringt av</th><th>Nummer</th><th>Utfall</th><th class="num">Samtaletid</th></tr></thead>
+            <tbody>
+                @foreach (var a in _ringelogg)
+                {
+                    <tr>
+                        <td style="white-space:nowrap">@a.StartetAt.TilOslo().ToString("dd.MM.yy HH:mm")</td>
+                        <td>@(string.IsNullOrWhiteSpace(a.Aktor) ? "—" : a.Aktor)</td>
+                        <td class="mono-cell">@(string.IsNullOrWhiteSpace(a.TilNummer) ? "—" : a.TilNummer)</td>
+                        <td>@RingeUtfall(a)</td>
+                        <td class="num">@Taletid(a.TaletidSek)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+        <p class="page-sub" style="margin:8px 0 0; font-size:11.5px">Samtaletid fylles inn når Zisson-samtaledata (CDR) er tilgjengelig.</p>
+    }
 </div>
 
 @* Endringslogg — hvem har gjort hva, når *@
@@ -1187,6 +1218,7 @@
             _notatLogg = notatTask.Result;
             _sendinger = sendTask.Result;
             _endringslogg = loggTask.Result;
+            _ringelogg = await Dialer.ListForKundekortAsync(_k.Id);
             _harSamtykke = await Samtykke.HarGyldigEllerLegacyAsync(_k.Id, SamtykkeService.FormaalKreditt, _k.SamtykkeGjeldsregisterKredittsjekk);
             if (!_harSamtykke && Session.IsAdmin)
             {
@@ -1278,6 +1310,7 @@
 
     // ---- Endringslogg + auto-lagring ----
     private List<KundekortLogg> _endringslogg = new();
+    private List<DialerAnrop> _ringelogg = new();
     private string? _autoMsg;
     private bool _autoOk;
 
@@ -1334,10 +1367,25 @@
             // slik at ringebaren i headeren viser samtalen og overlever fanebytte.
             var r = await DialerCall.RingAsync(nummer, _k.Id, medsoker);
             _ringMsg = (r.Ok ? "✓ " : "✗ ") + r.Melding;
-            if (r.Ok) _endringslogg = await Logg.ForKundeAsync(_k.Id);   // logglinja er skrevet av tjenesten
+            if (r.Ok)
+            {
+                _endringslogg = await Logg.ForKundeAsync(_k.Id);   // logglinja er skrevet av tjenesten
+                _ringelogg = await Dialer.ListForKundekortAsync(_k.Id);
+            }
         }
         finally { _ringer = false; StateHasChanged(); }
     }
+
+    // Samtaletid mm:ss fra sekunder (— når ikke synket fra Zisson CDR ennå).
+    private static string Taletid(int? sek) => sek is int s and > 0 ? $"{s / 60}:{s % 60:00}" : "—";
+    private static string RingeUtfall(DialerAnrop a) => a switch
+    {
+        { Status: DialerService.StatusFeilet } => "Feilet",
+        { Utfall: DialerService.UtfallSvart } => "Svart",
+        { Utfall: DialerService.UtfallIkkeSvart } => "Ikke svart",
+        { Status: DialerService.StatusFerdig } => "Fullført",
+        _ => "Startet",
+    };
 
     // ---- Interne faner ----
     private string _fane = "oversikt";
