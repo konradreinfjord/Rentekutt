@@ -30,15 +30,17 @@ public class SoknedalController : ControllerBase
     private readonly SettingsService _settings;
     private readonly KundekortService _kundekort;
     private readonly LoggService _logg;
+    private readonly AlarmService _alarm;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<SoknedalController> _log;
 
     public SoknedalController(SettingsService settings, KundekortService kundekort, LoggService logg,
-        IWebHostEnvironment env, ILogger<SoknedalController> log)
+        AlarmService alarm, IWebHostEnvironment env, ILogger<SoknedalController> log)
     {
         _settings = settings;
         _kundekort = kundekort;
         _logg = logg;
+        _alarm = alarm;
         _env = env;
         _log = log;
     }
@@ -63,9 +65,12 @@ public class SoknedalController : ControllerBase
         var expected = await _settings.GetAsync(KeyToken);
         if (string.IsNullOrWhiteSpace(expected))
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Webhook-token er ikke satt opp." });
+        var endepunkt = Request.Path.Value ?? "";
         if (!TokenMatch(expected, PresentedToken()))
         {
             _log.LogWarning("Soknedal-webhook avvist: ugyldig token fra {IP}", HttpContext.Connection.RemoteIpAddress);
+            await AlarmAsync($"Soknedal-webhook avvist ({endepunkt})",
+                $"Ugyldig/manglende token fra IP {HttpContext.Connection.RemoteIpAddress}. Endepunkt: {endepunkt}.", "token");
             return Unauthorized(new { error = "Ugyldig eller manglende token." });
         }
 
@@ -73,17 +78,34 @@ public class SoknedalController : ControllerBase
         if (string.IsNullOrWhiteSpace(mobil) && string.IsNullOrWhiteSpace(orgnr))
         {
             _log.LogWarning("Soknedal-webhook 400: fant ingen identifikator. Content-Type={CT}", Request.ContentType ?? "(ingen)");
+            await AlarmAsync($"Soknedal-webhook mangler identifikator ({endepunkt})",
+                $"Innkommende webhook uten mobilnummer/orgnr. Content-Type: {Request.ContentType ?? "(ingen)"}.", "mangler-ident");
             return BadRequest(new { error = "Oppgi mobilnummer og/eller orgnr (som form-felt, query eller JSON)." });
         }
 
         var sak = await _kundekort.FinnForBankTilbakemeldingAsync(mobil, orgnr, BankNavn);
         if (sak is null)
+        {
+            _log.LogWarning("Soknedal-webhook 404: ingen match. mobil={Mobil} orgnr={Orgnr}", mobil, orgnr);
+            await AlarmAsync($"Soknedal-webhook fant ingen sak ({endepunkt})",
+                $"Soknedal sendte «{loggtekst}» men vi fant ingen matchende sak. Mobil: {mobil ?? "—"}, orgnr: {orgnr ?? "—"}. "
+                + "Saken må finnes hos oss og enten være delegert til Soknedal eller udelegert.", $"ingen-match-{mobil}-{orgnr}");
             return NotFound(new { funnet = false, melding = "Fant ingen sak delegert til Soknedal som matcher mobilnummer/orgnr." });
+        }
 
         await _kundekort.SetStatusAsync(sak.Id, nyStatus, "Soknedal (webhook)");
+        // Var saken udelegert, registrer Soknedal som delegert bank nå (så senere webhooks treffer presist).
+        if (string.IsNullOrWhiteSpace(sak.DelegertBank)) await _kundekort.SetDelegertBankAsync(sak.Id, BankNavn);
         await _logg.LoggAsync(sak.Id, "Soknedal (webhook)", loggtekst, "endring");
         _log.LogInformation("Soknedal-webhook: sak {Id} → {Status}", sak.Id, nyStatus);
         return Ok(new { funnet = true, id = sak.Id, ny_status = nyStatus });
+    }
+
+    // Reiser en alarm ved innkommende webhook-feil, så det er synlig i portalen hva som ble forsøkt.
+    private async Task AlarmAsync(string tittel, string detalj, string noekkelDel)
+    {
+        try { await _alarm.RaiseAsync("Webhook", tittel, detalj, AlarmService.Alvorlighet.Advarsel, "Soknedal-webhook", $"soknedal-webhook-{noekkelDel}"); }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke reise Soknedal-webhook-alarm"); }
     }
 
     // Leser mobilnummer/orgnr fra query, form-body (Nextcom-stil) ELLER JSON-body — robust og

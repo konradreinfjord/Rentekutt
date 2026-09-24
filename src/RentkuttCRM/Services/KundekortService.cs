@@ -573,7 +573,10 @@ public class KundekortService
 
         var alle = await ListAsync();
         return alle
-            .Where(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
+            // Delegert til denne banken ELLER ikke delegert i det hele tatt. En sak delegert til en
+            // ANNEN bank røres aldri (da er ikke tilbakemeldingen relevant for den saken).
+            .Where(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase)
+                        || string.IsNullOrWhiteSpace(k.DelegertBank))
             .Where(k =>
             {
                 var m = Digits(k.Mobilnummer);
@@ -583,7 +586,9 @@ public class KundekortService
                 var orgTreff = org.Length == 9 && (ko == org || kid == org);
                 return mobilTreff || orgTreff;
             })
-            .OrderByDescending(k => k.CreatedAt)
+            // En sak som allerede er delegert til banken vinner over en udelegert.
+            .OrderByDescending(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(k => k.CreatedAt)
             .FirstOrDefault();
     }
 
