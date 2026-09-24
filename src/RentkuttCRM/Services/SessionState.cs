@@ -52,7 +52,7 @@ public class SessionState
     /// navigering inn/ut av kundekort i samme økt.</summary>
     public class MarkedFilterState
     {
-        public string Search = "", Status = "", Bank = "", Kommune = "", Forslag = "", SortField = "opprettet";
+        public string Search = "", Status = "", Bank = "", Kommune = "", Forslag = "", Laanetype = "", SortField = "opprettet";
         public bool SkjulTatte, SortAsc;
     }
 

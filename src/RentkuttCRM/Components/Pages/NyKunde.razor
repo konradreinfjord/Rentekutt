@@ -343,7 +343,7 @@
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
     var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
-    var terminalStatus = _k.Status is "Avslått" or "Kansellert" or "Teknisk feil";
+    var terminalStatus = _k.Status is "Avslått" or "Kansellert" or "Teknisk feil" or "Avsluttet";
 }
 
 <div class="kk-tabs">
@@ -371,7 +371,15 @@
                 }
             }
         </div>
-        @if (terminalStatus)
+        @if (_k.Status == KundekortService.StatusAvsluttet)
+        {
+            @* Eget, rødt terminal-steg «Avsluttet» under flyten. *@
+            <div style="display:inline-flex; align-items:center; gap:9px; margin-top:14px; padding:9px 15px; border-radius:11px; background:#fdeceb; border:1px solid #e6a8a1; color:#b42318; font-weight:700">
+                <span style="width:24px; height:24px; border-radius:50%; background:#c1121f; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px">✕</span>
+                Avsluttet
+            </div>
+        }
+        else if (terminalStatus)
         {
             <p class="flyt-terminal-tekst">Søknaden er avsluttet med status <strong>@_k.Status</strong>.</p>
         }
