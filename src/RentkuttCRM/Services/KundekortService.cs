@@ -602,26 +602,106 @@ public class KundekortService
         => FinnEksisterendeAsync(mobil, epost, null, null, StatusPaabegynt);
 
     public record DuplikatKort(Guid Id, string Navn, string Status, DateTime Opprettet);
-    public record DuplikatGruppe(string Kilde, string KundeType, string Nummer, int Antall, List<DuplikatKort> Kort);
+    public record DuplikatGruppe(string Signatur, string Kilde, string KundeType, string Nummer, int Antall, List<DuplikatKort> Kort);
 
-    /// <summary>Finner kort som deler mobilnummer (siste 8 sifre) INNEN samme kilde OG kundetype —
-    /// altså reelle duplikater. Ulik kilde (prismatch vs rentekutt.no) eller ulik kundetype
-    /// (B2B vs B2C) regnes IKKE som duplikater; de er separate søknader.</summary>
+    // «Samme tidsrom»: to kort regnes kun som duplikater hvis de er opprettet nær hverandre i tid.
+    // Kunder som søker på nytt uker/måneder senere er en NY søknad, ikke et duplikat.
+    private static readonly TimeSpan DuplikatVindu = TimeSpan.FromDays(2);
+
+    // Stabilt fingeravtrykk av en klynge (sorterte kort-id-er). Endres hvis et nytt kort kommer til,
+    // så en «ignorert» gruppe dukker opp igjen ved ny aktivitet.
+    private static string DuplikatSignatur(IEnumerable<Guid> ids)
+    {
+        var kanonisk = string.Join(",", ids.OrderBy(x => x));
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(kanonisk));
+        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
+    }
+
+    /// <summary>Finner reelle duplikater: kort som deler mobilnummer (siste 8 sifre) INNEN samme kilde,
+    /// samme kundetype (B2B/B2C blandes aldri) OG opprettet innenfor samme tidsrom (~2 døgn). Grupper
+    /// som er markert «ignorert» skjules (til et nytt kort ev. kommer til). Ulik kilde eller kundetype,
+    /// eller kort langt fra hverandre i tid, regnes IKKE som duplikater.</summary>
     public async Task<List<DuplikatGruppe>> FinnDuplikaterAsync()
     {
         static string Hale8(string? s) { var d = new string((s ?? "").Where(char.IsDigit).ToArray()); return d.Length <= 8 ? d : d[^8..]; }
         var alle = await ListAsync();
-        return alle
+        var ignorerte = await HentIgnorerteSignaturerAsync();
+
+        var grupper = new List<DuplikatGruppe>();
+        foreach (var nøkkelgruppe in alle
             .Where(k => !string.IsNullOrWhiteSpace(k.Mobilnummer))
             .Select(k => new { k, tail = Hale8(k.Mobilnummer) })
             .Where(x => x.tail.Length == 8)
-            .GroupBy(x => (Kilde: x.k.Kilde ?? "", Type: x.k.KundeType ?? "", x.tail))
-            .Where(g => g.Count() > 1)
-            .Select(g => new DuplikatGruppe(g.Key.Kilde, g.Key.Type, g.Key.tail, g.Count(),
-                g.Select(x => new DuplikatKort(x.k.Id, string.IsNullOrWhiteSpace(x.k.FulltNavn) ? "—" : x.k.FulltNavn!, x.k.Status ?? "", x.k.CreatedAt))
-                 .OrderBy(d => d.Opprettet).ToList()))
-            .OrderByDescending(g => g.Antall)
-            .ToList();
+            .GroupBy(x => (Kilde: x.k.Kilde ?? "", Type: x.k.KundeType ?? "", x.tail)))
+        {
+            // Del nøkkelgruppen i tidsklynger: sortér på opprettet og bryt der gapet er større enn vinduet.
+            var sortert = nøkkelgruppe.OrderBy(x => x.k.CreatedAt).ToList();
+            var klynge = new List<Kundekort>();
+            void Lukk()
+            {
+                if (klynge.Count > 1)
+                {
+                    var kort = klynge.OrderBy(k => k.CreatedAt)
+                        .Select(k => new DuplikatKort(k.Id, string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn!, k.Status ?? "", k.CreatedAt))
+                        .ToList();
+                    var sig = DuplikatSignatur(kort.Select(k => k.Id));
+                    if (!ignorerte.Contains(sig))
+                        grupper.Add(new DuplikatGruppe(sig, nøkkelgruppe.Key.Kilde, nøkkelgruppe.Key.Type, nøkkelgruppe.Key.tail, kort.Count, kort));
+                }
+                klynge = new();
+            }
+            foreach (var x in sortert)
+            {
+                if (klynge.Count > 0 && x.k.CreatedAt - klynge[^1].CreatedAt > DuplikatVindu) Lukk();
+                klynge.Add(x.k);
+            }
+            Lukk();
+        }
+        return grupper.OrderByDescending(g => g.Antall).ThenByDescending(g => g.Kort.Max(k => k.Opprettet)).ToList();
+    }
+
+    private async Task<HashSet<string>> HentIgnorerteSignaturerAsync()
+    {
+        if (!IsConfigured) return _ignorertStaging.ToHashSet();
+        try
+        {
+            await EnsureReadyAsync();
+            return (await _client.From<DuplikatIgnorert>().Get()).Models.Select(x => x.Signatur).ToHashSet();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av ignorerte duplikater feilet"); return new(); }
+    }
+
+    private static readonly List<string> _ignorertStaging = new();
+
+    /// <summary>Markerer en duplikat-gruppe som ignorert (skjules fra lista). Signaturen bindes til
+    /// kortene i gruppen, så den dukker opp igjen hvis et nytt kort kommer til.</summary>
+    public async Task IgnorerDuplikatAsync(DuplikatGruppe g, string? aktor)
+    {
+        if (!IsConfigured) { _ignorertStaging.Add(g.Signatur); return; }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<DuplikatIgnorert>().Upsert(new DuplikatIgnorert
+            {
+                Signatur = g.Signatur, Kilde = g.Kilde, Kundetype = g.KundeType, Nummer = g.Nummer, IgnorertAv = aktor,
+            });
+        }
+        catch (Exception ex) { _log.LogError(ex, "Ignorering av duplikat feilet"); }
+    }
+
+    public async Task<int> AntallIgnorerteAsync() => (await HentIgnorerteSignaturerAsync()).Count;
+
+    /// <summary>Nullstiller alle «ignorert»-markeringer, så gruppene vises igjen.</summary>
+    public async Task NullstillIgnorerteAsync()
+    {
+        if (!IsConfigured) { _ignorertStaging.Clear(); return; }
+        try
+        {
+            await EnsureReadyAsync();
+            // Slett alle rader (matcher alt med en alltid-sann filter på primærnøkkelen).
+            await _client.From<DuplikatIgnorert>().Where(x => x.Signatur != "").Delete();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Nullstilling av ignorerte duplikater feilet"); }
     }
 
     private static readonly HashSet<string> MergeHoppOver = new(StringComparer.OrdinalIgnoreCase)
@@ -644,12 +724,15 @@ public class KundekortService
         }
     }
 
-    // Flytter alle barn-poster (logg/notat/oppfølging/banksending/samtykke/anrop) fra ett kort til et annet.
+    // Flytter alle barn-poster (notat/oppfølging/banksending/samtykke/anrop) fra ett kort til et annet.
+    // Revisjonssporet (kundekort_logg) flyttes bevisst IKKE: det er append-only (0043) og skal ikke
+    // omskrives — historikken blir stående uforanderlig på det opprinnelige kortet (bevares selv når
+    // duplikatet slettes, siden fremmednøkkelen med kaskade er fjernet). Merge-hendelsen logges i
+    // stedet som en ny linje på det gjenværende kortet (se MergeGruppeAsync).
     private async Task<(bool ok, string? feil)> FlyttBarnAsync(Guid fra, Guid til)
     {
         try
         {
-            await _client.From<KundekortLogg>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
             await _client.From<Saksnotat>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
             await _client.From<OppfolgingOppgave>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId, til).Update();
             await _client.From<BankSending>().Where(x => x.KundekortId == fra).Set(x => x.KundekortId!, til).Update();
@@ -661,15 +744,13 @@ public class KundekortService
         catch (Exception ex) { _log.LogError(ex, "Flytting av barn-poster feilet ({Fra}→{Til})", fra, til); return (false, ex.Message); }
     }
 
-    /// <summary>Slår sammen en duplikat-gruppe (samme kilde+kundetype+nummer) til ETT kort: beholder
-    /// det mest avanserte/nyeste, fyller manglende felt fra de andre, flytter barn-poster over, og
-    /// sletter duplikatene. Sletter aldri et kort hvis flyttingen av barn-postene feilet (ingen datatap).</summary>
-    public async Task<(bool ok, string melding)> MergeGruppeAsync(string kilde, string kundeType, string nummerTail, string? aktor)
+    /// <summary>Slår sammen EN konkret duplikat-klynge (kortene med de oppgitte id-ene) til ETT kort:
+    /// beholder det mest avanserte/nyeste, fyller manglende felt fra de andre, flytter barn-poster over,
+    /// og sletter duplikatene. Sletter aldri et kort hvis flyttingen av barn-postene feilet (ingen datatap).</summary>
+    public async Task<(bool ok, string melding)> MergeIderAsync(IReadOnlyList<Guid> ids, string? aktor)
     {
-        static string Hale8(string? s) { var d = new string((s ?? "").Where(char.IsDigit).ToArray()); return d.Length <= 8 ? d : d[^8..]; }
-        var gruppe = (await ListAsync())
-            .Where(k => (k.Kilde ?? "") == kilde && (k.KundeType ?? "") == kundeType && Hale8(k.Mobilnummer) == nummerTail)
-            .ToList();
+        var idSet = ids.ToHashSet();
+        var gruppe = (await ListAsync()).Where(k => idSet.Contains(k.Id)).ToList();
         if (gruppe.Count < 2) return (false, "Fant ingen duplikater å slå sammen.");
 
         int Rang(string? st) => Array.IndexOf(Statuser, st ?? "");
@@ -682,26 +763,32 @@ public class KundekortService
 
         foreach (var o in andre.OrderByDescending(k => k.CreatedAt)) FyllTommeFelt(survivor, o);
 
-        int slettet = 0; var feil = new List<string>();
+        int slettet = 0; var feil = new List<string>(); var slettedeIds = new List<Guid>();
         foreach (var o in andre)
         {
             var (ok, f) = await FlyttBarnAsync(o.Id, survivor.Id);
             if (!ok) { feil.Add(f ?? "flytting feilet"); continue; }   // behold kortet ved feil – ingen datatap
             var (dok, derr) = await DeleteAsync(o.Id);
-            if (dok) slettet++; else feil.Add(derr ?? "sletting feilet");
+            if (dok) { slettet++; slettedeIds.Add(o.Id); } else feil.Add(derr ?? "sletting feilet");
         }
 
         await SaveAsync(survivor, aktor: aktor ?? "System (merge)");
-        try
+        if (slettet > 0)
         {
-            await _client.From<KundekortLogg>().Insert(new KundekortLogg
+            try
             {
-                KundekortId = survivor.Id, Aktor = aktor,
-                Tekst = $"Slo sammen {slettet} duplikat(er) inn i dette kortet (kilde {kilde}, {kundeType}).",
-                Kategori = "kobling",
-            });
+                // Append-only merge-notat på det gjenværende kortet, med referanse til de sammenslåtte
+                // kortenes id-er (deres revisjonsspor ligger uendret på disse id-ene).
+                await _client.From<KundekortLogg>().Insert(new KundekortLogg
+                {
+                    KundekortId = survivor.Id, Aktor = aktor,
+                    Tekst = $"Slo sammen {slettet} duplikat(er) inn i dette kortet (kilde {survivor.Kilde}, {survivor.KundeType}). "
+                            + $"Historikk for sammenslåtte kort ligger i revisjonssporet: {string.Join(", ", slettedeIds)}.",
+                    Kategori = "kobling",
+                });
+            }
+            catch { /* logg er best-effort */ }
         }
-        catch { /* logg er best-effort */ }
         InvaliderCache();
 
         return feil.Count == 0

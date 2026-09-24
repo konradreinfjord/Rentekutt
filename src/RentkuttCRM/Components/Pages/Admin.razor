@@ -1180,9 +1180,14 @@ else if (_active == "Duplikater")
 {
     <div class="section">
         <h2>Duplikater <span class="pill pill-warn">@_duplikater.Count</span></h2>
-        <p class="page-sub">Kort som deler mobilnummer <strong>innen samme kilde og kundetype</strong> (reelle duplikater). Ulik kilde (Prismatch vs Rentekutt.no) eller ulik type (bedrift vs privat) regnes ikke som duplikater. «Slå sammen» beholder det mest avanserte kortet, flytter logg/notater/oppfølging/banksending/samtykke/anrop over, fyller manglende felt, og sletter resten.</p>
+        <p class="page-sub">Kun <strong>reelle duplikater</strong>: kort som deler mobilnummer, <strong>innen samme kilde, samme kundetype (bedrift/privat blandes aldri), og opprettet i samme tidsrom (~2 døgn)</strong>. En kunde som søker på nytt uker/måneder senere er en ny søknad, ikke et duplikat. «Slå sammen» beholder det mest avanserte kortet, flytter notater/oppfølging/banksending/samtykke/anrop over, fyller manglende felt og sletter resten (revisjonssporet bevares uendret). «Ignorer» skjuler en gruppe du har vurdert — den dukker opp igjen hvis et nytt kort kommer til.</p>
         <span class="token-row">
             <button class="btn-sm" @onclick="LastDuplikater" disabled="@(_duplikaterLaster || _merger)">@(_duplikaterLaster ? "Søker…" : "Oppdater")</button>
+            @if (_antIgnorerte > 0)
+            {
+                <span class="page-sub" style="margin:0 6px">@_antIgnorerte ignorert</span>
+                <button class="btn-sm" @onclick="NullstillIgnorerte" disabled="@_merger">Vis ignorerte igjen</button>
+            }
             @if (_duplikater.Count > 0)
             {
                 @if (_mergeBekreft == "ALLE")
@@ -1219,6 +1224,7 @@ else if (_active == "Duplikater")
                     else
                     {
                         <button class="btn-sm" @onclick="@(() => _mergeBekreft = GruppeKey(g))" disabled="@_merger">Slå sammen</button>
+                        <button class="btn-sm" @onclick="() => IgnorerGruppe(g)" disabled="@_merger" title="Skjul denne gruppen — den er vurdert og er ikke et duplikat">Ignorer</button>
                     }
                     <table class="data-table" style="margin-top:8px">
                         <thead><tr><th>Navn</th><th>Status</th><th>Opprettet</th><th></th></tr></thead>
@@ -2268,21 +2274,23 @@ else if (_active == "GDPR")
     private bool _merger;
     private string? _mergeMsg;
 
+    private int _antIgnorerte;
+
     private async Task LastDuplikater()
     {
         _duplikaterLaster = true; StateHasChanged();
-        try { _duplikater = await Kunder.FinnDuplikaterAsync(); }
+        try { _duplikater = await Kunder.FinnDuplikaterAsync(); _antIgnorerte = await Kunder.AntallIgnorerteAsync(); }
         finally { _duplikaterLaster = false; }
     }
 
-    private static string GruppeKey(KundekortService.DuplikatGruppe g) => $"{g.Kilde}|{g.KundeType}|{g.Nummer}";
+    private static string GruppeKey(KundekortService.DuplikatGruppe g) => g.Signatur;
 
     private async Task MergeGruppe(KundekortService.DuplikatGruppe g)
     {
         _merger = true; StateHasChanged();
         try
         {
-            var (_, m) = await Kunder.MergeGruppeAsync(g.Kilde, g.KundeType, g.Nummer, Session.UserName ?? Session.Email);
+            var (_, m) = await Kunder.MergeIderAsync(g.Kort.Select(k => k.Id).ToList(), Session.UserName ?? Session.Email);
             _mergeMsg = m;
             _mergeBekreft = null;
             await LastDuplikater();
@@ -2298,13 +2306,32 @@ else if (_active == "GDPR")
             int ok = 0; var feil = 0;
             foreach (var g in _duplikater.ToList())
             {
-                var (o, _) = await Kunder.MergeGruppeAsync(g.Kilde, g.KundeType, g.Nummer, Session.UserName ?? Session.Email);
+                var (o, _) = await Kunder.MergeIderAsync(g.Kort.Select(k => k.Id).ToList(), Session.UserName ?? Session.Email);
                 if (o) ok++; else feil++;
             }
             _mergeMsg = $"Slo sammen {ok} gruppe(r)." + (feil > 0 ? $" {feil} gruppe(r) feilet delvis." : "");
             _mergeBekreft = null;
             await LastDuplikater();
         }
+        finally { _merger = false; }
+    }
+
+    private async Task IgnorerGruppe(KundekortService.DuplikatGruppe g)
+    {
+        _merger = true; StateHasChanged();
+        try
+        {
+            await Kunder.IgnorerDuplikatAsync(g, Session.UserName ?? Session.Email);
+            _mergeBekreft = null;
+            await LastDuplikater();
+        }
+        finally { _merger = false; }
+    }
+
+    private async Task NullstillIgnorerte()
+    {
+        _merger = true; StateHasChanged();
+        try { await Kunder.NullstillIgnorerteAsync(); await LastDuplikater(); }
         finally { _merger = false; }
     }
 

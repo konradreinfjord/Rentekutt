@@ -3,6 +3,19 @@ using Supabase.Postgrest.Models;
 
 namespace RentkuttCRM.Services;
 
+/// <summary>«Ignorert» duplikat-gruppe — skjuler en gruppe fra duplikatlista. Signatur = fingeravtrykk
+/// av kortenes id-er, så gruppen dukker opp igjen hvis et nytt kort kommer til.</summary>
+[Table("duplikat_ignorert")]
+public class DuplikatIgnorert : BaseModel
+{
+    [PrimaryKey("signatur", false)] public string Signatur { get; set; } = "";
+    [Column("kilde")] public string? Kilde { get; set; }
+    [Column("kundetype")] public string? Kundetype { get; set; }
+    [Column("nummer")] public string? Nummer { get; set; }
+    [Column("ignorert_av")] public string? IgnorertAv { get; set; }
+    [Column("ignorert_at", ignoreOnInsert: true, ignoreOnUpdate: true)] public DateTime IgnorertAt { get; set; }
+}
+
 /// <summary>
 /// Kundekort = lånesøknad med lånedata. Mappes mot tabellen kundekort.
 /// Identifikator: fødselsnummer (11) for B2C / orgnr (9) for B2B.
