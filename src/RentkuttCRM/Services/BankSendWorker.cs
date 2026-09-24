@@ -195,6 +195,7 @@ public class BankSendWorker : BackgroundService
             {
                 var alle = await ko.ForKundeAsync(mid);
                 var kort = await kunder.GetAsync(mid);
+                if (kort is not null && string.IsNullOrWhiteSpace(kort.DelegertBank)) await kunder.SetDelegertBankAsync(mid, s.Bank);
                 await kunder.OppdaterStatusFraBankerAsync(mid, kort?.Status, alle, "System (sendt til bank)");
             }
             return Utfall.IngenApiKall;
@@ -234,6 +235,8 @@ public class BankSendWorker : BackgroundService
         await ko.OppdaterAsync(s);
         if (utfall == Utfall.Ok && s.KundekortId is { } id)
         {
+            // Speil sendt bank i «Delegert til» hvis feltet er tomt (samme som ved manuell sending).
+            if (string.IsNullOrWhiteSpace(k.DelegertBank)) await kunder.SetDelegertBankAsync(id, s.Bank);
             var alle = await ko.ForKundeAsync(id);
             await kunder.OppdaterStatusFraBankerAsync(id, k.Status, alle, "System (sendt til bank)");
         }
@@ -315,6 +318,8 @@ public class BankSendWorker : BackgroundService
         // til Instabank-synk gir endelig utfall).
         if (utfall == Utfall.Ok)
         {
+            // Speil sendt bank i «Delegert til» hvis feltet er tomt (samme som ved manuell sending).
+            if (string.IsNullOrWhiteSpace(k.DelegertBank)) await kunder.SetDelegertBankAsync(id, s.Bank);
             var alle = await ko.ForKundeAsync(id);
             await kunder.OppdaterStatusFraBankerAsync(id, k.Status, alle, "System (sendt til bank)");
         }
