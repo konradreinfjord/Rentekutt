@@ -50,11 +50,11 @@ public class NextcomService
             var c = _http.CreateClient();
             c.Timeout = TimeSpan.FromSeconds(25);
             using var content = new FormUrlEncodedContent(form);
-            // Logg utgående felt (bevis på hva vi faktisk sender — bl.a. CellPhone). Nyttig når en
-            // bank sier «mangler mobil»: da kan vi vise nøyaktig payload mot Nextcom.
-            _log.LogInformation("Nextcom-sending → felt: CellPhone={CellPhone}, FirstName={FirstName}, SecondName={SecondName}, Email satt={HarEpost}",
-                form.GetValueOrDefault("CellPhone", "(tom)"), form.GetValueOrDefault("FirstName", "(tom)"),
-                form.GetValueOrDefault("SecondName", "(tom)"), !string.IsNullOrEmpty(form.GetValueOrDefault("Email")));
+            // Logg alle utgående felt (bevis på nøyaktig hva vi sender til Nextcom). Nyttig når en
+            // bank sier at f.eks. bank/rente «mangler»: da kan vi vise at feltene faktisk ble sendt.
+            _log.LogInformation("Nextcom-sending → CellPhone={CellPhone} | Extra2(bank)={Extra2} | Extra3(rente)={Extra3} | Extra4(lånesum)={Extra4} | FirstName={FirstName} SecondName={SecondName} Email-satt={HarEpost}",
+                Tom(form, "CellPhone"), Tom(form, "Extra2"), Tom(form, "Extra3"), Tom(form, "Extra4"),
+                Tom(form, "FirstName"), Tom(form, "SecondName"), !string.IsNullOrEmpty(form.GetValueOrDefault("Email")));
             using var res = await c.PostAsync(url, content, ct);
             var body = await res.Content.ReadAsStringAsync(ct);
 
@@ -92,6 +92,7 @@ public class NextcomService
         return d.Length == 1 ? (d[0], null) : (d[0], d[1]);
     }
 
+    private static string Tom(Dictionary<string, string> f, string k) { var v = f.GetValueOrDefault(k); return string.IsNullOrEmpty(v) ? "(tom)" : v; }
     private static string Sifre(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
     private static string Kutt(string? s, int maks) => string.IsNullOrEmpty(s) ? "" : (s.Length > maks ? s[..maks] : s);
     private static string Kort(string? s) => string.IsNullOrEmpty(s) ? "" : (s.Length > 250 ? s[..250] + "…" : s);
