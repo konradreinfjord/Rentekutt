@@ -940,6 +940,7 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                     <span class="k">1 · Pågår</span><span class="v mono">@_webhookBase/api/soknedal/pagaar</span>
                     <span class="k">2 · SBL signert</span><span class="v mono">@_webhookBase/api/soknedal/signert</span>
                     <span class="k">3 · Godkjent og utbetalt</span><span class="v mono">@_webhookBase/api/soknedal/utbetalt</span>
+                    <span class="k">4 · Sak avsluttet</span><span class="v mono">@_webhookBase/api/soknedal/avsluttet</span>
                     <span class="k">Token</span><span class="v mono">@(string.IsNullOrWhiteSpace(_soknedalToken) ? "— ikke satt —" : _soknedalToken)</span>
                 </div>
                 <button class="btn-sm" @onclick="GenererSoknedalToken">@(string.IsNullOrWhiteSpace(_soknedalToken) ? "Generer token" : "Roter token")</button>

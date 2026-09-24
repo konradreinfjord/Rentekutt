@@ -9,7 +9,7 @@ public class KundekortService
     // Full statusliste (kundekortet kan sette alle; markeds-dropdownen viser kun StatuserManuelle).
     public static readonly string[] Statuser =
         { "Påbegynt søknad", "Nytt lead", "Ny søknad", "Pågår - Agent", "Sendt - I prosess",
-          "Sendt til bank - Timeout", "Sendt - Innvilget", "Signert", "Utbetalt", "Avslått", "Kansellert", "Teknisk feil" };
+          "Sendt til bank - Timeout", "Sendt - Innvilget", "Signert", "Utbetalt", "Avslått", "Avsluttet", "Kansellert", "Teknisk feil" };
 
     /// <summary>Statuser en saksbehandler kan sette manuelt i markeds-dropdownen. Øvrige er system-satt
     /// (webhook/API/bakgrunnsjobber) og kan bare endres ved å åpne kundekortet.</summary>
@@ -30,6 +30,8 @@ public class KundekortService
     public const string StatusSignert = "Signert";
     public const string StatusUtbetalt = "Utbetalt";
     public const string StatusAvslatt = "Avslått";
+    /// <summary>Saken er avsluttet av banken uten utbetaling (f.eks. Soknedal via webhook).</summary>
+    public const string StatusAvsluttet = "Avsluttet";
     public const string StatusKansellert = "Kansellert";
     public const string StatusTekniskFeil = "Teknisk feil";
 

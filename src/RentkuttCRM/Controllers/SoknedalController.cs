@@ -18,6 +18,7 @@ namespace RentkuttCRM.Controllers;
 ///   POST /api/soknedal/pagaar    → «Sendt - I prosess» (under behandling)
 ///   POST /api/soknedal/signert   → «Signert» (SBL signert)
 ///   POST /api/soknedal/utbetalt  → «Utbetalt» (godkjent og utbetalt)
+///   POST /api/soknedal/avsluttet → «Avsluttet» (sak avsluttet uten utbetaling)
 /// Felt (form eller query): mobilnummer, orgnr.
 /// </summary>
 [ApiController]
@@ -55,6 +56,10 @@ public class SoknedalController : ControllerBase
     [EnableRateLimiting("webhook")]
     public Task<IActionResult> Utbetalt() => Behandle(KundekortService.StatusUtbetalt, "Soknedal: godkjent og utbetalt.");
 
+    [HttpPost("avsluttet")]
+    [EnableRateLimiting("webhook")]
+    public Task<IActionResult> Avsluttet() => Behandle(KundekortService.StatusAvsluttet, "Soknedal: sak avsluttet.");
+
     private async Task<IActionResult> Behandle(string nyStatus, string loggtekst)
     {
         if (!Request.IsHttps && !_env.IsDevelopment())
@@ -69,9 +74,12 @@ public class SoknedalController : ControllerBase
             return Unauthorized(new { error = "Ugyldig eller manglende token." });
         }
 
-        var (mobil, orgnr) = LesIdentifikator();
+        var (mobil, orgnr) = await LesIdentifikatorAsync();
         if (string.IsNullOrWhiteSpace(mobil) && string.IsNullOrWhiteSpace(orgnr))
-            return BadRequest(new { error = "Oppgi mobilnummer og/eller orgnr." });
+        {
+            _log.LogWarning("Soknedal-webhook 400: fant ingen identifikator. Content-Type={CT}", Request.ContentType ?? "(ingen)");
+            return BadRequest(new { error = "Oppgi mobilnummer og/eller orgnr (som form-felt, query eller JSON)." });
+        }
 
         var sak = await _kundekort.FinnForBankTilbakemeldingAsync(mobil, orgnr, BankNavn);
         if (sak is null)
@@ -83,21 +91,50 @@ public class SoknedalController : ControllerBase
         return Ok(new { funnet = true, id = sak.Id, ny_status = nyStatus });
     }
 
-    // Leser mobilnummer/orgnr fra form-body (Nextcom-stil) eller query.
-    private (string? mobil, string? orgnr) LesIdentifikator()
+    // Leser mobilnummer/orgnr fra query, form-body (Nextcom-stil) ELLER JSON-body — robust og
+    // uavhengig av store/små bokstaver i feltnavnet (Soknedal kan sende «CellPhone», «MobileNumber» osv.).
+    private async Task<(string? mobil, string? orgnr)> LesIdentifikatorAsync()
     {
-        string? V(params string[] keys)
+        string? mobil = null, orgnr = null;
+        static string N(string s) => new(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+        var mobilNavn = new[] { "mobilnummer", "mobil", "cellphone", "mobilephone", "mobilenumber", "phone", "phonenumber", "telefon", "tlf" }.Select(N).ToHashSet();
+        // Merk: Soknedals innkommende webhook sender orgnr i feltet «ssn».
+        var orgNavn = new[] { "orgnr", "organisasjonsnummer", "orgnummer", "orgno", "organizationnumber", "ssn" }.Select(N).ToHashSet();
+        void Sett(string key, string? val)
         {
-            foreach (var k in keys)
-            {
-                if (Request.HasFormContentType && Request.Form.TryGetValue(k, out var f) && !string.IsNullOrWhiteSpace(f)) return f.ToString().Trim();
-                var q = Request.Query[k].ToString();
-                if (!string.IsNullOrWhiteSpace(q)) return q.Trim();
-            }
-            return null;
+            if (string.IsNullOrWhiteSpace(val)) return;
+            var k = N(key);
+            if (mobil is null && mobilNavn.Contains(k)) mobil = val.Trim();
+            else if (orgnr is null && orgNavn.Contains(k)) orgnr = val.Trim();
         }
-        return (V("mobilnummer", "mobil", "cellphone", "phone", "telefon"),
-                V("orgnr", "organisasjonsnummer", "orgnummer", "orgno"));
+
+        foreach (var kv in Request.Query) Sett(kv.Key, kv.Value.ToString());
+        if (Request.HasFormContentType)
+            foreach (var kv in Request.Form) Sett(kv.Key, kv.Value.ToString());
+
+        // JSON-body ({"mobilnummer":"...","orgnr":"..."}) hvis vi ikke har begge ennå.
+        if ((mobil is null || orgnr is null) && !Request.HasFormContentType)
+        {
+            try
+            {
+                Request.EnableBuffering();
+                Request.Body.Position = 0;
+                using var reader = new StreamReader(Request.Body, leaveOpen: true);
+                var raw = await reader.ReadToEndAsync();
+                Request.Body.Position = 0;
+                if (!string.IsNullOrWhiteSpace(raw) && raw.TrimStart().StartsWith("{"))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                    foreach (var p in doc.RootElement.EnumerateObject())
+                    {
+                        if (p.Value.ValueKind == System.Text.Json.JsonValueKind.String) Sett(p.Name, p.Value.GetString());
+                        else if (p.Value.ValueKind == System.Text.Json.JsonValueKind.Number) Sett(p.Name, p.Value.GetRawText());
+                    }
+                }
+            }
+            catch { /* ikke JSON — ignorer */ }
+        }
+        return (mobil, orgnr);
     }
 
     private string? PresentedToken()
