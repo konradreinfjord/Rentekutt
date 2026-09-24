@@ -15,10 +15,9 @@ namespace RentkuttCRM.Controllers;
 /// Admin → API og Data → Soknedal-kortet. Rate-limitet på IP.
 ///
 /// URL-er:
-///   POST /api/soknedal/pagaar    → «Sendt - I prosess» (under behandling)
-///   POST /api/soknedal/signert   → «Signert» (SBL signert)
-///   POST /api/soknedal/utbetalt  → «Utbetalt» (godkjent og utbetalt)
-///   POST /api/soknedal/avsluttet → «Avsluttet» (sak avsluttet uten utbetaling)
+///   POST /api/soknedal/signert   → «SBL Signert»
+///   POST /api/soknedal/utbetalt  → «Utbetalt»
+///   POST /api/soknedal/avsluttet → «Avsluttet»
 /// Felt (form eller query): mobilnummer, orgnr.
 /// </summary>
 [ApiController]
@@ -43,10 +42,6 @@ public class SoknedalController : ControllerBase
         _env = env;
         _log = log;
     }
-
-    [HttpPost("pagaar")]
-    [EnableRateLimiting("webhook")]
-    public Task<IActionResult> Pagaar() => Behandle(KundekortService.StatusSendtIProsess, "Soknedal: søknad under behandling (pågår).");
 
     [HttpPost("signert")]
     [EnableRateLimiting("webhook")]
