@@ -64,7 +64,7 @@
     </select>
     <select class="db-select" @bind="_laanetypeFilter" @bind:after="ResetPage">
         <option value="">Alle lånetyper</option>
-        @foreach (var l in LaanetypeListe) { <option value="@l.Navn">@l.Navn (@l.Antall)</option> }
+        @foreach (var l in LaanetypeListe) { <option value="@l.Navn">@l.Navn@(l.Antall > 0 ? $" ({l.Antall})" : "")</option> }
     </select>
     <select class="db-select" @bind="_bankFilter" @bind:after="ResetPage">
         <option value="">Alle banker</option>
@@ -347,12 +347,23 @@ else
         .GroupBy(k => k.NavarendeBank!).Select(g => (g.Key, g.Count()))
         .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
 
-    // Lånetyper som finnes i utvalget, med antall kort per type.
+    // Faste lånetype-valg som alltid kan velges (uavhengig av hva som finnes i utvalget nå).
+    private static readonly string[] LaanetypeValg = { "Boliglån", "Refinansiering", "Forbrukslån", "Kredittkort", "Mellomfinansiering" };
+
+    // Dropdown-valg for lånetype: de faste valgene + eventuelle andre verdier som finnes i utvalget,
+    // hver med antall kort (0 = finnes ikke i utvalget nå, men kan fortsatt velges).
     private IEnumerable<(string Navn, int Antall)>? _laanetypeListe;
-    private IEnumerable<(string Navn, int Antall)> LaanetypeListe => _laanetypeListe ??= _typeRows
-        .Where(k => !string.IsNullOrWhiteSpace(k.Laanetype))
-        .GroupBy(k => k.Laanetype!).Select(g => (g.Key, g.Count()))
-        .OrderByDescending(x => x.Item2).ThenBy(x => x.Item1).ToList();
+    private IEnumerable<(string Navn, int Antall)> LaanetypeListe => _laanetypeListe ??= ByggLaanetypeValg();
+    private List<(string Navn, int Antall)> ByggLaanetypeValg()
+    {
+        var antall = _typeRows.Where(k => !string.IsNullOrWhiteSpace(k.Laanetype))
+            .GroupBy(k => k.Laanetype!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        var navn = new List<string>(LaanetypeValg);
+        foreach (var p in antall.Keys)
+            if (!navn.Any(n => string.Equals(n, p, StringComparison.OrdinalIgnoreCase))) navn.Add(p);
+        return navn.Select(n => (n, antall.TryGetValue(n, out var c) ? c : 0)).ToList();
+    }
 
     // Foreslåtte banker (postnr-dekning) på tvers av kortene, med antall kort per bank.
     private IEnumerable<(string Navn, int Antall)>? _forslagListe;
