@@ -9,7 +9,7 @@ public class KundekortService
     // Full statusliste (kundekortet kan sette alle; markeds-dropdownen viser kun StatuserManuelle).
     public static readonly string[] Statuser =
         { "Påbegynt søknad", "Nytt lead", "Ny søknad", "Pågår - Agent", "Sendt - I prosess",
-          "Sendt til bank - Timeout", "Sendt - Innvilget", "Utbetalt", "Avslått", "Kansellert", "Teknisk feil" };
+          "Sendt til bank - Timeout", "Sendt - Innvilget", "Signert", "Utbetalt", "Avslått", "Kansellert", "Teknisk feil" };
 
     /// <summary>Statuser en saksbehandler kan sette manuelt i markeds-dropdownen. Øvrige er system-satt
     /// (webhook/API/bakgrunnsjobber) og kan bare endres ved å åpne kundekortet.</summary>
@@ -26,6 +26,8 @@ public class KundekortService
     public const string StatusSendtIProsess = "Sendt - I prosess";
     public const string StatusSendtBankTimeout = "Sendt til bank - Timeout";
     public const string StatusSendtInnvilget = "Sendt - Innvilget";
+    /// <summary>Lånedokument (SBL) signert av kunden — bekreftet av bank (f.eks. Soknedal via webhook).</summary>
+    public const string StatusSignert = "Signert";
     public const string StatusUtbetalt = "Utbetalt";
     public const string StatusAvslatt = "Avslått";
     public const string StatusKansellert = "Kansellert";
@@ -552,6 +554,32 @@ public class KundekortService
                 var m = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
                 var id = new string((k.KundeId ?? "").Where(char.IsDigit).ToArray());
                 return m.EndsWith(tail) || id.EndsWith(tail);
+            })
+            .OrderByDescending(k => k.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Finn nyeste sak som er delegert til en gitt bank OG matcher mobilnummer og/eller orgnr.
+    /// Brukes av innkommende bank-tilbakemelding (webhook fra f.eks. Soknedal). Scoping på delegert bank
+    /// hindrer at en tilfeldig sak med samme nummer oppdateres.</summary>
+    public async Task<Kundekort?> FinnForBankTilbakemeldingAsync(string? mobil, string? orgnr, string bank)
+    {
+        static string Digits(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
+        var mobilTail = Digits(mobil); if (mobilTail.Length > 8) mobilTail = mobilTail[^8..];
+        var org = Digits(orgnr);
+        if (mobilTail.Length < 8 && org.Length != 9) return null;
+
+        var alle = await ListAsync();
+        return alle
+            .Where(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
+            .Where(k =>
+            {
+                var m = Digits(k.Mobilnummer);
+                var kid = Digits(k.KundeId);
+                var ko = Digits(k.Orgnr);
+                var mobilTreff = mobilTail.Length == 8 && (m.EndsWith(mobilTail) || kid.EndsWith(mobilTail));
+                var orgTreff = org.Length == 9 && (ko == org || kid == org);
+                return mobilTreff || orgTreff;
             })
             .OrderByDescending(k => k.CreatedAt)
             .FirstOrDefault();

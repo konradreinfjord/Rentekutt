@@ -928,7 +928,22 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                 {
                     <p class="page-sub" style="margin:0 0 8px; font-size:12px; color:@(_soknedalOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_soknedalMsg</p>
                 }
-                <p class="page-sub" style="margin:0; font-size:12px">Ruting (hvilke leads → Soknedal) styres i Logikk-matrisen. Auto-send krever både PÅ her og en matchende regel. «Test webhook» sender en testkontakt til Nextcom.</p>
+                <p class="page-sub" style="margin:0 0 14px; font-size:12px">Ruting (hvilke leads → Soknedal) styres i Logikk-matrisen. Auto-send krever både PÅ her og en matchende regel. «Test webhook» sender en testkontakt til Nextcom.</p>
+
+                <h3 class="ww-h">Tilbakemeldings-webhooks (fra Soknedal → oss)</h3>
+                <p class="page-sub" style="margin:0 0 8px; font-size:12px">
+                    Soknedal POSTer til disse URL-ene for å oppdatere status på saken. Identifikator sendes som
+                    <span class="mono">mobilnummer</span> og/eller <span class="mono">orgnr</span> (form eller query). Token legges i
+                    <span class="mono">Authorization: Bearer &lt;token&gt;</span> eller <span class="mono">?token=</span>. Saken må være delegert til Soknedal.
+                </p>
+                <div class="kv-list" style="margin-bottom:10px">
+                    <span class="k">1 · Pågår</span><span class="v mono">@_webhookBase/api/soknedal/pagaar</span>
+                    <span class="k">2 · SBL signert</span><span class="v mono">@_webhookBase/api/soknedal/signert</span>
+                    <span class="k">3 · Godkjent og utbetalt</span><span class="v mono">@_webhookBase/api/soknedal/utbetalt</span>
+                    <span class="k">Token</span><span class="v mono">@(string.IsNullOrWhiteSpace(_soknedalToken) ? "— ikke satt —" : _soknedalToken)</span>
+                </div>
+                <button class="btn-sm" @onclick="GenererSoknedalToken">@(string.IsNullOrWhiteSpace(_soknedalToken) ? "Generer token" : "Roter token")</button>
+                @if (!string.IsNullOrEmpty(_soknedalTokenMsg)) { <span class="page-sub" style="margin-left:8px; font-size:12px">@_soknedalTokenMsg</span> }
             </div>
         }
 
@@ -1957,6 +1972,7 @@ else if (_active == "GDPR")
         _banks = banksTask.Result;
         _soknedalUrl = _banks.FirstOrDefault(b => string.Equals(b.Navn, "Soknedal Sparebank", StringComparison.OrdinalIgnoreCase))?.WebhookUrl;
         _nextcomTestUrl = _soknedalUrl;   // forhåndsfyll frittstående test med Soknedal-URL hvis satt
+        await LastSoknedalWebhook();       // token + base-URL for tilbakemeldings-webhooks
         _produkter = produktTask.Result;
 
         // Selvhelbredende: garanter at alle Instabank-partnere har standardproduktene
@@ -2207,6 +2223,23 @@ else if (_active == "GDPR")
     private bool _soknedalTester;
     private bool _soknedalOk;
     private string? _soknedalMsg;
+    private string? _soknedalToken;
+    private string? _soknedalTokenMsg;
+    private string _webhookBase = "";
+
+    // Laster webhook-token + base-URL (kalles fra API-fanens innlasting).
+    private async Task LastSoknedalWebhook()
+    {
+        _webhookBase = Nav.BaseUri.TrimEnd('/');
+        _soknedalToken = await Settings.GetAsync(SoknedalController.KeyToken);
+    }
+
+    private async Task GenererSoknedalToken()
+    {
+        _soknedalToken = SoknedalController.NewToken();
+        await Settings.SetAsync(SoknedalController.KeyToken, _soknedalToken);
+        _soknedalTokenMsg = "Token lagret. Del det med Soknedal.";
+    }
 
     private async Task LagreSoknedalUrl(Partner sok)
     {
