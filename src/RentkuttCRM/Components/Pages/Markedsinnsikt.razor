@@ -67,33 +67,10 @@ else
                 <span class="mi-leg"><span class="mi-dot" style="background:#6b3fc4"></span>Manuelt registrert (@_antManuell)</span>
             </div>
             <div class="mi-chart">
-                <svg id="mi-svg-trend" data-ymax="@_yMaxTrend" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå siste 12 måneder">
+                <svg id="mi-svg-trend" data-ymin="@_yMinTrend" data-ymax="@_yMaxTrend" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå siste 12 måneder">
                     @((MarkupString)_svgTrend)
                 </svg>
                 <div id="mi-tip-trend" class="mi-tip"></div>
-            </div>
-        }
-    </div>
-
-    <div class="section">
-        <h2>Rente vs. lånebeløp</h2>
-        <p class="page-sub">Hvert punkt er en kunde: lånebeløp i millioner (x) mot oppgitt rente (y). Den <span style="color:#c2740a;font-weight:600">stiplede linjen</span> er dagens styringsrente. Viser om renten henger sammen med lånestørrelsen.</p>
-        @if (_belopPunkter == 0)
-        {
-            <p class="page-sub">Ingen kunder med både lånebeløp og rente registrert ennå.</p>
-        }
-        else
-        {
-            <div class="mi-legend">
-                <span class="mi-leg"><span class="mi-dot" style="background:#1f5fc4"></span>Fra søknad</span>
-                <span class="mi-leg"><span class="mi-dot" style="background:#6b3fc4"></span>Manuelt registrert</span>
-                <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente nå (@_naaStyring.ToString("N2", Nb) %)</span>
-            </div>
-            <div class="mi-chart">
-                <svg id="mi-svg-belop" data-ymax="@_yMaxBelop" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rente mot lånebeløp">
-                    @((MarkupString)_svgBelop)
-                </svg>
-                <div id="mi-tip-belop" class="mi-tip"></div>
             </div>
         }
     </div>
@@ -174,9 +151,9 @@ else
     private List<Segment> _segmenter = new();
     private decimal _snittRente, _snittMargin, _snittLtv;
     private double _naaStyring;
-    private int _antSoknad, _antManuell, _belopPunkter, _antLtv;
+    private int _antSoknad, _antManuell, _antLtv;
     private double _maxBelop;
-    private int _yMaxTrend = 8, _yMaxBelop = 8;
+    private int _yMinTrend = 0, _yMaxTrend = 8;
 
     private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, decimal? Ltv, bool Soknad, string Kategori);
     private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, decimal? SnittBelop, decimal? SnittLtv, DateTime Siste);
@@ -191,7 +168,7 @@ else
     private const double PlotW = W - PadL - PadR;
     private const double PlotH = H - PadT - PadB;
 
-    private string _svgTrend = "", _svgBelop = "";
+    private string _svgTrend = "";
 
     private static string Num(double v) => v.ToString("0.##", Inv);
     private const string BlaSoknad = "#1f5fc4", LillaManuell = "#6b3fc4";
@@ -244,8 +221,8 @@ else
 
         _snittRente = _snittMargin = _snittLtv = 0; _antLtv = 0;
         _banker = new(); _segmenter = new();
-        _punkter12 = new(); _antSoknad = _antManuell = _belopPunkter = 0;
-        _svgTrend = _svgBelop = "";
+        _punkter12 = new(); _antSoknad = _antManuell = 0;
+        _svgTrend = "";
 
         if (_punkter.Count == 0) return;
 
@@ -271,7 +248,6 @@ else
         _maxBelop = _punkter.Where(p => p.Belop is > 0).Select(p => (double)p.Belop!.Value).DefaultIfEmpty(0).Max();
 
         ByggTrend();
-        ByggBelop();
     }
 
     // LTV = belåningsgrad, samme definisjon som BeregningService: (boliggjeld + ønsket lån) / boligverdi.
@@ -305,7 +281,6 @@ else
     {
         if (_loading) return;
         if (_punkter12.Count > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-trend", "mi-tip-trend");
-        if (_belopPunkter > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-belop", "mi-tip-belop");
     }
 
     // Bobleradius etter lånebeløp (2.5–7 px) — holdt nede så boblene ikke overlapper for mye.
@@ -322,17 +297,21 @@ else
         _antManuell = _punkter12.Count - _antSoknad;
         if (_punkter12.Count == 0) return;
 
-        var relevant = _styring.Where(s => s.Dato <= xMax).Select(s => (double)s.Rente)
-            .Concat(_punkter12.Select(p => (double)p.Rente));
-        var yMax = Math.Max(8, (int)Math.Ceiling(relevant.Max() + 1));
-        if (yMax % 2 != 0) yMax++;
-        _yMaxTrend = yMax;
+        // Tett Y-akse: fit til dataene (min–max med litt luft) i stedet for alltid 0–8, så variasjonen
+        // blir tydelig. For boliglån gir dette typisk ~3–7 %. Minst 2 prosentpoeng høyt vindu.
+        var vals = _styring.Where(s => s.Dato <= xMax).Select(s => (double)s.Rente)
+            .Concat(_punkter12.Select(p => (double)p.Rente)).ToList();
+        var yMin = Math.Max(0, (int)Math.Floor(vals.Min() - 0.25));
+        var yMax = (int)Math.Ceiling(vals.Max() + 0.25);
+        if (yMax - yMin < 2) yMax = yMin + 2;
+        _yMinTrend = yMin; _yMaxTrend = yMax;
+        var steg = (yMax - yMin) <= 6 ? 1 : 2;
 
         double X(DateTime d) => PadL + (d - xMin).TotalDays / Math.Max(1, (xMax - xMin).TotalDays) * PlotW;
-        double Y(double r) => PadT + PlotH - r / yMax * PlotH;
+        double Y(double r) => PadT + PlotH - (r - yMin) / (yMax - yMin) * PlotH;
         var svg = new StringBuilder();
 
-        for (var g = 0; g <= yMax; g += 2)
+        for (var g = yMin; g <= yMax; g += steg)
         {
             svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(g))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(g))}\" stroke=\"var(--border)\" stroke-width=\"1\" />");
             svg.Append($"<text x=\"{Num(PadL - 6)}\" y=\"{Num(Y(g) + 3)}\" text-anchor=\"end\" font-size=\"10\" fill=\"var(--text-2)\">{g} %</text>");
@@ -359,8 +338,8 @@ else
         }
         sb.Append(" L ").Append(Num(X(xMax))).Append(' ').Append(Num(Y(prev)));
         var styringsti = sb.ToString();
-        // Svakt referansebånd under styringsrenten + selve linjen.
-        svg.Append($"<path d=\"{styringsti} L {Num(X(xMax))} {Num(Y(0))} L {Num(X(xMin))} {Num(Y(0))} Z\" fill=\"#c2740a\" fill-opacity=\"0.05\" stroke=\"none\" />");
+        // Svakt referansebånd under styringsrenten + selve linjen (bunnlinje = nedre akseverdi).
+        svg.Append($"<path d=\"{styringsti} L {Num(X(xMax))} {Num(Y(yMin))} L {Num(X(xMin))} {Num(Y(yMin))} Z\" fill=\"#c2740a\" fill-opacity=\"0.05\" stroke=\"none\" />");
         svg.Append($"<path d=\"{styringsti}\" fill=\"none\" stroke=\"#c2740a\" stroke-width=\"2.5\" stroke-linejoin=\"round\" />");
 
         // Kundepunkter — farge = kilde, størrelse = lånebeløp, tooltip med detaljer.
@@ -387,48 +366,6 @@ else
         svg.Append($"<line class=\"mi-cross\" x1=\"{Num(PadL)}\" x2=\"{Num(W - PadR)}\" y1=\"0\" y2=\"0\" stroke=\"var(--text-2)\" stroke-width=\"1\" stroke-dasharray=\"4 3\" />");
 
         _svgTrend = svg.ToString();
-    }
-
-    // ---- Bilde 2: rente vs lånebeløp ----
-    private void ByggBelop()
-    {
-        var pts = _punkter.Where(p => p.Belop is > 0).ToList();
-        _belopPunkter = pts.Count;
-        if (pts.Count == 0) return;
-
-        var bMaxM = Math.Max(1, Math.Ceiling((double)pts.Max(p => p.Belop!.Value) / 1_000_000.0)); // MNOK, rundet opp
-        var yMax = Math.Max(8, (int)Math.Ceiling(Math.Max((double)pts.Max(p => p.Rente), _naaStyring) + 1));
-        if (yMax % 2 != 0) yMax++;
-        _yMaxBelop = yMax;
-
-        double X(double mnok) => PadL + mnok / bMaxM * PlotW;
-        double Y(double r) => PadT + PlotH - r / yMax * PlotH;
-        var svg = new StringBuilder();
-
-        for (var g = 0; g <= yMax; g += 2)
-        {
-            svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(g))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(g))}\" stroke=\"var(--border)\" stroke-width=\"1\" />");
-            svg.Append($"<text x=\"{Num(PadL - 6)}\" y=\"{Num(Y(g) + 3)}\" text-anchor=\"end\" font-size=\"10\" fill=\"var(--text-2)\">{g} %</text>");
-        }
-        // X-ticks i MNOK
-        for (var i = 0; i <= 5; i++)
-        {
-            var mnok = bMaxM * i / 5;
-            var x = X(mnok);
-            svg.Append($"<line x1=\"{Num(x)}\" y1=\"{Num(PadT)}\" x2=\"{Num(x)}\" y2=\"{Num(H - PadB)}\" stroke=\"var(--border)\" stroke-width=\"1\" stroke-dasharray=\"2 3\" />");
-            svg.Append($"<text x=\"{Num(x)}\" y=\"{Num(H - PadB + 14)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"var(--text-2)\">{mnok.ToString("0.#", Nb)} M</text>");
-        }
-        // Styringsrente nå — horisontal referanse
-        svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(_naaStyring))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(_naaStyring))}\" stroke=\"#c2740a\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\" />");
-
-        // Punkter: x = lånebeløp, y = rente, farge = kilde, tooltip med detaljer
-        foreach (var p in pts)
-            svg.Append($"<circle cx=\"{Num(X((double)p.Belop!.Value / 1_000_000.0))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"4.5\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.35\" stroke=\"{Farge(p.Soknad)}\" stroke-opacity=\"0.6\" stroke-width=\"0.75\"><title>{PunktTekst(p)}</title></circle>");
-
-        // Hover-crosshair (styres av mi-chart.js)
-        svg.Append($"<line class=\"mi-cross\" x1=\"{Num(PadL)}\" x2=\"{Num(W - PadR)}\" y1=\"0\" y2=\"0\" stroke=\"var(--text-2)\" stroke-width=\"1\" stroke-dasharray=\"4 3\" />");
-
-        _svgBelop = svg.ToString();
     }
 
     // Tooltip-tekst for et datapunkt (SVG <title>).

@@ -10,14 +10,15 @@ window.miChart = {
         svg._miBound = true;
         const H = 340, padT = 14, plotH = 300;
         const yMax = parseFloat(svg.dataset.ymax) || 8;
+        const yMin = parseFloat(svg.dataset.ymin) || 0;   // aksen kan starte over 0 (tett range)
         const cross = svg.querySelector('.mi-cross');
 
         svg.addEventListener('mousemove', function (e) {
             const r = svg.getBoundingClientRect();
             if (r.height === 0) return;
             const yView = ((e.clientY - r.top) / r.height) * H;
-            let rate = yMax * (1 - (yView - padT) / plotH);
-            if (rate < 0) rate = 0;
+            let rate = yMin + (yMax - yMin) * (1 - (yView - padT) / plotH);
+            if (rate < yMin) rate = yMin;
             if (rate > yMax) rate = yMax;
             if (cross) {
                 cross.setAttribute('y1', yView);

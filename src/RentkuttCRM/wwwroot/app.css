@@ -734,6 +734,7 @@ a { color: var(--accent); text-decoration: none; }
 .st-fullfort { background: #e7f4ea; color: #1f6e33; border-color: #c3e4cb; }
 .st-avslatt { background: #fdeceb; color: #a3271d; border-color: #f4cdc9; }
 .st-kansellert { background: #eef0f3; color: #5b6b7f; border-color: #dcdee3; }
+.st-teknisk { background: #c1121f; color: #fff; border-color: #9a0d18; font-weight: 700; }
 
 /* Delegert-til-bank chip */
 .delsel { border-radius: 999px; padding: 4px 11px; }
