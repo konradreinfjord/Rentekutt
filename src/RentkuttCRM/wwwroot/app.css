@@ -169,7 +169,7 @@ a { color: var(--accent); text-decoration: none; }
 .section h2 .pill { text-transform: none; letter-spacing: 0; }
 
 /* ---------- Dashboard ---------- */
-.dash-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.dash-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .dash-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- KPI ---------- */
@@ -257,6 +257,154 @@ a { color: var(--accent); text-decoration: none; }
 .daybar-30 .daybar-stack { width: 100%; height: 150px; border-radius: 3px; }
 .daybar-30 .daybar-stack:hover { outline: 1px solid var(--border-strong); }
 .daybar-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 6px; padding: 0 2px; }
+
+/* Moderne dashboard — KPI-kort + chart + oppmerksomhetsliste */
+.mcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.mcard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 17px 18px 15px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: flex; flex-direction: column; gap: 12px; }
+.mcard.click { cursor: pointer; transition: box-shadow .14s, transform .14s, border-color .14s; }
+.mcard.click:hover { box-shadow: 0 10px 26px rgba(16,24,40,.09); transform: translateY(-2px); border-color: var(--border-strong); }
+.mcard-ic { width: 38px; height: 38px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; color: var(--a, var(--ink)); background: color-mix(in srgb, var(--a, #64748b) 12%, transparent); }
+.mcard-ic svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mcard-num { font-family: var(--mono); font-size: 27px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; line-height: 1; }
+.mcard-num .u { font-family: "Inter", sans-serif; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-left: 3px; }
+.mcard-lbl { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.mcard-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Fordelingskort (leadskilde / lånetype) i Nøkkeltall */
+.dist-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
+.dcard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.dcard-head { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+.dcard-title { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.dcard-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.distbar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.distbar span { display: block; min-width: 2px; }
+.dist-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 13px; }
+.dist-legend .i { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+.dist-legend .d { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.dist-legend b { font-family: var(--mono); color: var(--ink); font-weight: 700; }
+.dist-legend .pct { color: var(--text-muted); font-family: var(--mono); font-size: 11px; }
+
+.dash-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; margin-bottom: 18px; align-items: start; }
+@media (max-width: 1000px) { .dash-grid { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.panel-head h2 { margin: 0; font-size: 15px; line-height: 1.2; }
+.panel-head .sub { font-size: 12px; color: var(--text-muted); display: block; margin-top: 1px; }
+.panel-count { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 13px; white-space: nowrap; }
+
+.chart-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin-top: 14px; font-size: 11.5px; color: var(--text-2); }
+.chart-legend .i { display: inline-flex; align-items: center; gap: 6px; }
+.chart-legend .d { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.chart-legend .i b { color: var(--ink); font-weight: 600; }
+
+/* Trakt (funnel) — hvert steg er en tonet kapsel så statusene tydelig hører til steget */
+.fn-total { font-size: 12px; font-weight: 600; color: var(--text-muted); font-family: var(--mono); }
+.funnel { display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 8px 0 4px; }
+.fn-step {
+    position: relative; width: 100%; max-width: 860px;
+    display: grid; grid-template-columns: 1fr minmax(0, 320px) 1fr; align-items: center; gap: 20px;
+    padding: 14px 18px; border-radius: 18px;
+    background: color-mix(in srgb, var(--c) 6%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--c) 24%, var(--border));
+}
+.fn-barwrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.fn-steg-navn { font-size: 13px; font-weight: 700; color: var(--ink); text-align: center; letter-spacing: .01em; }
+.fn-desc { margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-2); }
+/* nedoverpil som binder kapslene sammen */
+.fn-step:not(:first-child)::before {
+    content: ""; position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 10px solid color-mix(in srgb, var(--c) 55%, var(--border-strong));
+}
+.fn-bar {
+    min-width: 200px; max-width: 100%; min-height: 82px; border-radius: 15px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    padding: 13px 18px; color: #fff; text-align: center; overflow: hidden;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 86%, #fff) 0%, var(--c) 100%);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--c) 32%, transparent), inset 0 1px 0 rgba(255,255,255,.28);
+    transition: transform .13s, box-shadow .13s;
+}
+.fn-bar:hover { transform: translateY(-1px); box-shadow: 0 8px 22px color-mix(in srgb, var(--c) 40%, transparent), inset 0 1px 0 rgba(255,255,255,.32); }
+.fn-num { font-family: var(--mono); font-weight: 800; font-size: 28px; line-height: 1; letter-spacing: -.02em; text-shadow: 0 1px 1px rgba(0,0,0,.12); }
+.fn-badges { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.fn-pct { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .01em; }
+.fn-alltime { font-family: var(--mono); font-weight: 600; font-size: 10.5px; color: rgba(255,255,255,.82); white-space: nowrap; }
+.fn-subs { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.fn-subs:empty { display: none; }
+.fn-sub { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-2); background: var(--surface); border: 1px solid color-mix(in srgb, var(--c) 28%, var(--border)); border-radius: 999px; padding: 3px 10px; }
+.fn-sub.nil { opacity: .45; }
+.fn-sub .dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.fn-sub b { color: var(--ink); font-weight: 700; font-family: var(--mono); }
+.fn-vol { align-self: stretch; margin-top: 10px; padding-top: 10px; border-top: 1px dashed color-mix(in srgb, var(--c) 30%, var(--border)); display: flex; flex-direction: column; gap: 3px; }
+.fn-vol-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.fn-vol-lbl { font-size: 11px; color: var(--text-muted); }
+.fn-vol-val { font-family: var(--mono); font-weight: 700; font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.fn-vol-val.muted { font-weight: 600; font-size: 11.5px; color: var(--text-2); }
+
+/* Leads siste 30 dager — hver dag som en boks (dato + antall) rett under baren */
+.daybar-labels { display: flex; gap: 4px; margin-top: 12px; }
+.daybar-labels .dl { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 1px 5px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); }
+.dl-date { font-size: 9.5px; line-height: 1.1; font-weight: 600; color: var(--text-2); white-space: nowrap; letter-spacing: -.01em; }
+.dl-num { font-family: var(--mono); font-size: 13px; font-weight: 700; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dl-num.nil { color: var(--text-muted); opacity: .38; font-weight: 600; }
+.dl-eier { font-family: var(--mono); font-size: 10px; font-weight: 700; line-height: 1; color: #2f8a3e; font-variant-numeric: tabular-nums; }
+.dl-eier.nil { color: var(--text-muted); opacity: .38; font-weight: 600; }
+
+/* Én farge på barene + detaljert tooltip ved hover */
+.daybar-solid .daybar-col { position: relative; }
+.daybar-solid .daybar-seg { background: #1f5fc4; border-radius: 4px 4px 0 0; transition: background .12s; }
+.daybar-solid .daybar-col:hover .daybar-seg { background: #1748a0; }
+.daybar-tip {
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    margin-bottom: 8px; z-index: 20; width: max-content; min-width: 170px; max-width: 230px;
+    background: var(--ink); color: #fff; border-radius: 12px; padding: 11px 13px;
+    box-shadow: 0 10px 30px rgba(16,24,40,.28);
+    opacity: 0; visibility: hidden; transition: opacity .12s; pointer-events: none;
+}
+.daybar-solid .daybar-col:hover .daybar-tip { opacity: 1; visibility: visible; }
+.daybar-tip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--ink); }
+.tip-title { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+.tip-sec + .tip-sec { margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.14); }
+.tip-h { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.55); margin-bottom: 5px; }
+.tip-row { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1.5; }
+.tip-row .d { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.tip-n { flex: 1; color: rgba(255,255,255,.9); white-space: nowrap; }
+.tip-v { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.attn-list { display: flex; flex-direction: column; }
+.attn-row { display: flex; align-items: center; gap: 12px; padding: 11px 8px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; border-radius: 9px; }
+.attn-row:last-child { border-bottom: none; }
+.attn-row:hover { background: var(--surface-2); }
+.attn-bar { width: 4px; height: 36px; border-radius: 3px; background: var(--a); flex-shrink: 0; }
+.attn-row.zero .attn-bar { background: var(--border-strong); }
+.attn-body { flex: 1; min-width: 0; }
+.attn-lbl { font-size: 13px; font-weight: 600; color: var(--ink); }
+.attn-sub { font-size: 11px; color: var(--text-muted); }
+.attn-num { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--a); letter-spacing: -.02em; }
+.attn-row.zero .attn-num { color: var(--text-muted); opacity: .5; }
+.attn-chev { color: var(--text-3, #b3b8c0); flex-shrink: 0; display: inline-flex; }
+.attn-chev svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.attn-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 30px; }
+
+/* Slanke trendbarer (30 dager, hero øverst) — flytende barer, ingen bokser */
+.daybar-slim { gap: 3px; align-items: flex-end; padding: 2px 0 0; border-bottom: 1px solid var(--border); }
+.daybar-slim .daybar-col { flex: 1 1 0; min-width: 0; gap: 5px; }
+.daybar-slim .daybar-total { font-size: 10px; height: 13px; line-height: 13px; color: var(--text-muted); font-weight: 600; }
+.daybar-slim .daybar-stack { width: 100%; max-width: 15px; margin: 0 auto; height: 150px; background: transparent; border: none; border-radius: 0; overflow: visible; }
+.daybar-slim .daybar-seg { border-radius: 0; }
+.daybar-slim .daybar-seg:last-child { border-radius: 4px 4px 0 0; }
+.daybar-slim .daybar-col:hover .daybar-seg { filter: brightness(1.07); }
+
+/* 14-dagers trendbarer — slanke, «flytende» barer på en lys grunnlinje (ikke bokser) */
+.daybar-14 { gap: 4px; align-items: flex-end; padding: 2px 0 0; border-bottom: 1px solid var(--border); }
+.daybar-14 .daybar-col { flex: 1 1 0; min-width: 0; gap: 6px; }
+.daybar-14 .daybar-total { font-size: 10.5px; height: 13px; line-height: 13px; color: var(--text-muted); font-weight: 600; }
+.daybar-14 .daybar-stack { width: 22px; max-width: 62%; margin: 0 auto; height: 104px; background: transparent; border: none; border-radius: 0; overflow: visible; }
+.daybar-14 .daybar-stack:hover { outline: none; }
+.daybar-14 .daybar-seg { border-radius: 0; }
+.daybar-14 .daybar-seg:last-child { border-radius: 5px 5px 0 0; }        /* toppsegmentet (column-reverse) */
+.daybar-14 .daybar-col:hover .daybar-seg { filter: brightness(1.06); }
+.daybar-14 .daybar-label { font-size: 10px; color: var(--text-muted); padding-top: 2px; }
 
 /* Statustabell under barene */
 .status-table { width: 100%; max-width: 480px; border-collapse: collapse; margin-top: 20px; }

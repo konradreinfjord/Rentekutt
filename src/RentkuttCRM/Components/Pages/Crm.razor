@@ -8,7 +8,6 @@
 <div class="dash-head">
     <div>
         <h1 class="page-title">Hei, @Fornavn 👋</h1>
-        <p class="page-sub">Her er oversikten din for i dag.</p>
     </div>
 </div>
 
@@ -18,233 +17,167 @@
 }
 else
 {
-    <div class="stat-grid">
-        @* Nye søknader (dette døgn) — først *@
-        <div class="stat-card accent-blue">
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
-                <span class="stat-lbl">Nye søknader · i dag</span>
+    @* Nøkkeltall — øverst *@
+    <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head"><div><h2>Nøkkeltall</h2><span class="sub">Porteføljen i tall</span></div></div>
+        <div class="mcards">
+            <div class="mcard click" style="--a:#1f5fc4" @onclick='() => Nav.NavigateTo("/crm/database")'>
+                <span class="mcard-ic"><svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+                <div><div class="mcard-num">@_rows.Count</div><div class="mcard-lbl">Totalt søknader</div><div class="mcard-sub">@_b2c privat · @_b2b bedrift</div></div>
             </div>
-            <div class="stat-num">@_nyeIDag</div>
-            <div class="stat-sub">
-                @if (_kildeIDag.Count > 0)
-                {
-                    @foreach (var (kilde, antall) in _kildeIDag)
+            <div class="mcard" style="--a:#c2740a">
+                <span class="mcard-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                <div><div class="mcard-num">@_eierskapPct<span class="u">%</span></div><div class="mcard-lbl">Med eierskap</div><div class="mcard-sub">@_medEierskap av @_rows.Count har rådgiver</div></div>
+            </div>
+            <div class="mcard" style="--a:#266f32">
+                <span class="mcard-ic"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+                <div><div class="mcard-num">@_ferdigstilt</div><div class="mcard-lbl">Søknader ferdigstilt</div><div class="mcard-sub">@_ferdigstiltPct % av alle · @_utbetalt utbetalt</div></div>
+            </div>
+            <div class="mcard" style="--a:#0e7490">
+                <span class="mcard-ic"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
+                <div><div class="mcard-num">@($"{_pipeline / 1_000_000:N1}")<span class="u">MNOK</span></div><div class="mcard-lbl">Pipeline-verdi</div><div class="mcard-sub">aktiv pipeline</div></div>
+            </div>
+        </div>
+
+        <div class="dist-cards">
+            @{
+                var _kildeSum = _kildeAlle.Sum(x => x.Antall);
+                var _laanSum = _laanetypeAlle.Sum(x => x.Antall);
+            }
+            <div class="dcard">
+                <div class="dcard-head">
+                    <span class="mcard-ic" style="--a:#1f5fc4"><svg viewBox="0 0 24 24"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></span>
+                    <div><div class="dcard-title">Leadskilde</div><div class="dcard-sub">Fordeling på kilde · @_kildeSum leads</div></div>
+                </div>
+                <div class="distbar">
+                    @foreach (var (navn, antall) in _kildeAlle)
                     {
-                        <span class="kilde-badge @KundekortService.KildeBadgeKlasse(kilde)">@kilde @antall</span>
+                        <span style="width:@(((double)antall / Math.Max(1, _kildeSum) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@KildeFarge(navn)" title="@navn: @antall"></span>
                     }
-                }
-                else { <span>Ingen nye i dag</span> }
+                </div>
+                <div class="dist-legend">
+                    @foreach (var (navn, antall) in _kildeAlle)
+                    {
+                        <span class="i"><span class="d" style="background:@KildeFarge(navn)"></span>@navn <b>@antall</b> <span class="pct">@(_kildeSum > 0 ? (int)Math.Round((double)antall / _kildeSum * 100) : 0) %</span></span>
+                    }
+                </div>
             </div>
-        </div>
 
-        @* Utatte saker *@
-        <div class="stat-card stat-click accent-amber @(_utatte > 0 ? "warn" : "")" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
-                <span class="stat-lbl">Utatte saker</span>
+            <div class="dcard">
+                <div class="dcard-head">
+                    <span class="mcard-ic" style="--a:#6b3fc4"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>
+                    <div><div class="dcard-title">Lånetype</div><div class="dcard-sub">Fordeling på lånetype · @_laanSum leads</div></div>
+                </div>
+                <div class="distbar">
+                    @foreach (var (navn, antall) in _laanetypeAlle)
+                    {
+                        <span style="width:@(((double)antall / Math.Max(1, _laanSum) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@LaanetypeFarge(navn)" title="@navn: @antall"></span>
+                    }
+                </div>
+                <div class="dist-legend">
+                    @foreach (var (navn, antall) in _laanetypeAlle)
+                    {
+                        <span class="i"><span class="d" style="background:@LaanetypeFarge(navn)"></span>@navn <b>@antall</b> <span class="pct">@(_laanSum > 0 ? (int)Math.Round((double)antall / _laanSum * 100) : 0) %</span></span>
+                    }
+                </div>
             </div>
-            <div class="stat-num @(_utatte > 0 ? "num-warn" : "")">@_utatte</div>
-            <div class="stat-sub">@(_utatte == 0 ? "Alt er plukket 🎉" : "venter på å plukkes")</div>
-        </div>
-
-        @* Personmarked (B2C) *@
-        <div class="stat-card stat-click accent-green" @onclick='() => Nav.NavigateTo("/crm/marked/person")'>
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-                <span class="stat-lbl">Personmarked</span>
-            </div>
-            <div class="stat-num">@_b2c</div>
-            <div class="stat-sub">B2C — privatkunder</div>
-        </div>
-
-        @* Bedriftsmarked (B2B) *@
-        <div class="stat-card stat-click accent-purple" @onclick='() => Nav.NavigateTo("/crm/marked/bedrift")'>
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></span>
-                <span class="stat-lbl">Bedriftsmarked</span>
-            </div>
-            <div class="stat-num">@_b2b</div>
-            <div class="stat-sub">B2B — bedriftskunder</div>
-        </div>
-
-        @* Mine søknader *@
-        <div class="stat-card stat-click accent-teal" @onclick='() => Nav.NavigateTo("/crm/oppfolging")'>
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
-                <span class="stat-lbl">Mine søknader</span>
-            </div>
-            <div class="stat-num">@_mine</div>
-            <div class="stat-sub">dine aktive saker</div>
-        </div>
-
-        @* Pågår hos rådgiver — eide, aktive saker *@
-        <div class="stat-card accent-blue">
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-                <span class="stat-lbl">Pågår hos rådgiver</span>
-            </div>
-            <div class="stat-num">@_eideAktive</div>
-            <div class="stat-sub">
-                @if (_eideAktive > 0)
-                {
-                    <span>Eldste: @Alder(_eldsteAlder) · snitt @Alder(_snittAlder)</span>
-                }
-                else { <span>Ingen pågående, eide saker</span> }
-            </div>
-        </div>
-
-        @* Ferdig-andel *@
-        <div class="stat-card accent-green">
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
-                <span class="stat-lbl">Ferdigbehandlet</span>
-            </div>
-            <div class="stat-num">@_ferdigPct<span class="stat-unit">%</span></div>
-            <div class="stat-sub">@_utbetalt utbetalt · @_avslatt avslått av @_rows.Count</div>
-        </div>
-
-        @* Totalt søknader *@
-        <div class="stat-card">
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
-                <span class="stat-lbl">Totalt søknader</span>
-            </div>
-            <div class="stat-num">@_rows.Count</div>
-            <div class="stat-sub">@_b2c privat · @_b2b bedrift</div>
-        </div>
-
-        @* Pipeline-verdi *@
-        <div class="stat-card">
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
-                <span class="stat-lbl">Pipeline-verdi</span>
-            </div>
-            <div class="stat-num">@($"{_pipeline / 1_000_000:N1}")<span class="stat-unit">MNOK</span></div>
-            <div class="stat-sub">aktiv pipeline</div>
-        </div>
-
-        @* Fullført søknad (rentekutt.no): påbegynt → Ny søknad *@
-        <div class="stat-card accent-teal">
-            <div class="stat-top">
-                <span class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
-                <span class="stat-lbl">Fullført søknad · rentekutt.no</span>
-            </div>
-            <div class="stat-num">@_fullfortPct<span class="stat-unit">%</span></div>
-            <div class="stat-sub">@_fullfortAntall av @_fullfortBase påbegynte fullført</div>
         </div>
     </div>
 
-    <div class="section">
-        <h2>Fullføringsgrad per uke — rentekutt.no</h2>
-        <p class="page-sub" style="margin:-4px 0 14px">Andel påbegynte søknader som er fullført og satt til «Ny søknad», uke for uke. Prismatch er ikke medregnet.</p>
-        @if (_fullfortUker.All(u => u.Total == 0))
-        {
-            <p class="page-sub">Ingen rentekutt.no-leads registrert i perioden ennå.</p>
-        }
-        else
-        {
-            <div style="display:flex; align-items:flex-end; gap:10px; padding:0 4px">
-                @foreach (var u in _fullfortUker)
-                {
-                    <div style="flex:1; text-align:center" title="Uke fra @u.Label: @u.Pct % fullført (@u.Fullfort av @u.Total)">
-                        <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--text-2)">@(u.Total > 0 ? u.Pct + "%" : "–")</div>
-                        <div style="height:150px; display:flex; align-items:flex-end">
-                            <div style="width:100%; border-radius:4px 4px 0 0; background:@(u.Total > 0 ? "#2f8a3e" : "#e5e7eb"); height:@(u.Total > 0 ? Math.Max(2, u.Pct) : 0)%"></div>
-                        </div>
-                        <div style="font-size:10px; color:var(--text-2); margin-top:6px">@u.Label</div>
-                        <div style="font-size:10px; color:var(--text-3, #9aa0a8)">@(u.Total > 0 ? $"{u.Fullfort}/{u.Total}" : "")</div>
-                    </div>
-                }
-            </div>
-        }
-    </div>
-
-    <div class="section">
-        <h2>Leads siste 30 dager</h2>
-        <div class="daybar-wrap">
-            <div class="daybar-chart daybar-30">
-                @foreach (var dag in _dager)
-                {
-                    <div class="daybar-col" title="@dag.Label — @dag.Total leads">
-                        <div class="daybar-total">@(dag.Total > 0 ? dag.Total.ToString() : "")</div>
-                        <div class="daybar-stack">
-                            @foreach (var s in _statuser)
-                            {
-                                var c = dag.PerStatus.GetValueOrDefault(s, 0);
-                                @if (c > 0)
+    @* Leads siste 30 dager — hovedtrend øverst *@
+    <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head">
+            <div><h2>Leads siste 30 dager</h2><span class="sub">Søknader per dag · antall og <span style="color:#2f8a3e;font-weight:600">andel med eierskap</span> under hver bar · hold over for status og lånetype</span></div>
+            <span class="panel-count">@_dager.Sum(d => d.Total) leads</span>
+        </div>
+        <div class="daybar-chart daybar-slim daybar-solid">
+            @foreach (var dag in _dager)
+            {
+                <div class="daybar-col">
+                    @if (dag.Total > 0)
+                    {
+                        <div class="daybar-tip">
+                            <div class="tip-title">@dag.Label · @dag.Total leads · @dag.MedEier med eierskap</div>
+                            <div class="tip-sec">
+                                <div class="tip-h">Status</div>
+                                @foreach (var st in _statuser)
                                 {
-                                    <div class="daybar-seg" style="height:@(((double)c / _maxDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@StatusFarge(s)" title="@s: @c"></div>
+                                    var c = dag.PerStatus.GetValueOrDefault(st, 0);
+                                    @if (c > 0)
+                                    {
+                                        <div class="tip-row"><span class="d" style="background:@StatusFarge(st)"></span><span class="tip-n">@st</span><span class="tip-v">@c</span></div>
+                                    }
                                 }
-                            }
+                            </div>
+                            <div class="tip-sec">
+                                <div class="tip-h">Lånetype</div>
+                                @foreach (var (type, antall) in dag.PerLaanetype.OrderByDescending(x => x.Value))
+                                {
+                                    <div class="tip-row"><span class="d" style="background:@LaanetypeFarge(type)"></span><span class="tip-n">@type</span><span class="tip-v">@antall</span></div>
+                                }
+                            </div>
                         </div>
+                    }
+                    <div class="daybar-stack">
+                        @if (dag.Total > 0)
+                        {
+                            <div class="daybar-seg" style="height:@(((double)dag.Total / _maxDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                        }
                     </div>
-                }
-            </div>
-            <div class="daybar-axis"><span>@_dager.FirstOrDefault()?.Label</span><span>I dag</span></div>
-
-            <div class="breakdown-grid">
-                <div>
-                    <h3 class="stat-subhead">Status</h3>
-                    <table class="status-table">
-                        <tbody>
-                            @foreach (var s in _statuser)
-                            {
-                                <tr @onclick='() => Nav.NavigateTo("/crm/database")' style="cursor:pointer">
-                                    <td class="status-name"><span class="status-dot" style="background:@StatusFarge(s)"></span>@s</td>
-                                    <td class="num">@_statusCount30.GetValueOrDefault(s, 0)</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
                 </div>
-                <div>
-                    <h3 class="stat-subhead">Lånetype</h3>
-                    <table class="status-table">
-                        <tbody>
-                            @foreach (var (type, antall) in _laanetype30)
-                            {
-                                <tr><td class="status-name"><span class="status-dot" style="background:@LaanetypeFarge(type)"></span>@type</td><td class="num">@antall</td></tr>
-                            }
-                            @if (_laanetype30.Count == 0) { <tr><td colspan="2" class="empty-row">Ingen data.</td></tr> }
-                        </tbody>
-                    </table>
-                </div>
-                <div>
-                    <h3 class="stat-subhead">Leadskilde</h3>
-                    <table class="status-table">
-                        <tbody>
-                            @foreach (var (kilde, antall) in _kilde30)
-                            {
-                                <tr><td><span class="kilde-badge @KundekortService.KildeBadgeKlasse(kilde)">@kilde</span></td><td class="num">@antall</td></tr>
-                            }
-                            @if (_kilde30.Count == 0) { <tr><td colspan="2" class="empty-row">Ingen data.</td></tr> }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            }
+        </div>
+        <div class="daybar-labels">
+            @foreach (var dag in _dager)
+            {
+                <span class="dl" title="@dag.MedEier av @dag.Total med eierskap">
+                    <span class="dl-date">@dag.Label</span>
+                    <span class="dl-num @(dag.Total == 0 ? "nil" : "")">@dag.Total</span>
+                    <span class="dl-eier @(dag.Total == 0 ? "nil" : "")">@(dag.Total > 0 ? (int)Math.Round(dag.MedEier * 100.0 / dag.Total) + " %" : "–")</span>
+                </span>
+            }
         </div>
     </div>
 
-    <div class="section">
-        <h2>Eierskap tatt siste 30 dager</h2>
-        <p class="page-sub">Hvor mange saker en rådgiver tok eierskap til per dag.</p>
-        <div class="daybar-wrap">
-            <div class="daybar-chart daybar-30">
-                @foreach (var dag in _eierDager)
-                {
-                    <div class="daybar-col" title="@dag.Label — @dag.Antall eierskap tatt">
-                        <div class="daybar-total">@(dag.Antall > 0 ? dag.Antall.ToString() : "")</div>
-                        <div class="daybar-stack">
-                            @if (dag.Antall > 0)
-                            {
-                                <div class="daybar-seg" style="height:@(((double)dag.Antall / _maxEierDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:#1f5fc4" title="@dag.Antall"></div>
-                            }
+    @* Trakt — hvor leadsene står i løpet (siste 30 dager) *@
+    <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head">
+            <div><h2>Trakt — siste 30 dager <span class="fn-total">(@_funnelTot totalt)</span></h2><span class="sub">Hvor leadsene står i løpet, fra inngang til utbetaling</span></div>
+        </div>
+        <div class="funnel">
+            @foreach (var steg in _funnel)
+            {
+                var tot = steg.Subs.Sum(x => _statusCount30.GetValueOrDefault(x, 0));
+                var totAll = steg.Subs.Sum(x => _statusCountAll.GetValueOrDefault(x, 0));
+                var vol30 = steg.Subs.Sum(x => _statusVolum30.GetValueOrDefault(x, 0m));
+                var volAll = steg.Subs.Sum(x => _statusVolumAll.GetValueOrDefault(x, 0m));
+                var w = Math.Max(56, (int)Math.Round((double)tot / _funnelMax * 100));
+                var andel = _funnelTot > 0 ? (int)Math.Round((double)tot / _funnelTot * 100) : 0;
+                <div class="fn-step" style="--c:@steg.Farge">
+                    <div class="fn-subs">
+                        @foreach (var sub in steg.Subs)
+                        {
+                            var n = _statusCount30.GetValueOrDefault(sub, 0);
+                            <span class="fn-sub @(n == 0 ? "nil" : "")"><span class="dot" style="background:@StatusFarge(sub)"></span>@sub <b>@n</b></span>
+                        }
+                        <div class="fn-vol">
+                            <div class="fn-vol-row"><span class="fn-vol-lbl">Lånevolum</span><span class="fn-vol-val">@Mnok(vol30)</span></div>
+                            <div class="fn-vol-row"><span class="fn-vol-lbl">Totalt</span><span class="fn-vol-val muted">@Mnok(volAll)</span></div>
                         </div>
                     </div>
-                }
-            </div>
-            <div class="daybar-axis"><span>@_eierDager.FirstOrDefault()?.Label</span><span>I dag</span></div>
+                    <div class="fn-barwrap">
+                        <div class="fn-steg-navn">@steg.Navn</div>
+                        <div class="fn-bar" style="width:@w%">
+                            <span class="fn-num">@tot</span>
+                            <span class="fn-badges">
+                                <span class="fn-pct">@andel %</span>
+                                <span class="fn-alltime" title="Totalt gjennom tidene">@totAll totalt</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="fn-spacer"></div>
+                </div>
+            }
         </div>
     </div>
 }
@@ -255,13 +188,25 @@ else
     private List<(string Kilde, int Antall)> _kildeIDag = new();
     private List<(string Type, int Antall)> _laanetype30 = new();
     private List<(string Kilde, int Antall)> _kilde30 = new();
+    private List<(string Navn, int Antall)> _kildeAlle = new();
+    private List<(string Navn, int Antall)> _laanetypeAlle = new();
 
     private static string LaanetypeFarge(string type) => type switch
     {
         "Forbrukslån" => "#6b3fc4",
         "Refinansiering" => "#1f5fc4",
         "Boliglån" => "#266f32",
+        "Kredittkort" => "#c2740a",
+        "Mellomfinansiering" => "#0e7490",
         _ => "#9aa0a8",
+    };
+
+    private static string KildeFarge(string kilde) => kilde switch
+    {
+        "Rentekutt.no" => "#1f5fc4",
+        "Prismatch" => "#6b3fc4",
+        "Ukjent" => "#9aa0a8",
+        _ => "#0e7490",
     };
     private int _nyeIDag;
     private int _mine;
@@ -296,13 +241,35 @@ else
             : t.TotalHours >= 1 ? $"{(int)t.TotalHours} t" : $"{(int)t.TotalMinutes} min";
 
     // Utatte saker = ikke plukket (ingen eier) og ikke ferdigbehandlet.
-    private int _utatte, _b2c, _b2b;
+    private int _utatte, _b2c, _b2b, _tekniskFeil, _timeout;
+    private int _medEierskap, _eierskapPct;
+    private int _ferdigstilt, _ferdigstiltPct;
 
     private List<DagBar> _dager = new();
     private int _maxDag = 1;
-    private record DagBar(string Label, Dictionary<string, int> PerStatus, int Total);
+    private record DagBar(string Label, Dictionary<string, int> PerStatus, int Total, int MedEier, Dictionary<string, int> PerLaanetype);
 
     private readonly string[] _statuser = KundekortService.Statuser;
+
+    private record FunnelSteg(string Navn, string Farge, string Beskrivelse, string[] Subs);
+
+    // Traktsteg fra inngang (topp) til utbetalt (bunn). Statuser som ikke passer et
+    // tidligere steg havner i «Frafall».
+    private static readonly FunnelSteg[] _funnel =
+    {
+        new("Nye søknader", "#1f5fc4", "Nye leads som er kommet inn, men ikke sendt videre ennå.", new[] { "Ny søknad", "Nytt lead", "Påbegynt søknad" }),
+        new("Pågår", "#6b3fc4", "Sendt til bank og under behandling hos rådgiver.", new[] { "Sendt - I prosess", "Pågår - Agent" }),
+        new("SBL Signert", "#12805a", "Kunden har signert lånesøknaden (SBL).", new[] { "SBL Signert" }),
+        new("Frafall", "#b42318", "Saker som er avslått, kansellert, avsluttet eller feilet.", new[] { "Avslått", "Teknisk feil", "Avsluttet", "Kansellert", "Sendt til bank - Timeout" }),
+        new("Utbetalt / godkjent", "#266f32", "Lånet er innvilget og utbetalt.", new[] { "Utbetalt", "Sendt - Innvilget" }),
+    };
+
+    private int _funnelTot, _funnelMax = 1;
+    private Dictionary<string, int> _statusCountAll = new();
+    private Dictionary<string, decimal> _statusVolum30 = new();
+    private Dictionary<string, decimal> _statusVolumAll = new();
+
+    private static string Mnok(decimal v) => (v / 1_000_000m).ToString("N1") + " MNOK";
 
     private static string StatusFarge(string status) => status switch
     {
@@ -339,6 +306,7 @@ else
             .Select(g => (g.Key, g.Count()))
             .OrderByDescending(x => x.Item2)
             .ToList();
+
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
         _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusUtbetalt or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
 
@@ -347,6 +315,14 @@ else
                                    && k.Status is not (KundekortService.StatusUtbetalt or "Avslått"));
         _b2c = _rows.Count(k => k.KundeType == "B2C");
         _b2b = _rows.Count(k => k.KundeType == "B2B");
+
+        // Andel av alle søknader som har fått eierskap (tildelt rådgiver).
+        _medEierskap = _rows.Count(k => !string.IsNullOrWhiteSpace(k.Eier));
+        _eierskapPct = _rows.Count > 0 ? (int)Math.Round(_medEierskap * 100.0 / _rows.Count) : 0;
+
+        // Saker som krever handling: feilet sending + timeout mot bank.
+        _tekniskFeil = _rows.Count(k => k.Status == KundekortService.StatusTekniskFeil);
+        _timeout = _rows.Count(k => k.Status == KundekortService.StatusSendtBankTimeout);
 
         // Pågår hos rådgiver: har eier + fortsatt aktiv (ikke fullført/avslått).
         var eideAktive = _rows.Where(k => !string.IsNullOrWhiteSpace(k.Eier)
@@ -364,6 +340,11 @@ else
         _utbetalt = _rows.Count(k => k.Status == KundekortService.StatusUtbetalt);
         _avslatt = _rows.Count(k => k.Status == KundekortService.StatusAvslatt);
         _ferdigPct = _rows.Count > 0 ? (int)Math.Round((_utbetalt + _avslatt) * 100.0 / _rows.Count) : 0;
+
+        // Ferdigstilte søknader = alle sluttførte/avsluttede saker (terminale statuser).
+        var ferdigStatuser = new[] { KundekortService.StatusUtbetalt, KundekortService.StatusAvslatt, KundekortService.StatusAvsluttet, "Kansellert" };
+        _ferdigstilt = _rows.Count(k => ferdigStatuser.Contains(k.Status));
+        _ferdigstiltPct = _rows.Count > 0 ? (int)Math.Round(_ferdigstilt * 100.0 / _rows.Count) : 0;
 
         // Fullføringsgrad (kun rentekutt.no): andel påbegynte som har fullført søknaden.
         var rk = _rows.Where(ErRentekutt).ToList();
@@ -393,8 +374,10 @@ else
             var d = idag.AddDays(-i);
             var dagLeads = _rows.Where(k => k.CreatedAt.TilOslo().Date == d).ToList();
             var perStatus = dagLeads.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+            var perLaan = dagLeads.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype).ToDictionary(g => g.Key, g => g.Count());
             var label = i == 0 ? "I dag" : i == 1 ? "I går" : d.ToString("dd.MM");
-            _dager.Add(new DagBar(label, perStatus, dagLeads.Count));
+            var medEier = dagLeads.Count(k => !string.IsNullOrWhiteSpace(k.Eier));
+            _dager.Add(new DagBar(label, perStatus, dagLeads.Count, medEier, perLaan));
         }
         _maxDag = Math.Max(1, _dager.Max(d => d.Total));
 
@@ -412,6 +395,17 @@ else
         var fra30 = idag.AddDays(-29);
         var siste30 = _rows.Where(k => k.CreatedAt.TilOslo().Date >= fra30).ToList();
         _statusCount30 = siste30.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+        _statusCountAll = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
+        _statusVolum30 = siste30.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Sum(k => k.OnsketLaanebelop ?? 0));
+        _statusVolumAll = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Sum(k => k.OnsketLaanebelop ?? 0));
+
+        // Fordeling på leadskilde og lånetype (alle søknader).
+        _kildeAlle = _rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
+                          .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
+        _laanetypeAlle = _rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
+                              .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
+        _funnelTot = _funnel.Sum(s => s.Subs.Sum(x => _statusCount30.GetValueOrDefault(x, 0)));
+        _funnelMax = Math.Max(1, _funnel.Max(s => s.Subs.Sum(x => _statusCount30.GetValueOrDefault(x, 0))));
         _laanetype30 = siste30
             .GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
             .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
