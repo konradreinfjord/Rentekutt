@@ -85,16 +85,12 @@ else
             <div class="dcard dcard-wide">
                 <div class="dcard-head">
                     <span class="mcard-ic" style="--a:#0e7490"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
-                    <div><div class="dcard-title">Pipeline</div><div class="dcard-sub">Aktiv pipeline-verdi · @_pipeAnt saker</div></div>
+                    <div><div class="dcard-title">Pipeline</div><div class="dcard-sub">Estimert total @Mnok(_pipeTotal) · @_pipeAnt saker</div></div>
                 </div>
                 @{
                     var _oppgPct = _pipeTotal > 0 ? (double)(_pipeline / _pipeTotal) * 100 : 0;
                     var _estPct = 100 - _oppgPct;
                 }
-                <div class="pl-total">
-                    <div class="pl-num">@Mnok(_pipeTotal)</div>
-                    <div class="pl-lbl">estimert total pipeline</div>
-                </div>
                 <div class="pl-splitbar">
                     <span style="width:@_oppgPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%; background:#0e7490"></span>
                     <span style="width:@_estPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%; background:#1f5fc4"></span>
