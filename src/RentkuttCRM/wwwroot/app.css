@@ -205,6 +205,15 @@ a { color: var(--accent); text-decoration: none; }
 .stat-sub { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11.5px; color: var(--text-muted); margin-top: auto; }
 .stat-sub .kilde-badge { font-size: 10.5px; padding: 1px 8px; }
 
+/* Ringelogg-kolonne: antall dialer-forsøk + sist forsøk */
+.ringelogg-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; color: #1f5fc4; background: color-mix(in srgb, #1f5fc4 10%, transparent); border: 1px solid color-mix(in srgb, #1f5fc4 26%, transparent); white-space: nowrap; }
+.ringelogg-badge svg { flex-shrink: 0; }
+.ringelogg-badge b { font-family: var(--mono); font-weight: 700; }
+.ringelogg-badge .rl-sist { color: var(--text-muted); font-size: 10.5px; }
+
+/* Kryssmerking B2B↔B2C: samme mobilnr finnes i det andre markedet */
+.krysstype-badge { display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .03em; color: #6b3fc4; background: color-mix(in srgb, #6b3fc4 13%, transparent); border: 1px solid color-mix(in srgb, #6b3fc4 30%, transparent); vertical-align: middle; }
+
 /* Ikon-aksenter per kort */
 .stat-card.accent-blue   .stat-ico { background: #eaf1fc; color: #1f5fc4; }
 .stat-card.accent-amber  .stat-ico { background: #fdf2e3; color: #9a5b06; }
@@ -267,6 +276,8 @@ a { color: var(--accent); text-decoration: none; }
 .mcard-ic svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .mcard-num { font-family: var(--mono); font-size: 27px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; line-height: 1; }
 .mcard-num .u { font-family: "Inter", sans-serif; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-left: 3px; }
+.mcard-num .mcard-new { font-family: "Inter", sans-serif; font-size: 11px; font-weight: 600; color: #2f8a3e; margin-left: 4px; vertical-align: middle; letter-spacing: 0; }
+.mcard-new-line { font-size: 11px; font-weight: 600; color: #2f8a3e; margin-top: 3px; }
 .mcard-lbl { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
 .mcard-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
@@ -283,6 +294,40 @@ a { color: var(--accent); text-decoration: none; }
 .dist-legend .d { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 .dist-legend b { font-family: var(--mono); color: var(--ink); font-weight: 700; }
 .dist-legend .pct { color: var(--text-muted); font-family: var(--mono); font-size: 11px; }
+/* Bredt kort — full bredde i fordelingsraden (plass til tabellen) */
+.dcard-wide { grid-column: 1 / -1; }
+/* Pipeline-kort: total (oppgitt + estimert) med spesifikasjon */
+.pl-total { margin: 2px 0 12px; }
+.pl-num { font-family: var(--mono); font-size: 32px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
+.pl-lbl { font-size: 11px; color: var(--text-muted); margin-top: 5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.pl-dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+/* Andelsbar: oppgitt vs estimert av total */
+.pl-splitbar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.pl-splitbar span { display: block; min-width: 3px; }
+.pl-splitlegend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.pl-splitlegend > span { display: inline-flex; align-items: center; gap: 7px; }
+.pl-splitlegend .d { width: 9px; height: 9px; border-radius: 3px; }
+.pl-splitlegend b { color: var(--ink); font-family: var(--mono); font-weight: 700; }
+/* Seksjon (oppgitt / estimert) */
+.pl-sec { padding-top: 14px; margin-top: 14px; border-top: 1px solid var(--border); }
+.pl-sec-head { display: flex; align-items: center; gap: 8px; }
+.pl-sec-t { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.pl-sec-meta { font-size: 11px; color: var(--text-muted); }
+.pl-sec-sum { margin-left: auto; font-family: var(--mono); font-weight: 800; font-size: 15px; color: var(--ink); }
+.pl-sec-sum.est { color: #1f5fc4; }
+.pl-kt { display: flex; gap: 18px; margin: 7px 0 8px 17px; font-size: 11.5px; color: var(--text-muted); }
+.pl-kt b { font-family: var(--mono); color: var(--text-2); font-weight: 700; }
+/* Rader per lånetype: navn · antall/snitt · sum til høyre */
+.pl-tab { margin-left: 17px; }
+.pl-tr { display: flex; align-items: baseline; gap: 12px; font-size: 12px; color: var(--text-2); padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.pl-tr:last-child { border-bottom: none; }
+.pl-tn { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-weight: 600; min-width: 128px; }
+.pl-tn .d { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.pl-tmeta { flex: 1; color: var(--text-muted); font-size: 11.5px; }
+.pl-ts { font-family: var(--mono); font-weight: 700; font-size: 13px; color: var(--ink); white-space: nowrap; }
+.pl-ts.est { color: #1f5fc4; }
+.pl-ts::after { content: " MNOK"; font-size: 9.5px; font-weight: 600; color: var(--text-muted); }
+.pl-unit { font-size: 10.5px; color: var(--text-muted); text-align: right; margin-top: 10px; }
 
 .dash-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; margin-bottom: 18px; align-items: start; }
 @media (max-width: 1000px) { .dash-grid { grid-template-columns: 1fr; } }
@@ -308,6 +353,9 @@ a { color: var(--accent); text-decoration: none; }
     border: 1px solid color-mix(in srgb, var(--c) 24%, var(--border));
 }
 .fn-barwrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.fn-snitt { text-align: center; }
+.fn-snitt-val { font-family: var(--mono); font-weight: 800; font-size: 20px; line-height: 1; letter-spacing: -.02em; color: color-mix(in srgb, var(--c) 72%, var(--ink)); }
+.fn-snitt-lbl { font-size: 10.5px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
 .fn-steg-navn { font-size: 13px; font-weight: 700; color: var(--ink); text-align: center; letter-spacing: .01em; }
 .fn-desc { margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-2); }
 /* nedoverpil som binder kapslene sammen */

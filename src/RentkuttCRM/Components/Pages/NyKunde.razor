@@ -180,8 +180,8 @@
 <div class="form-card">
     <div class="ff">
         <label>Endre status</label>
-        <select @bind="_k.Status" @bind:after="EndreStatus" disabled="@(!_isEdit || !KanEndre)">
-            @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
+        <select @onchange="EndreStatus" disabled="@(!_isEdit || !KanEndre)">
+            @foreach (var s in ManuelleStatuser()) { <option value="@s" selected="@(s == _k.Status)">@s</option> }
         </select>
     </div>
 </div>
@@ -1409,9 +1409,19 @@
     private List<BankSending> _sendinger = new();
 
     // ---- Statuskort: manuell status + per-bank utfall ----
-    private async Task EndreStatus()
+    // Dropdown-valg: alle statuser unntatt system-satte (Pågår - Agent / Timeout),
+    // men behold nåværende status hvis den er en av de skjulte, så den vises riktig.
+    private IEnumerable<string> ManuelleStatuser() =>
+        KundekortService.Statuser.Where(s => !KundekortService.SkjulteManuelleStatuser.Contains(s) || s == _k.Status);
+
+    private async Task EndreStatus(ChangeEventArgs e)
     {
         if (!_isEdit || !KanEndre) return;
+        var ny = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(ny) || ny == _k.Status) return;
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Er du sikker på at du vil endre status fra «{_k.Status}» til «{ny}»?");
+        if (!ok) { StateHasChanged(); return; }   // avbryt → tilbakestill dropdown
+        _k.Status = ny;
         await Svc.SetStatusAsync(_k.Id, _k.Status, Session.UserName ?? Session.Email);
         _endringslogg = await Logg.ForKundeAsync(_k.Id);
     }

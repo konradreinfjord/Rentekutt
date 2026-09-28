@@ -85,6 +85,31 @@ public class DialerService
         catch (Exception ex) { _log.LogWarning(ex, "Henting av dialer-anrop for kundekort feilet"); return new(); }
     }
 
+    /// <summary>Sammendrag av ringeforsøk per kundekort (antall + siste forsøk) — for listevisninger.
+    /// Feiler aldri hardt; returnerer tomt ved feil.</summary>
+    public async Task<Dictionary<Guid, (int Antall, DateTime Sist)>> HentSammendragAsync()
+    {
+        List<DialerAnrop> alle;
+        if (!IsConfigured)
+        {
+            alle = _staging.ToList();
+        }
+        else
+        {
+            try
+            {
+                await EnsureInitAsync();
+                alle = (await _client.From<DialerAnrop>()
+                    .Order(x => x.StartetAt, Supabase.Postgrest.Constants.Ordering.Descending, Supabase.Postgrest.Constants.NullPosition.Last)
+                    .Limit(10000)
+                    .Get()).Models;
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Henting av dialer-sammendrag feilet"); return new(); }
+        }
+        return alle.GroupBy(a => a.KundekortId)
+                   .ToDictionary(g => g.Key, g => (g.Count(), g.Max(a => a.StartetAt)));
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;

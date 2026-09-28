@@ -7,6 +7,7 @@
 @inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.MerknadsregelService MerknadSvc
 @inject RentkuttCRM.Services.BeregningService Beregning
+@inject RentkuttCRM.Services.DialerService Dialer
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -101,6 +102,7 @@ else
             <tr>
                 @Header("opprettet", "Opprettet")
                 <th>Oppfølgingsdato</th>
+                <th>Ringelogg</th>
                 @Header("status", "Status")
                 @Header("delegert", "Delegert til bank")
                 @if (ErBedrift) { <th>Firmanavn</th> }
@@ -132,6 +134,20 @@ else
                 <tr class="row-link @(tatt ? "row-locked" : "")" @onclick="() => Open(k.Id)">
                     <td class="mono-cell" title="@OpprettetTittel(k.CreatedAt)">@OpprettetTekst(k.CreatedAt)</td>
                     <td class="mono-cell">@if (k.NesteOppfolging is { } n) { <span class="opf-date @OppfDatoKlasse(n)">@n.ToString("dd.MM.yyyy")</span> } else { <span class="muted">—</span> }</td>
+                    <td>
+                        @if (_ringelogg.TryGetValue(k.Id, out var rl))
+                        {
+                            <span class="ringelogg-badge" title="@rl.Antall ringeforsøk via dialer · sist @SidenTekst(rl.Sist)">
+                                <svg viewBox="0 0 24 24" width="12" height="12"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                <b>@rl.Antall</b>
+                                <span class="rl-sist">@SidenTekst(rl.Sist)</span>
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="muted" title="Ingen ringeforsøk registrert">—</span>
+                        }
+                    </td>
                     <td @onclick:stopPropagation="true">
                         <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "Systemstatuser endres ved å åpne kundekortet")" @onchange="e => ChangeStatus(k, e)">
                             @foreach (var s in RadStatuser(k.Status)) { <option value="@s" selected="@(s == k.Status)">@s</option> }
@@ -145,12 +161,12 @@ else
                     </td>
                     @if (ErBedrift)
                     {
-                        <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span></td>
+                        <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>@if (HarKryssType(k)) { <span class="krysstype-badge" title="Samme mobilnummer finnes også som privatkunde (B2C)">B2C</span> }</td>
                         <td>@(string.IsNullOrWhiteSpace(k.KontaktpersonNavn) ? "—" : k.KontaktpersonNavn)</td>
                     }
                     else
                     {
-                        <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span></td>
+                        <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>@if (HarKryssType(k)) { <span class="krysstype-badge" title="Samme mobilnummer finnes også som bedriftskunde (B2B)">B2B</span> }</td>
                     }
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
@@ -291,13 +307,19 @@ else
         var reglerTask = Ruting.ListAsync();
         var merknadTask = MerknadSvc.ListAsync();
         var berTask = Beregning.HentParametreAsync();
-        await Task.WhenAll(rowsTask, partnereTask, reglerTask, merknadTask, berTask);
+        var ringeTask = Dialer.HentSammendragAsync();
+        await Task.WhenAll(rowsTask, partnereTask, reglerTask, merknadTask, berTask, ringeTask);
         _rows = rowsTask.Result;
+        _ringelogg = ringeTask.Result;
         _partnere = partnereTask.Result;
         _regler = reglerTask.Result;
         _merknadsregler = merknadTask.Result;
         _berParams = berTask.Result;
         _searchCache = _rows.ToDictionary(k => k.Id, Searchable);
+        // Kryssmerking B2B↔B2C: samle normaliserte mobilnr per kundetype, så en rad kan
+        // vise badge når samme nummer finnes i det motsatte markedet.
+        _b2bMobil = _rows.Where(k => k.KundeType == "B2B").Select(k => NormMobil(k.Mobilnummer)).Where(s => s.Length > 0).ToHashSet();
+        _b2cMobil = _rows.Where(k => k.KundeType == "B2C").Select(k => NormMobil(k.Mobilnummer)).Where(s => s.Length > 0).ToHashSet();
         RecomputeType();
         LastFilter();   // gjenopprett lagret filter for gjeldende marked
         _loading = false;
@@ -312,6 +334,37 @@ else
         RecomputeType();
         LastFilter();   // bytt marked (person↔bedrift) → last det markedets lagrede filter
         InvokeAsync(StateHasChanged);
+    }
+
+    private HashSet<string> _b2bMobil = new();
+    private HashSet<string> _b2cMobil = new();
+    private Dictionary<Guid, (int Antall, DateTime Sist)> _ringelogg = new();
+
+    // Kort «for N min/timer/dager siden»-tekst for siste ringeforsøk.
+    private static string SidenTekst(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc.ToUniversalTime();
+        if (d.TotalMinutes < 1) return "nå";
+        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} min siden";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours} t siden";
+        if (d.TotalDays < 30) return $"{(int)d.TotalDays} d siden";
+        return utc.TilOslo().ToString("dd.MM.yyyy");
+    }
+
+    // Normaliser mobilnr til de siste 8 sifrene (fjerner mellomrom, +47 osv.) for kryssmatch.
+    private static string NormMobil(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var d = new string(s.Where(char.IsDigit).ToArray());
+        return d.Length >= 8 ? d[^8..] : d;
+    }
+
+    // Har denne kunden også en motpart i det andre markedet (samme mobilnr)?
+    private bool HarKryssType(Kundekort k)
+    {
+        var m = NormMobil(k.Mobilnummer);
+        if (m.Length == 0) return false;
+        return k.KundeType == "B2C" ? _b2bMobil.Contains(m) : _b2cMobil.Contains(m);
     }
 
     private List<Kundekort> _typeRows = new();
@@ -542,10 +595,13 @@ else
 
     private async Task ChangeStatus(Kundekort k, ChangeEventArgs e)
     {
-        var status = e.Value?.ToString() ?? k.Status;
-        k.Status = status;
+        var ny = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(ny) || ny == k.Status) return;
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Er du sikker på at du vil endre status fra «{k.Status}» til «{ny}»?");
+        if (!ok) { StateHasChanged(); return; }   // avbryt → tilbakestill dropdown
+        k.Status = ny;
         InvaliderRad(k);
-        await Svc.SetStatusAsync(k.Id, status);
+        await Svc.SetStatusAsync(k.Id, ny);
     }
 
     private async Task DelegateBank(Kundekort k, ChangeEventArgs e)

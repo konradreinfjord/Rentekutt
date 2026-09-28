@@ -21,21 +21,17 @@ else
     <div class="panel" style="margin-bottom:16px">
         <div class="panel-head"><div><h2>Nøkkeltall</h2><span class="sub">Porteføljen i tall</span></div></div>
         <div class="mcards">
-            <div class="mcard click" style="--a:#1f5fc4" @onclick='() => Nav.NavigateTo("/crm/database")'>
+            <div class="mcard" style="--a:#1f5fc4">
                 <span class="mcard-ic"><svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
-                <div><div class="mcard-num">@_rows.Count</div><div class="mcard-lbl">Totalt søknader</div><div class="mcard-sub">@_b2c privat · @_b2b bedrift</div></div>
+                <div><div class="mcard-num">@_rows.Count</div><div class="mcard-lbl">Totalt søknader</div><div class="mcard-new-line">I dag +@_nyeIDag · Uke +@_nyeDenneUke · Måned +@_nyeDenneMaaned · År +@_nyeDetteAar</div><div class="mcard-sub">@_b2c privat · @_b2b bedrift</div></div>
             </div>
             <div class="mcard" style="--a:#c2740a">
                 <span class="mcard-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-                <div><div class="mcard-num">@_eierskapPct<span class="u">%</span></div><div class="mcard-lbl">Med eierskap</div><div class="mcard-sub">@_medEierskap av @_rows.Count har rådgiver</div></div>
+                <div><div class="mcard-num">@_eierskapPct<span class="u">%</span></div><div class="mcard-lbl">Med eierskap</div><div class="mcard-new-line">I dag +@_eierTattIDag · Uke +@_eierTattUke · Måned +@_eierTattMaaned · År +@_eierTattAar</div><div class="mcard-sub">@_medEierskap av @_rows.Count har rådgiver</div></div>
             </div>
             <div class="mcard" style="--a:#266f32">
                 <span class="mcard-ic"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
-                <div><div class="mcard-num">@_ferdigstilt</div><div class="mcard-lbl">Søknader ferdigstilt</div><div class="mcard-sub">@_ferdigstiltPct % av alle · @_utbetalt utbetalt</div></div>
-            </div>
-            <div class="mcard" style="--a:#0e7490">
-                <span class="mcard-ic"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
-                <div><div class="mcard-num">@($"{_pipeline / 1_000_000:N1}")<span class="u">MNOK</span></div><div class="mcard-lbl">Pipeline-verdi</div><div class="mcard-sub">aktiv pipeline</div></div>
+                <div><div class="mcard-num">@_ferdigstilt</div><div class="mcard-lbl">Søknader ferdigstilt</div><div class="mcard-new-line">I dag +@_ferdigIDag · Uke +@_ferdigUke · Måned +@_ferdigMaaned · År +@_ferdigAar</div><div class="mcard-sub">@_ferdigstiltPct % av alle · @_utbetalt utbetalt</div></div>
             </div>
         </div>
 
@@ -81,6 +77,66 @@ else
                     }
                 </div>
             </div>
+
+            @{
+                var _pipeAnt = _pipelineMedAntall + _pipelineUtenAntall;
+                var _pipeTotal = _pipeline + _pipelineEstimert;
+            }
+            <div class="dcard dcard-wide">
+                <div class="dcard-head">
+                    <span class="mcard-ic" style="--a:#0e7490"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
+                    <div><div class="dcard-title">Pipeline</div><div class="dcard-sub">Aktiv pipeline-verdi · @_pipeAnt saker</div></div>
+                </div>
+                @{
+                    var _oppgPct = _pipeTotal > 0 ? (double)(_pipeline / _pipeTotal) * 100 : 0;
+                    var _estPct = 100 - _oppgPct;
+                }
+                <div class="pl-total">
+                    <div class="pl-num">@Mnok(_pipeTotal)</div>
+                    <div class="pl-lbl">estimert total pipeline</div>
+                </div>
+                <div class="pl-splitbar">
+                    <span style="width:@_oppgPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%; background:#0e7490"></span>
+                    <span style="width:@_estPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%; background:#1f5fc4"></span>
+                </div>
+                <div class="pl-splitlegend">
+                    <span><span class="d" style="background:#0e7490"></span>Oppgitt <b>@Mnok(_pipeline)</b> · @($"{_oppgPct:0}") %</span>
+                    <span><span class="d" style="background:#1f5fc4"></span>Estimert <b>@Mnok(_pipelineEstimert)</b> · @($"{_estPct:0}") %</span>
+                </div>
+
+                @* Oppgitt beløp *@
+                <div class="pl-sec">
+                    <div class="pl-sec-head"><span class="pl-dot" style="background:#0e7490"></span><span class="pl-sec-t">Oppgitt beløp</span><span class="pl-sec-meta">@_pipelineMedAntall saker</span><span class="pl-sec-sum">@Mnok(_pipeline)</span></div>
+                    <div class="pl-kt"><span>B2C <b>@MnokTall(_oppgittB2C)</b></span><span>B2B <b>@MnokTall(_oppgittB2B)</b></span></div>
+                    <div class="pl-tab">
+                        @foreach (var r in _pipeLaanRader.Where(r => r.OppgittAntall > 0))
+                        {
+                            <div class="pl-tr">
+                                <span class="pl-tn"><span class="d" style="background:@LaanetypeFarge(r.Navn)"></span>@r.Navn</span>
+                                <span class="pl-tmeta">@r.OppgittAntall saker · snitt @KrKort(r.Snitt)</span>
+                                <span class="pl-ts">@MnokTall(r.OppgittSum)</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* Estimert *@
+                <div class="pl-sec">
+                    <div class="pl-sec-head"><span class="pl-dot" style="background:#1f5fc4"></span><span class="pl-sec-t">Estimert – uten beløp</span><span class="pl-sec-meta">@_pipelineUtenAntall saker</span><span class="pl-sec-sum est">+@Mnok(_pipelineEstimert)</span></div>
+                    <div class="pl-kt"><span>B2C <b>@MnokTall(_estB2C)</b></span><span>B2B <b>@MnokTall(_estB2B)</b></span></div>
+                    <div class="pl-tab">
+                        @foreach (var r in _pipeLaanRader.Where(r => r.UtenAntall > 0))
+                        {
+                            <div class="pl-tr">
+                                <span class="pl-tn"><span class="d" style="background:@LaanetypeFarge(r.Navn)"></span>@r.Navn</span>
+                                <span class="pl-tmeta">@r.UtenAntall saker · snitt @KrKort(r.Snitt)</span>
+                                <span class="pl-ts est">@MnokTall(r.EstSum)</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="pl-unit">Snitt per sak i kr (k = tusen, M = million)</div>
+            </div>
         </div>
     </div>
 
@@ -114,6 +170,13 @@ else
                                 @foreach (var (type, antall) in dag.PerLaanetype.OrderByDescending(x => x.Value))
                                 {
                                     <div class="tip-row"><span class="d" style="background:@LaanetypeFarge(type)"></span><span class="tip-n">@type</span><span class="tip-v">@antall</span></div>
+                                }
+                            </div>
+                            <div class="tip-sec">
+                                <div class="tip-h">Leadskilde</div>
+                                @foreach (var (kilde, antall) in dag.PerKilde.OrderByDescending(x => x.Value))
+                                {
+                                    <div class="tip-row"><span class="d" style="background:@KildeFarge(kilde)"></span><span class="tip-n">@kilde</span><span class="tip-v">@antall</span></div>
                                 }
                             </div>
                         </div>
@@ -151,6 +214,8 @@ else
                 var totAll = steg.Subs.Sum(x => _statusCountAll.GetValueOrDefault(x, 0));
                 var vol30 = steg.Subs.Sum(x => _statusVolum30.GetValueOrDefault(x, 0m));
                 var volAll = steg.Subs.Sum(x => _statusVolumAll.GetValueOrDefault(x, 0m));
+                var liggeSum = steg.Subs.Sum(x => _statusLiggetidSum.GetValueOrDefault(x, 0.0));
+                var snittLigge = totAll > 0 ? liggeSum / totAll : 0.0;
                 var w = Math.Max(56, (int)Math.Round((double)tot / _funnelMax * 100));
                 var andel = _funnelTot > 0 ? (int)Math.Round((double)tot / _funnelTot * 100) : 0;
                 <div class="fn-step" style="--c:@steg.Farge">
@@ -175,7 +240,10 @@ else
                             </span>
                         </div>
                     </div>
-                    <div class="fn-spacer"></div>
+                    <div class="fn-snitt" title="Snitt tid siden sist endring for sakene som står i dette steget nå">
+                        <div class="fn-snitt-val">@Liggetid(snittLigge)</div>
+                        <div class="fn-snitt-lbl">snitt liggetid</div>
+                    </div>
                 </div>
             }
         </div>
@@ -210,7 +278,14 @@ else
     };
     private int _nyeIDag;
     private int _mine;
-    private decimal _pipeline;
+    private decimal _pipeline, _pipelineSnitt, _pipelineEstimert;
+    private int _pipelineUtenAntall, _pipelineMedAntall;
+    private decimal _oppgittB2C, _oppgittB2B, _estB2C, _estB2B;
+    private record PipeRad(string Navn, int OppgittAntall, decimal OppgittSum, decimal Snitt, int UtenAntall, decimal EstSum);
+    private List<PipeRad> _pipeLaanRader = new();
+
+    private static string MnokTall(decimal v) => (v / 1_000_000m).ToString("N1");
+    private static string KrKort(decimal v) => v >= 1_000_000m ? (v / 1_000_000m).ToString("N1") + " M" : (v / 1000m).ToString("N0") + " k";
     private bool _loading = true;
 
     // Pågår hos rådgiver = eide, aktive saker (ikke fullført/avslått).
@@ -242,12 +317,14 @@ else
 
     // Utatte saker = ikke plukket (ingen eier) og ikke ferdigbehandlet.
     private int _utatte, _b2c, _b2b, _tekniskFeil, _timeout;
-    private int _medEierskap, _eierskapPct;
+    private int _medEierskap, _eierskapPct, _eierTattIDag, _eierTattUke, _eierTattMaaned, _eierTattAar;
+    private int _nyeDenneUke, _nyeDenneMaaned, _nyeDetteAar;
+    private int _ferdigIDag, _ferdigUke, _ferdigMaaned, _ferdigAar;
     private int _ferdigstilt, _ferdigstiltPct;
 
     private List<DagBar> _dager = new();
     private int _maxDag = 1;
-    private record DagBar(string Label, Dictionary<string, int> PerStatus, int Total, int MedEier, Dictionary<string, int> PerLaanetype);
+    private record DagBar(string Label, Dictionary<string, int> PerStatus, int Total, int MedEier, Dictionary<string, int> PerLaanetype, Dictionary<string, int> PerKilde);
 
     private readonly string[] _statuser = KundekortService.Statuser;
 
@@ -268,8 +345,18 @@ else
     private Dictionary<string, int> _statusCountAll = new();
     private Dictionary<string, decimal> _statusVolum30 = new();
     private Dictionary<string, decimal> _statusVolumAll = new();
+    private Dictionary<string, double> _statusLiggetidSum = new();
 
     private static string Mnok(decimal v) => (v / 1_000_000m).ToString("N1") + " MNOK";
+
+    // Snitt liggetid → kort tekst (min/t/d).
+    private static string Liggetid(double timer)
+    {
+        if (timer <= 0) return "–";
+        if (timer < 1) return $"{(int)Math.Round(timer * 60)} min";
+        if (timer < 48) return $"{(int)Math.Round(timer)} t";
+        return $"{(int)Math.Round(timer / 24)} d";
+    }
 
     private static string StatusFarge(string status) => status switch
     {
@@ -301,6 +388,13 @@ else
         var iDagOslo = na.TilOslo().Date;
         var iDag = _rows.Where(k => k.CreatedAt.TilOslo().Date == iDagOslo).ToList();
         _nyeIDag = iDag.Count;
+        // Denne uke (mandag→) og denne måned (1. →) i norsk tid.
+        var ukeStart = iDagOslo.AddDays(-(((int)iDagOslo.DayOfWeek + 6) % 7));
+        var mndStart = new DateTime(iDagOslo.Year, iDagOslo.Month, 1);
+        var aarStart = new DateTime(iDagOslo.Year, 1, 1);
+        _nyeDenneUke = _rows.Count(k => k.CreatedAt.TilOslo().Date >= ukeStart);
+        _nyeDenneMaaned = _rows.Count(k => k.CreatedAt.TilOslo().Date >= mndStart);
+        _nyeDetteAar = _rows.Count(k => k.CreatedAt.TilOslo().Date >= aarStart);
         _kildeIDag = iDag
             .GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
             .Select(g => (g.Key, g.Count()))
@@ -308,7 +402,38 @@ else
             .ToList();
 
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
-        _pipeline = _rows.Where(k => k.Status is not (KundekortService.StatusUtbetalt or "Avslått")).Sum(k => k.OnsketLaanebelop ?? 0);
+        var pipeAktiv = _rows.Where(k => k.Status is not (KundekortService.StatusUtbetalt or "Avslått")).ToList();
+        _pipeline = pipeAktiv.Sum(k => k.OnsketLaanebelop ?? 0);
+        var pipeMedBelop = pipeAktiv.Where(k => (k.OnsketLaanebelop ?? 0) > 0).ToList();
+        var pipeUtenBelop = pipeAktiv.Where(k => (k.OnsketLaanebelop ?? 0) <= 0).ToList();
+        _pipelineSnitt = pipeMedBelop.Count > 0 ? pipeMedBelop.Average(k => k.OnsketLaanebelop!.Value) : 0m;
+        _pipelineUtenAntall = pipeUtenBelop.Count;
+        _pipelineMedAntall = pipeMedBelop.Count;
+
+        // Snitt PER lånetype (fra sakene som har oppgitt beløp) → estimer manglende per lånetype.
+        string LaanNavn(Kundekort k) => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype;
+        var snittPerLaan = pipeMedBelop.GroupBy(LaanNavn)
+            .ToDictionary(g => g.Key, g => g.Average(k => k.OnsketLaanebelop!.Value));
+        decimal SnittFor(string laan) => snittPerLaan.TryGetValue(laan, out var s) ? s : _pipelineSnitt;
+
+        // Rader per lånetype: oppgitt (sum) + estimert (antall uten × snitt for lånetypen).
+        var alleLaan = pipeAktiv.Select(LaanNavn).Distinct();
+        _pipeLaanRader = alleLaan.Select(navn =>
+        {
+            var med = pipeMedBelop.Where(k => LaanNavn(k) == navn).ToList();
+            var utenN = pipeUtenBelop.Count(k => LaanNavn(k) == navn);
+            var snitt = med.Count > 0 ? med.Average(k => k.OnsketLaanebelop!.Value) : _pipelineSnitt;
+            return new PipeRad(navn, med.Count, med.Sum(k => k.OnsketLaanebelop!.Value), snitt, utenN, utenN * snitt);
+        }).Where(r => r.OppgittAntall > 0 || r.UtenAntall > 0)
+          .OrderByDescending(r => r.OppgittSum + r.EstSum).ToList();
+
+        _pipelineEstimert = _pipeLaanRader.Sum(r => r.EstSum);
+
+        // Kundetype: oppgitt = faktisk sum; estimert = sum av hver manglende saks lånetype-snitt.
+        _oppgittB2C = pipeMedBelop.Where(k => k.KundeType == "B2C").Sum(k => k.OnsketLaanebelop!.Value);
+        _oppgittB2B = pipeMedBelop.Where(k => k.KundeType == "B2B").Sum(k => k.OnsketLaanebelop!.Value);
+        _estB2C = pipeUtenBelop.Where(k => k.KundeType == "B2C").Sum(k => SnittFor(LaanNavn(k)));
+        _estB2B = pipeUtenBelop.Where(k => k.KundeType == "B2B").Sum(k => SnittFor(LaanNavn(k)));
 
         // Utatte: ingen eier + fortsatt aktiv (ikke fullført/avslått).
         _utatte = _rows.Count(k => string.IsNullOrWhiteSpace(k.Eier)
@@ -319,6 +444,10 @@ else
         // Andel av alle søknader som har fått eierskap (tildelt rådgiver).
         _medEierskap = _rows.Count(k => !string.IsNullOrWhiteSpace(k.Eier));
         _eierskapPct = _rows.Count > 0 ? (int)Math.Round(_medEierskap * 100.0 / _rows.Count) : 0;
+        _eierTattIDag = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.TilOslo().Date == iDagOslo);
+        _eierTattUke = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.TilOslo().Date >= ukeStart);
+        _eierTattMaaned = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.TilOslo().Date >= mndStart);
+        _eierTattAar = _rows.Count(k => k.EierTattAt.HasValue && k.EierTattAt.Value.TilOslo().Date >= aarStart);
 
         // Saker som krever handling: feilet sending + timeout mot bank.
         _tekniskFeil = _rows.Count(k => k.Status == KundekortService.StatusTekniskFeil);
@@ -343,8 +472,14 @@ else
 
         // Ferdigstilte søknader = alle sluttførte/avsluttede saker (terminale statuser).
         var ferdigStatuser = new[] { KundekortService.StatusUtbetalt, KundekortService.StatusAvslatt, KundekortService.StatusAvsluttet, "Kansellert" };
-        _ferdigstilt = _rows.Count(k => ferdigStatuser.Contains(k.Status));
+        var ferdige = _rows.Where(k => ferdigStatuser.Contains(k.Status)).ToList();
+        _ferdigstilt = ferdige.Count;
         _ferdigstiltPct = _rows.Count > 0 ? (int)Math.Round(_ferdigstilt * 100.0 / _rows.Count) : 0;
+        // Ferdigstilt per periode — bruker updated_at (≈ tidspunkt saken ble satt til terminalstatus).
+        _ferdigIDag = ferdige.Count(k => k.UpdatedAt.TilOslo().Date == iDagOslo);
+        _ferdigUke = ferdige.Count(k => k.UpdatedAt.TilOslo().Date >= ukeStart);
+        _ferdigMaaned = ferdige.Count(k => k.UpdatedAt.TilOslo().Date >= mndStart);
+        _ferdigAar = ferdige.Count(k => k.UpdatedAt.TilOslo().Date >= aarStart);
 
         // Fullføringsgrad (kun rentekutt.no): andel påbegynte som har fullført søknaden.
         var rk = _rows.Where(ErRentekutt).ToList();
@@ -375,9 +510,10 @@ else
             var dagLeads = _rows.Where(k => k.CreatedAt.TilOslo().Date == d).ToList();
             var perStatus = dagLeads.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
             var perLaan = dagLeads.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype).ToDictionary(g => g.Key, g => g.Count());
+            var perKilde = dagLeads.GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde).ToDictionary(g => g.Key, g => g.Count());
             var label = i == 0 ? "I dag" : i == 1 ? "I går" : d.ToString("dd.MM");
             var medEier = dagLeads.Count(k => !string.IsNullOrWhiteSpace(k.Eier));
-            _dager.Add(new DagBar(label, perStatus, dagLeads.Count, medEier, perLaan));
+            _dager.Add(new DagBar(label, perStatus, dagLeads.Count, medEier, perLaan, perKilde));
         }
         _maxDag = Math.Max(1, _dager.Max(d => d.Total));
 
@@ -398,6 +534,9 @@ else
         _statusCountAll = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Count());
         _statusVolum30 = siste30.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Sum(k => k.OnsketLaanebelop ?? 0));
         _statusVolumAll = _rows.GroupBy(k => k.Status).ToDictionary(g => g.Key, g => g.Sum(k => k.OnsketLaanebelop ?? 0));
+        // Snitt liggetid per steg: tid siden sist endring (updated_at) for sakene som står der nå.
+        _statusLiggetidSum = _rows.GroupBy(k => k.Status)
+            .ToDictionary(g => g.Key, g => g.Sum(k => Math.Max(0, (na - k.UpdatedAt.ToUniversalTime()).TotalHours)));
 
         // Fordeling på leadskilde og lånetype (alle søknader).
         _kildeAlle = _rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
