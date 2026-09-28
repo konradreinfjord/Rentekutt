@@ -40,44 +40,6 @@ else
                 var _kildeSum = _kildeAlle.Sum(x => x.Antall);
                 var _laanSum = _laanetypeAlle.Sum(x => x.Antall);
             }
-            <div class="dcard">
-                <div class="dcard-head">
-                    <span class="mcard-ic" style="--a:#1f5fc4"><svg viewBox="0 0 24 24"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></span>
-                    <div><div class="dcard-title">Leadskilde</div><div class="dcard-sub">Fordeling på kilde · @_kildeSum leads</div></div>
-                </div>
-                <div class="distbar">
-                    @foreach (var (navn, antall) in _kildeAlle)
-                    {
-                        <span style="width:@(((double)antall / Math.Max(1, _kildeSum) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@KildeFarge(navn)" title="@navn: @antall"></span>
-                    }
-                </div>
-                <div class="dist-legend">
-                    @foreach (var (navn, antall) in _kildeAlle)
-                    {
-                        <span class="i"><span class="d" style="background:@KildeFarge(navn)"></span>@navn <b>@antall</b> <span class="pct">@(_kildeSum > 0 ? (int)Math.Round((double)antall / _kildeSum * 100) : 0) %</span></span>
-                    }
-                </div>
-            </div>
-
-            <div class="dcard">
-                <div class="dcard-head">
-                    <span class="mcard-ic" style="--a:#6b3fc4"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>
-                    <div><div class="dcard-title">Lånetype</div><div class="dcard-sub">Fordeling på lånetype · @_laanSum leads</div></div>
-                </div>
-                <div class="distbar">
-                    @foreach (var (navn, antall) in _laanetypeAlle)
-                    {
-                        <span style="width:@(((double)antall / Math.Max(1, _laanSum) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@LaanetypeFarge(navn)" title="@navn: @antall"></span>
-                    }
-                </div>
-                <div class="dist-legend">
-                    @foreach (var (navn, antall) in _laanetypeAlle)
-                    {
-                        <span class="i"><span class="d" style="background:@LaanetypeFarge(navn)"></span>@navn <b>@antall</b> <span class="pct">@(_laanSum > 0 ? (int)Math.Round((double)antall / _laanSum * 100) : 0) %</span></span>
-                    }
-                </div>
-            </div>
-
             @{
                 var _pipeAnt = _pipelineMedAntall + _pipelineUtenAntall;
                 var _pipeTotal = _pipeline + _pipelineEstimert;
@@ -132,6 +94,44 @@ else
                     </div>
                 </div>
                 <div class="pl-unit">Snitt per sak i kr (k = tusen, M = million)</div>
+
+                @* Fordeling — leadskilde og lånetype flettet inn *@
+                <div class="pl-ford">
+                    <div class="pl-ford-col">
+                        <div class="pl-ford-h">Leadskilde <span>@_kildeSum leads</span></div>
+                        <div class="distbar">
+                            @foreach (var (navn, antall) in _kildeAlle)
+                            {
+                                <span style="width:@(((double)antall / Math.Max(1, _kildeSum) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@KildeFarge(navn)" title="@navn: @antall"></span>
+                            }
+                        </div>
+                        <div class="dist-legend">
+                            @foreach (var (navn, antall) in _kildeAlle)
+                            {
+                                <span class="i"><span class="d" style="background:@KildeFarge(navn)"></span>@navn <b>@antall</b> <span class="pct">@(_kildeSum > 0 ? (int)Math.Round((double)antall / _kildeSum * 100) : 0) %</span></span>
+                            }
+                        </div>
+                    </div>
+                    <div class="pl-ford-col">
+                        <div class="pl-ford-h">Lånetype <span>@_laanSum leads</span></div>
+                        <div class="distbar">
+                            @foreach (var (navn, antall) in _laanetypeAlle)
+                            {
+                                <span style="width:@(((double)antall / Math.Max(1, _laanSum) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; background:@LaanetypeFarge(navn)" title="@navn: @antall"></span>
+                            }
+                        </div>
+                        <div class="dist-legend">
+                            @foreach (var (navn, antall) in _laanetypeAlle)
+                            {
+                                <span class="i"><span class="d" style="background:@LaanetypeFarge(navn)"></span>@navn <b>@antall</b> <span class="pct">@(_laanSum > 0 ? (int)Math.Round((double)antall / _laanSum * 100) : 0) %</span></span>
+                            }
+                        </div>
+                        @if (_ukjentKilde.Count > 0)
+                        {
+                            <div class="pl-ukjent">«Ukjent» = leads uten valgt lånetype · kilde: @string.Join(" · ", _ukjentKilde.Select(x => $"{x.Navn} {x.Antall}"))</div>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -254,6 +254,7 @@ else
     private List<(string Kilde, int Antall)> _kilde30 = new();
     private List<(string Navn, int Antall)> _kildeAlle = new();
     private List<(string Navn, int Antall)> _laanetypeAlle = new();
+    private List<(string Navn, int Antall)> _ukjentKilde = new();
 
     private static string LaanetypeFarge(string type) => type switch
     {
@@ -539,6 +540,10 @@ else
                           .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
         _laanetypeAlle = _rows.GroupBy(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype)
                               .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
+        // «Ukjent» lånetype = leads uten valgt lånetype — hvilken kilde kommer de fra?
+        _ukjentKilde = _rows.Where(k => string.IsNullOrWhiteSpace(k.Laanetype))
+                            .GroupBy(k => string.IsNullOrWhiteSpace(k.Kilde) ? "Ukjent" : k.Kilde)
+                            .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
         _funnelTot = _funnel.Sum(s => s.Subs.Sum(x => _statusCount30.GetValueOrDefault(x, 0)));
         _funnelMax = Math.Max(1, _funnel.Max(s => s.Subs.Sum(x => _statusCount30.GetValueOrDefault(x, 0))));
         _laanetype30 = siste30
