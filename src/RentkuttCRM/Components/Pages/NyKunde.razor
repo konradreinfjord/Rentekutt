@@ -1099,13 +1099,14 @@
     // Farge på status-chip i topp-kortet.
     private static string StatusFarge(string? s) => s switch
     {
-        "Påbegynt søknad" => "#c2740a",
-        "Nytt lead" => "#0891b2",
-        "Ny søknad" => "#2f8a3e",
+        "Påbegynt søknad" => "#e0a800",
+        "Nytt lead" => "#e0a800",
+        "Ny søknad" => "#e0a800",
         "Oppfølging" => "#d97706",
         "Pågår - Agent" => "#1f5fc4",
         "Sendt til bank" => "#6b3fc4",
-        "Sendt til bank - Timeout" => "#b42318",        "SBL Signert" => "#12805a",
+        "Sendt til bank - Timeout" => "#b42318",
+        "SBL Signert" => "#1f5fc4",
         "Utbetalt" => "#266f32",
         "Avslag" => "#b42318",
         "Avsluttet" => "#5b6b7f",
@@ -1131,11 +1132,11 @@
 
     private static string StatusKlasse(string s) => s switch
     {
-        "Påbegynt søknad" => "st-manuell", "Nytt lead" => "st-nytt", "Ny søknad" => "st-apen",
+        "Påbegynt søknad" => "st-gul", "Nytt lead" => "st-gul", "Ny søknad" => "st-gul",
         "Oppfølging" => "st-oppfolging", "Pågår - Agent" => "st-pagar", "Sendt til bank" => "st-sendt",
-        "Sendt til bank - Timeout" => "st-avslatt", "SBL Signert" => "st-tilbud",
+        "Sendt til bank - Timeout" => "st-avslatt", "SBL Signert" => "st-pagar",
         "Utbetalt" => "st-fullfort", "Avslag" => "st-avslatt", "Avsluttet" => "st-kansellert", "Kansellert" => "st-kansellert",
-        "Teknisk feil" => "st-teknisk", _ => "",
+        "Teknisk feil" => "st-avslatt", _ => "",
     };
 
     // Hurtiglagring av bank + nåværende rente (mates til Markedsinnsikt).

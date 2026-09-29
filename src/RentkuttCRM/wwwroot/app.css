@@ -222,12 +222,8 @@ a { color: var(--accent); text-decoration: none; }
 .tf-seg button.on .n { color: #1f5fc4; }
 .tf-seg .n.red { color: #c1121f; }
 .tf-seg.tf-wrap { flex-wrap: wrap; border-radius: 14px; }
-.tf-statusgrp { display: flex; flex-direction: column; gap: 5px; }
-.tf-statusrow { display: flex; align-items: center; gap: 8px; }
-.tf-grouplbl { width: 42px; flex-shrink: 0; text-align: right; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
-/* Kompakt status-filter: mindre knapper og tettere */
-.tf-statusgrp .tf-seg { padding: 2px; gap: 1px; }
-.tf-statusgrp .tf-seg button { padding: 3px 9px; font-size: 11.5px; }
+.tf-statusgrp { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 8px; }
+.tf-grouplbl { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-left: 2px; }
 .tf-custom { display: inline-flex; align-items: center; gap: 8px; }
 .tf-date { border: 1px solid var(--border); border-radius: 9px; padding: 5px 10px; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface); }
 .tf-dash { color: var(--text-muted); }
@@ -973,6 +969,7 @@ a { color: var(--accent); text-decoration: none; }
 .st-kansellert { background: #eef0f3; color: #5b6b7f; border-color: #dcdee3; }
 .st-teknisk { background: #c1121f; color: #fff; border-color: #9a0d18; font-weight: 700; }
 .st-oppfolging { background: #fef3e2; color: #b45309; border-color: #f7dcb0; }
+.st-gul { background: #fdf6d8; color: #8a6d00; border-color: #f0e2a2; }
 
 /* Delegert-til-bank chip */
 .delsel { border-radius: 999px; padding: 4px 11px; }
@@ -1229,3 +1226,32 @@ a { color: var(--accent); text-decoration: none; }
 .flyt-strek.gjort { background: var(--green); }
 .flyt.flyt-terminal { opacity: .55; }
 .flyt-terminal-tekst { margin: 14px 0 0; font-size: 13px; color: var(--danger, #b42318); font-weight: 600; }
+
+/* ---- Flyt-board (kundereise) ---- */
+.flyt-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.flyt-hint { font-size: 12px; color: var(--text-muted); }
+.flyt-koble-banner { font-size: 12.5px; font-weight: 600; color: #1f5fc4; background: #eaf1fc; border: 1px solid #cfe0f8; border-radius: 999px; padding: 4px 12px; }
+.flyt-koble-banner .lenke { border: none; background: none; color: #1f5fc4; text-decoration: underline; cursor: pointer; font: inherit; }
+.flyt-lagret { font-size: 12px; color: #2f8a3e; font-weight: 600; }
+.flyt-layout { display: flex; gap: 14px; align-items: flex-start; }
+.flyt-canvas { position: relative; flex: 1; min-width: 0; overflow: auto; max-height: 72vh; background: var(--surface); background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 22px 22px; border: 1px solid var(--border); border-radius: 14px; }
+.flyt-edges { position: absolute; top: 0; left: 0; pointer-events: none; }
+.flyt-edges line, .flyt-edges rect, .flyt-edges text { pointer-events: auto; }
+.flyt-node { position: absolute; width: 190px; min-height: 58px; box-sizing: border-box; display: flex; align-items: center; gap: 9px; padding: 10px 13px; background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--nc, #1f5fc4); border-radius: 12px; box-shadow: 0 2px 8px rgba(16,24,40,.10); cursor: grab; user-select: none; touch-action: none; font-size: 12.5px; font-weight: 600; color: var(--ink); z-index: 2; }
+.flyt-node:hover { box-shadow: 0 6px 18px rgba(16,24,40,.16); }
+.flyt-node.valgt { outline: 2px solid var(--nc, #1f5fc4); outline-offset: 1px; }
+.flyt-node-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--nc, #1f5fc4); flex-shrink: 0; }
+.flyt-node-tekst { line-height: 1.3; }
+.flyt-side { width: 260px; flex-shrink: 0; }
+.flyt-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 15px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.flyt-panel-tom { color: var(--text-muted); }
+.flyt-panel-h { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.flyt-lbl { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 8px 0 4px; }
+.flyt-ta, .flyt-inp { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface); resize: vertical; }
+.flyt-farger { display: flex; gap: 6px; flex-wrap: wrap; }
+.flyt-farge { width: 24px; height: 24px; border-radius: 7px; border: 2px solid transparent; cursor: pointer; }
+.flyt-farge.on { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
+.flyt-kant-etikett { position: absolute; transform: translate(-50%, -50%); z-index: 3; font-size: 10.5px; font-weight: 600; color: #475569; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: 2px 9px; cursor: pointer; white-space: nowrap; }
+.flyt-kant-etikett:hover { border-color: #1f5fc4; color: #1f5fc4; }
+.flyt-kant-etikett.tom { color: #94a3b8; padding: 1px 6px; opacity: .7; }
+.flyt-kant-etikett.tom:hover { opacity: 1; }

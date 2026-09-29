@@ -295,6 +295,16 @@
     private List<string> _statusValg = new();
     private bool MatchStatus(Kundekort k) => _statusFilter.Length == 0 || k.Status == _statusFilter;
 
+    // Badge-farge per status (samme som Marked/Database/kundekort).
+    private static string StatusKlasse(string s) => s switch
+    {
+        "Påbegynt søknad" => "st-gul", "Nytt lead" => "st-gul", "Ny søknad" => "st-gul",
+        "Oppfølging" => "st-oppfolging", "Pågår - Agent" => "st-pagar", "Sendt til bank" => "st-sendt",
+        "Sendt til bank - Timeout" => "st-avslatt", "SBL Signert" => "st-pagar",
+        "Utbetalt" => "st-fullfort", "Avslag" => "st-avslatt", "Avsluttet" => "st-kansellert", "Kansellert" => "st-kansellert",
+        "Teknisk feil" => "st-avslatt", _ => "on",
+    };
+
     // Gruppert rekkefølge på status-knappene.
     private static readonly (string Gruppe, string[] Statuser)[] StatusGrupper =
     {
@@ -322,43 +332,53 @@
     private List<Kundekort> NyeVist => (_nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType))
         .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).ToList();
 
-    // Delt status-filter (knapper) — gruppert i Ny / Pågår / Ferdig.
+    // Aktiv fanes rader med alle filtre UNNTATT status — brukes til antall i status-knappene.
+    private List<Kundekort> StatusTellBasis()
+    {
+        IEnumerable<Kundekort> b = _tab switch
+        {
+            "alle" => _alleType.Length == 0 ? _alleSaker : _alleSaker.Where(k => k.KundeType == _alleType),
+            "nye" => _nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType),
+            "pagar" => TypeBasis,
+            "oppfolginger" => OppfFiltrert.Select(o => KortFor(o.KundekortId)).Where(k => k is not null && (_oppfType.Length == 0 || k!.KundeType == _oppfType))!,
+            _ => Enumerable.Empty<Kundekort>(),
+        };
+        return b.Where(MatchDelegert).Where(MatchLaan).ToList();
+    }
+
+    // Delt status-filter (knapper) — inline, gruppert med små etiketter (Ny/Pågår/Ferdig) + antall.
     private RenderFragment StatusSeg =>
-        @<div class="tf-statusgrp">
-            <div class="tf-statusrow">
-                <span class="tf-grouplbl"></span>
-                <div class="tf-seg"><button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser</button></div>
-            </div>
+        @<text>
+        @{ var tell = StatusTellBasis(); }
+        <div class="tf-statusgrp">
+            <div class="tf-seg"><button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser <span class="n">@tell.Count</span></button></div>
             @foreach (var g in StatusGrupper)
             {
                 var present = g.Statuser.Where(_statusValg.Contains).ToList();
                 @if (present.Count > 0)
                 {
-                    <div class="tf-statusrow">
-                        <span class="tf-grouplbl">@g.Gruppe</span>
-                        <div class="tf-seg">
-                            @foreach (var s in present)
-                            {
-                                <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s</button>
-                            }
-                        </div>
+                    <span class="tf-grouplbl">@g.Gruppe</span>
+                    <div class="tf-seg">
+                        @foreach (var s in present)
+                        {
+                            <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s <span class="n">@tell.Count(k => k.Status == s)</span></button>
+                        }
                     </div>
                 }
             }
             @{ var rest = _statusValg.Where(s => !StatusGrupper.Any(g => g.Statuser.Contains(s))).ToList(); }
             @if (rest.Count > 0)
             {
-                <div class="tf-statusrow">
-                    <span class="tf-grouplbl">Annet</span>
-                    <div class="tf-seg">
-                        @foreach (var s in rest)
-                        {
-                            <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s</button>
-                        }
-                    </div>
+                <span class="tf-grouplbl">Annet</span>
+                <div class="tf-seg">
+                    @foreach (var s in rest)
+                    {
+                        <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s <span class="n">@tell.Count(k => k.Status == s)</span></button>
+                    }
                 </div>
             }
-        </div>;
+        </div>
+        </text>;
 
     // Delt lånetype-filter (knapper) — vises i alle fanene.
     private RenderFragment LaanetypeSeg =>
@@ -388,7 +408,7 @@
     private RenderFragment FellesCeller(Kundekort k, RenderFragment? navnBadge = null) =>
         @<text>
             <td>@k.CreatedAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
-            <td><span class="status on">@k.Status</span>@if (!string.IsNullOrWhiteSpace(k.AvslagGrunn)) { <div class="avslag-grunn" title="@k.AvslagGrunn">@k.AvslagGrunn</div> }</td>
+            <td><span class="status @StatusKlasse(k.Status)">@k.Status</span>@if (!string.IsNullOrWhiteSpace(k.AvslagGrunn)) { <div class="avslag-grunn" title="@k.AvslagGrunn">@k.AvslagGrunn</div> }</td>
             <td>@if (string.IsNullOrWhiteSpace(k.DelegertBank)) { <span class="muted">—</span> } else { <span>@k.DelegertBank</span> }</td>
             <td>
                 @if (_ringelogg.TryGetValue(k.Id, out var rl))

@@ -341,16 +341,16 @@ else
 
     private static string StatusKlasse(string s) => s switch
     {
-        "Påbegynt søknad" => "st-manuell",
-        "Nytt lead" => "st-nytt",
-        "Ny søknad" => "st-apen",
+        "Påbegynt søknad" => "st-gul",
+        "Nytt lead" => "st-gul",
+        "Ny søknad" => "st-gul",
         "Oppfølging" => "st-oppfolging", "Pågår - Agent" => "st-pagar",
         "Sendt til bank" => "st-sendt",
-        "Sendt til bank - Timeout" => "st-avslatt",        "SBL Signert" => "st-tilbud",
+        "Sendt til bank - Timeout" => "st-avslatt",        "SBL Signert" => "st-pagar",
         "Utbetalt" => "st-fullfort",
         "Avslag" => "st-avslatt",
         "Avsluttet" => "st-kansellert", "Kansellert" => "st-kansellert",
-        "Teknisk feil" => "st-teknisk",
+        "Teknisk feil" => "st-avslatt",
         _ => "",
     };
 
