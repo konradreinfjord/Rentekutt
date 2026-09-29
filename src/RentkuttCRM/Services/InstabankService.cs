@@ -113,7 +113,7 @@ public class InstabankService
         return http;
     }
 
-    public record Resultat(bool Ok, string? ExternalReference, string? SigningUrl, string? Status, string Detalj);
+    public record Resultat(bool Ok, string? ExternalReference, string? SigningUrl, string? Status, string Detalj, string? Reason = null);
 
     // Instabank vil IKKE ha tomme strenger / 0 / false for felt uten verdi — utelat dem.
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -136,7 +136,7 @@ public class InstabankService
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new(false, null, null, null, "401 — feil brukernavn/passord for valgt miljø.");
 
-            string? extRef = null, signing = null, status = null;
+            string? extRef = null, signing = null, status = null, reason = null;
             try
             {
                 using var doc = JsonDocument.Parse(tekst);
@@ -144,11 +144,14 @@ public class InstabankService
                 signing = Finn(root, "SigningUrl");
                 status = Finn(root, "Status");
                 extRef = Finn(root, "ExternalReference");
+                // Avslagsårsak — prøv flere feltnavn (Instabank oppgir den ikke alltid).
+                reason = Finn(root, "RejectionReason") ?? Finn(root, "DeclineReason") ?? Finn(root, "StatusReason")
+                         ?? Finn(root, "Reason") ?? Finn(root, "RejectReason") ?? Finn(root, "DecisionReason");
             }
             catch { /* ikke-JSON respons */ }
 
             return new(resp.IsSuccessStatusCode, extRef, signing, status,
-                resp.IsSuccessStatusCode ? "OK" : $"{(int)resp.StatusCode} {resp.ReasonPhrase}: {Kort(tekst)}");
+                resp.IsSuccessStatusCode ? "OK" : $"{(int)resp.StatusCode} {resp.ReasonPhrase}: {Kort(tekst)}", reason);
         }
         catch (Exception ex)
         {

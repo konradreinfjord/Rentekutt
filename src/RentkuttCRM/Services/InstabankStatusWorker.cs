@@ -72,6 +72,10 @@ public class InstabankStatusWorker : BackgroundService
                                 // Aggreger kundekortets status fra ALLE bankenes utfall.
                                 var alle = await sendinger.ForKundeAsync(kortId);
                                 await kunder.OppdaterStatusFraBankerAsync(kortId, status, alle, "System (Instabank-synk)");
+                                // Ved avslag: lagre undergrunn fra Instabank-responsen (hvis oppgitt).
+                                if (utfall == SendUtfall.Avslatt)
+                                    await kunder.SetAvslagGrunnAsync(kortId,
+                                        (string.IsNullOrWhiteSpace(r.Reason) ? "Avslått av Instabank" : r.Reason) + " (Instabank)");
                                 oppdatert++;
                             }
                         }

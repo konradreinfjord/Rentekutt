@@ -55,7 +55,7 @@ public class SoknedalController : ControllerBase
 
     [HttpPost("avsluttet")]
     [EnableRateLimiting("webhook")]
-    public Task<IActionResult> Avsluttet() => Behandle(KundekortService.StatusAvsluttet, "Soknedal: sak avsluttet.");
+    public Task<IActionResult> Avsluttet() => Behandle(KundekortService.StatusAvslatt, "Soknedal: sak avslått/avsluttet.");
 
     private async Task<IActionResult> Behandle(string nyStatus, string loggtekst)
     {
@@ -74,7 +74,7 @@ public class SoknedalController : ControllerBase
             return Unauthorized(new { error = "Ugyldig eller manglende token." });
         }
 
-        var (mobil, orgnr) = await LesIdentifikatorAsync();
+        var (mobil, orgnr, grunn) = await LesIdentifikatorAsync();
         if (string.IsNullOrWhiteSpace(mobil) && string.IsNullOrWhiteSpace(orgnr))
         {
             _log.LogWarning("Soknedal-webhook 400: fant ingen identifikator. Content-Type={CT}", Request.ContentType ?? "(ingen)");
@@ -96,9 +96,24 @@ public class SoknedalController : ControllerBase
         await _kundekort.SetStatusAsync(sak.Id, nyStatus, "Soknedal (webhook)");
         // Var saken udelegert, registrer Soknedal som delegert bank nå (så senere webhooks treffer presist).
         if (string.IsNullOrWhiteSpace(sak.DelegertBank)) await _kundekort.SetDelegertBankAsync(sak.Id, BankNavn);
-        await _logg.LoggAsync(sak.Id, "Soknedal (webhook)", loggtekst, "endring");
-        _log.LogInformation("Soknedal-webhook: sak {Id} → {Status}", sak.Id, nyStatus);
-        return Ok(new { funnet = true, id = sak.Id, ny_status = nyStatus });
+
+        // Kategoriser avslagsgrunn (webhook-felt «grunn», kode 250000–250005) og lagre som undergrunn.
+        string? grunnTekst = null;
+        var tekst = loggtekst;
+        if (!string.IsNullOrWhiteSpace(grunn))
+        {
+            grunnTekst = AvslutningsGrunn(grunn);
+            tekst = grunnTekst is not null
+                ? $"{loggtekst} Grunn: {grunnTekst} (kode {grunn})."
+                : $"{loggtekst} Grunn: ukjent kode {grunn}.";
+            await _kundekort.SetAvslagGrunnAsync(sak.Id, (grunnTekst ?? $"Ukjent kode {grunn}") + " (Soknedal)");
+            if (grunnTekst is null)
+                await AlarmAsync($"Soknedal: ukjent avslagsgrunn ({endepunkt})",
+                    $"Sak {sak.Id} avslått med ukjent grunn-kode «{grunn}». Legg til koden i kategoriseringen.", $"ukjent-grunn-{grunn}");
+        }
+        await _logg.LoggAsync(sak.Id, "Soknedal (webhook)", tekst, "endring");
+        _log.LogInformation("Soknedal-webhook: sak {Id} → {Status} (grunn={Grunn})", sak.Id, nyStatus, grunn ?? "—");
+        return Ok(new { funnet = true, id = sak.Id, ny_status = nyStatus, grunn = grunnTekst, grunn_kode = grunn });
     }
 
     // Reiser en alarm ved innkommende webhook-feil, så det er synlig i portalen hva som ble forsøkt.
@@ -110,27 +125,30 @@ public class SoknedalController : ControllerBase
 
     // Leser mobilnummer/orgnr fra query, form-body (Nextcom-stil) ELLER JSON-body — robust og
     // uavhengig av store/små bokstaver i feltnavnet (Soknedal kan sende «CellPhone», «MobileNumber» osv.).
-    private async Task<(string? mobil, string? orgnr)> LesIdentifikatorAsync()
+    private async Task<(string? mobil, string? orgnr, string? grunn)> LesIdentifikatorAsync()
     {
-        string? mobil = null, orgnr = null;
+        string? mobil = null, orgnr = null, grunn = null;
         static string N(string s) => new(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
         var mobilNavn = new[] { "mobilnummer", "mobil", "cellphone", "mobilephone", "mobilenumber", "phone", "phonenumber", "telefon", "tlf" }.Select(N).ToHashSet();
         // Merk: Soknedals innkommende webhook sender orgnr i feltet «ssn».
         var orgNavn = new[] { "orgnr", "organisasjonsnummer", "orgnummer", "orgno", "organizationnumber", "ssn" }.Select(N).ToHashSet();
+        // Ny: avslutningsgrunn (kode 250000–250005) i feltet «grunn».
+        var grunnNavn = new[] { "grunn", "aarsak", "årsak", "arsak", "reason", "reasoncode", "grunnkode", "code" }.Select(N).ToHashSet();
         void Sett(string key, string? val)
         {
             if (string.IsNullOrWhiteSpace(val)) return;
             var k = N(key);
             if (mobil is null && mobilNavn.Contains(k)) mobil = val.Trim();
             else if (orgnr is null && orgNavn.Contains(k)) orgnr = val.Trim();
+            else if (grunn is null && grunnNavn.Contains(k)) grunn = val.Trim();
         }
 
         foreach (var kv in Request.Query) Sett(kv.Key, kv.Value.ToString());
         if (Request.HasFormContentType)
             foreach (var kv in Request.Form) Sett(kv.Key, kv.Value.ToString());
 
-        // JSON-body ({"mobilnummer":"...","orgnr":"..."}) hvis vi ikke har begge ennå.
-        if ((mobil is null || orgnr is null) && !Request.HasFormContentType)
+        // JSON-body ({"mobilnummer":"...","orgnr":"...","grunn":"250000"}) hvis vi mangler noe.
+        if ((mobil is null || orgnr is null || grunn is null) && !Request.HasFormContentType)
         {
             try
             {
@@ -151,8 +169,20 @@ public class SoknedalController : ControllerBase
             }
             catch { /* ikke JSON — ignorer */ }
         }
-        return (mobil, orgnr);
+        return (mobil, orgnr, grunn);
     }
+
+    /// <summary>Avslutningsgrunn fra Soknedal (webhook-felt «grunn») → lesbar kategori.</summary>
+    private static string? AvslutningsGrunn(string? kode) => kode?.Trim() switch
+    {
+        "250000" => "Høy forbruksgjeld",
+        "250001" => "Høy gjeldsgrad",
+        "250002" => "Høy belåningsgrad / manglende sikkerhet",
+        "250003" => "Svak likviditet / betjeningsevne",
+        "250004" => "Ingen bedre rentevilkår",
+        "250005" => "Ikke svar fra kunde",
+        _ => null,
+    };
 
     private string? PresentedToken()
     {

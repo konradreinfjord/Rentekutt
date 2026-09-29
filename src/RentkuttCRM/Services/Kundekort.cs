@@ -181,6 +181,8 @@ public class Kundekort : BaseModel
     [Column("delegert_bank")] public string? DelegertBank { get; set; }
 
     [Column("status")] public string Status { get; set; } = "Åpen";
+    /// <summary>Undergrunn for avslag/avslutning (f.eks. Soknedal-grunn eller Instabank-respons).</summary>
+    [Column("avslag_grunn")] public string? AvslagGrunn { get; set; }
 
     // Eierskap til saken
     [Column("eier")] public string? Eier { get; set; }

@@ -67,6 +67,10 @@
                 @if (_isEdit)
                 {
                     <span class="kk-chip" style="@ChipStyle(StatusFarge(_k.Status))"><span class="kk-chip-dot" style="background:@StatusFarge(_k.Status)"></span>@_k.Status</span>
+                    @if (!string.IsNullOrWhiteSpace(_k.AvslagGrunn))
+                    {
+                        <span class="kk-chip-grunn" title="Avslagsgrunn">@_k.AvslagGrunn</span>
+                    }
                 }
                 <span class="kk-chip" style="@ChipStyle(TypeFarge(_k.KundeType))">@(_k.KundeType == "B2B" ? "Bedrift" : "Privat")</span>
                 @if (!string.IsNullOrWhiteSpace(_k.Kilde))
@@ -183,6 +187,14 @@
         <select @onchange="EndreStatus" disabled="@(!_isEdit || !KanEndre)">
             @foreach (var s in ManuelleStatuser()) { <option value="@s" selected="@(s == _k.Status)">@s</option> }
         </select>
+    </div>
+    <div class="ff" style="margin-top:10px">
+        <label>Undergrunn (avslag)</label>
+        <div style="display:flex; gap:6px; align-items:center">
+            <input @bind="_k.AvslagGrunn" placeholder="F.eks. Svak betjeningsevne" disabled="@(!_isEdit || !KanEndre)" style="flex:1" />
+            <button class="btn-sec btn-sm" @onclick="LagreAvslagGrunn" disabled="@(!_isEdit || !KanEndre)">Lagre</button>
+        </div>
+        <div class="page-sub" style="margin:4px 0 0; font-size:11px">Settes automatisk fra Soknedal/Instabank ved avslag — kan overstyres manuelt her.</div>
     </div>
 </div>
 
@@ -343,7 +355,7 @@
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
     var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
-    var terminalStatus = _k.Status is "Avslått" or "Kansellert" or "Teknisk feil" or "Avsluttet";
+    var terminalStatus = _k.Status is "Avslag" or "Kansellert" or "Teknisk feil" or "Avsluttet";
 }
 
 <div class="kk-tabs">
@@ -371,17 +383,13 @@
                 }
             }
         </div>
-        @if (_k.Status == KundekortService.StatusAvsluttet)
-        {
-            @* Eget, rødt terminal-steg «Avsluttet» under flyten. *@
-            <div style="display:inline-flex; align-items:center; gap:9px; margin-top:14px; padding:9px 15px; border-radius:11px; background:#fdeceb; border:1px solid #e6a8a1; color:#b42318; font-weight:700">
-                <span style="width:24px; height:24px; border-radius:50%; background:#c1121f; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px">✕</span>
-                Avsluttet
-            </div>
-        }
-        else if (terminalStatus)
+        @if (terminalStatus)
         {
             <p class="flyt-terminal-tekst">Søknaden er avsluttet med status <strong>@_k.Status</strong>.</p>
+            @if (!string.IsNullOrWhiteSpace(_k.AvslagGrunn))
+            {
+                <div class="flyt-grunn"><span class="flyt-grunn-lbl">Grunn</span> @_k.AvslagGrunn</div>
+            }
         }
     </div>
 
@@ -1099,7 +1107,7 @@
         "Sendt til bank" => "#6b3fc4",
         "Sendt til bank - Timeout" => "#b42318",        "SBL Signert" => "#12805a",
         "Utbetalt" => "#266f32",
-        "Avslått" => "#b42318",
+        "Avslag" => "#b42318",
         "Avsluttet" => "#5b6b7f",
         "Kansellert" => "#5b6b7f",
         "Teknisk feil" => "#b42318",
@@ -1126,7 +1134,7 @@
         "Påbegynt søknad" => "st-manuell", "Nytt lead" => "st-nytt", "Ny søknad" => "st-apen",
         "Oppfølging" => "st-oppfolging", "Pågår - Agent" => "st-pagar", "Sendt til bank" => "st-sendt",
         "Sendt til bank - Timeout" => "st-avslatt", "SBL Signert" => "st-tilbud",
-        "Utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", "Avsluttet" => "st-kansellert", "Kansellert" => "st-kansellert",
+        "Utbetalt" => "st-fullfort", "Avslag" => "st-avslatt", "Avsluttet" => "st-kansellert", "Kansellert" => "st-kansellert",
         "Teknisk feil" => "st-teknisk", _ => "",
     };
 
@@ -1422,6 +1430,16 @@
         if (!ok) { StateHasChanged(); return; }   // avbryt → tilbakestill dropdown
         _k.Status = ny;
         await Svc.SetStatusAsync(_k.Id, _k.Status, Session.UserName ?? Session.Email);
+        _endringslogg = await Logg.ForKundeAsync(_k.Id);
+    }
+
+    // Manuell undergrunn for avslag — lagres og logges.
+    private async Task LagreAvslagGrunn()
+    {
+        if (!_isEdit || !KanEndre) return;
+        _k.AvslagGrunn = string.IsNullOrWhiteSpace(_k.AvslagGrunn) ? null : _k.AvslagGrunn.Trim();
+        await Svc.SetAvslagGrunnAsync(_k.Id, _k.AvslagGrunn);
+        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Undergrunn (avslag): {_k.AvslagGrunn ?? "(tømt)"}", "endring");
         _endringslogg = await Logg.ForKundeAsync(_k.Id);
     }
 

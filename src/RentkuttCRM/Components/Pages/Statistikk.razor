@@ -38,8 +38,8 @@ else
     var rows = Rows;
     var total = rows.Count;
     var fullfort = rows.Where(k => k.Status == KundekortService.StatusUtbetalt).ToList();
-    var avslatt = rows.Where(k => k.Status == "Avslått").ToList();
-    var aktive = rows.Where(k => k.Status != KundekortService.StatusUtbetalt && k.Status != "Avslått").ToList();
+    var avslatt = rows.Where(k => k.Status == "Avslag").ToList();
+    var aktive = rows.Where(k => k.Status != KundekortService.StatusUtbetalt && k.Status != "Avslag").ToList();
 
     var konv = total == 0 ? 0 : 100.0 * fullfort.Count / total;
     var laanevolum = fullfort.Sum(k => k.OnsketLaanebelop ?? 0);
@@ -147,7 +147,7 @@ else
                     <tr><td><span class="vol-dot" style="background:#266f32"></span>Formidlet (utbetalt)</td><td class="num">@fullfort.Count</td><td class="num">@($"{laanevolum:N0}") kr</td></tr>
                     <tr><td><span class="vol-dot" style="background:#1f5fc4"></span>Aktiv pipeline</td><td class="num">@aktive.Count</td><td class="num">@($"{pipelineVolum:N0}") kr</td></tr>
                     <tr><td><span class="vol-dot" style="background:#0f8a8a"></span>Forventet (vektet)</td><td class="num">—</td><td class="num">@($"{forventetVolum:N0}") kr</td></tr>
-                    <tr><td><span class="vol-dot" style="background:#b42318"></span>Avslått</td><td class="num">@avslatt.Count</td><td class="num">@($"{avslatt.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</td></tr>
+                    <tr><td><span class="vol-dot" style="background:#b42318"></span>Avslag</td><td class="num">@avslatt.Count</td><td class="num">@($"{avslatt.Sum(k => k.OnsketLaanebelop ?? 0):N0}") kr</td></tr>
                 </tbody>
             </table>
 
@@ -394,7 +394,7 @@ else
         ("7", "7 dager"), ("30", "30 dager"), ("90", "90 dager"), ("ytd", "I år"), ("all", "Alle")
     };
 
-    // Pipeline-steg for cashflow (uten Avslått).
+    // Pipeline-steg for cashflow (uten Avslag).
     private readonly string[] _cashflowSteg =
         { "Ny søknad", "Pågår - Agent", "Sendt til bank", "Utbetalt" };
 
@@ -470,7 +470,7 @@ else
         "Sendt til bank" => "#6b3fc4",
         "Sendt til bank - Timeout" => "#b42318",        "SBL Signert" => "#12805a",
         "Utbetalt" => "#266f32",
-        "Avslått" => "#b42318",
+        "Avslag" => "#b42318",
         "Avsluttet" => "#5b6b7f",
         "Kansellert" => "#5b6b7f",
         "Teknisk feil" => "#b42318",

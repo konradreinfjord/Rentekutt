@@ -334,7 +334,7 @@ else
         new("Nye søknader", "#1f5fc4", "Nye leads som er kommet inn, men ikke sendt videre ennå.", new[] { "Ny søknad", "Nytt lead", "Påbegynt søknad" }),
         new("Pågår", "#6b3fc4", "Sendt til bank og under behandling hos rådgiver.", new[] { "Sendt til bank", "Pågår - Agent" }),
         new("SBL Signert", "#12805a", "Kunden har signert lånesøknaden (SBL).", new[] { "SBL Signert" }),
-        new("Frafall", "#b42318", "Saker som er avslått, kansellert, avsluttet eller feilet.", new[] { "Avslått", "Teknisk feil", "Avsluttet", "Kansellert", "Sendt til bank - Timeout" }),
+        new("Frafall", "#b42318", "Saker som er avslått, kansellert eller feilet.", new[] { "Avslag", "Teknisk feil", "Kansellert", "Sendt til bank - Timeout" }),
         new("Utbetalt / godkjent", "#266f32", "Lånet er innvilget og utbetalt.", new[] { "Utbetalt" }),
     };
 
@@ -365,7 +365,7 @@ else
         "Sendt til bank" => "#6b3fc4",   // lilla
         "Sendt til bank - Timeout" => "#b42318", // rød        "SBL Signert" => "#12805a",             // grønn-teal (signert)
         "Utbetalt" => "#266f32",            // mørk grønn
-        "Avslått" => "#b42318",             // rød
+        "Avslag" => "#b42318",             // rød
         "Avsluttet" => "#5b6b7f",
         "Kansellert" => "#5b6b7f",          // grå
         "Teknisk feil" => "#b42318",        // rød
@@ -398,7 +398,7 @@ else
             .ToList();
 
         _mine = _rows.Count(k => !string.IsNullOrWhiteSpace(Session.Email) && k.Eier == Session.Email);
-        var pipeAktiv = _rows.Where(k => k.Status is not (KundekortService.StatusUtbetalt or "Avslått")).ToList();
+        var pipeAktiv = _rows.Where(k => k.Status is not (KundekortService.StatusUtbetalt or "Avslag")).ToList();
         _pipeline = pipeAktiv.Sum(k => k.OnsketLaanebelop ?? 0);
         var pipeMedBelop = pipeAktiv.Where(k => (k.OnsketLaanebelop ?? 0) > 0).ToList();
         var pipeUtenBelop = pipeAktiv.Where(k => (k.OnsketLaanebelop ?? 0) <= 0).ToList();
@@ -433,7 +433,7 @@ else
 
         // Utatte: ingen eier + fortsatt aktiv (ikke fullført/avslått).
         _utatte = _rows.Count(k => string.IsNullOrWhiteSpace(k.Eier)
-                                   && k.Status is not (KundekortService.StatusUtbetalt or "Avslått"));
+                                   && k.Status is not (KundekortService.StatusUtbetalt or "Avslag"));
         _b2c = _rows.Count(k => k.KundeType == "B2C");
         _b2b = _rows.Count(k => k.KundeType == "B2B");
 
@@ -467,7 +467,7 @@ else
         _ferdigPct = _rows.Count > 0 ? (int)Math.Round((_utbetalt + _avslatt) * 100.0 / _rows.Count) : 0;
 
         // Ferdigstilte søknader = alle sluttførte/avsluttede saker (terminale statuser).
-        var ferdigStatuser = new[] { KundekortService.StatusUtbetalt, KundekortService.StatusAvslatt, KundekortService.StatusAvsluttet, "Kansellert" };
+        var ferdigStatuser = new[] { KundekortService.StatusUtbetalt, KundekortService.StatusAvslatt, "Kansellert" };
         var ferdige = _rows.Where(k => ferdigStatuser.Contains(k.Status)).ToList();
         _ferdigstilt = ferdige.Count;
         _ferdigstiltPct = _rows.Count > 0 ? (int)Math.Round(_ferdigstilt * 100.0 / _rows.Count) : 0;

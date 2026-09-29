@@ -294,6 +294,14 @@
     private string _statusFilter = "";
     private List<string> _statusValg = new();
     private bool MatchStatus(Kundekort k) => _statusFilter.Length == 0 || k.Status == _statusFilter;
+
+    // Gruppert rekkefølge på status-knappene.
+    private static readonly (string Gruppe, string[] Statuser)[] StatusGrupper =
+    {
+        ("Ny", new[] { "Påbegynt søknad", "Nytt lead", "Ny søknad" }),
+        ("Pågår", new[] { "SBL Signert", "Sendt til bank", "Teknisk feil", "Oppfølging", "Pågår - Agent", "Sendt til bank - Timeout" }),
+        ("Ferdig", new[] { "Utbetalt", "Avslag", "Kansellert" }),
+    };
     private bool MatchDelegert(Kundekort k) => _delegertFilter switch
     {
         "" => true,
@@ -314,13 +322,41 @@
     private List<Kundekort> NyeVist => (_nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType))
         .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).ToList();
 
-    // Delt status-filter (knapper) — vises i alle fanene.
+    // Delt status-filter (knapper) — gruppert i Ny / Pågår / Ferdig.
     private RenderFragment StatusSeg =>
-        @<div class="tf-seg tf-wrap">
-            <button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser</button>
-            @foreach (var s in _statusValg)
+        @<div class="tf-statusgrp">
+            <div class="tf-statusrow">
+                <span class="tf-grouplbl"></span>
+                <div class="tf-seg"><button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser</button></div>
+            </div>
+            @foreach (var g in StatusGrupper)
             {
-                <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s</button>
+                var present = g.Statuser.Where(_statusValg.Contains).ToList();
+                @if (present.Count > 0)
+                {
+                    <div class="tf-statusrow">
+                        <span class="tf-grouplbl">@g.Gruppe</span>
+                        <div class="tf-seg">
+                            @foreach (var s in present)
+                            {
+                                <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s</button>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+            @{ var rest = _statusValg.Where(s => !StatusGrupper.Any(g => g.Statuser.Contains(s))).ToList(); }
+            @if (rest.Count > 0)
+            {
+                <div class="tf-statusrow">
+                    <span class="tf-grouplbl">Annet</span>
+                    <div class="tf-seg">
+                        @foreach (var s in rest)
+                        {
+                            <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s</button>
+                        }
+                    </div>
+                </div>
             }
         </div>;
 
@@ -352,7 +388,7 @@
     private RenderFragment FellesCeller(Kundekort k, RenderFragment? navnBadge = null) =>
         @<text>
             <td>@k.CreatedAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
-            <td><span class="status on">@k.Status</span></td>
+            <td><span class="status on">@k.Status</span>@if (!string.IsNullOrWhiteSpace(k.AvslagGrunn)) { <div class="avslag-grunn" title="@k.AvslagGrunn">@k.AvslagGrunn</div> }</td>
             <td>@if (string.IsNullOrWhiteSpace(k.DelegertBank)) { <span class="muted">—</span> } else { <span>@k.DelegertBank</span> }</td>
             <td>
                 @if (_ringelogg.TryGetValue(k.Id, out var rl))

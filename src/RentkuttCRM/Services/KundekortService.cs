@@ -9,12 +9,12 @@ public class KundekortService
     // Full statusliste (kundekortet kan sette alle; markeds-dropdownen viser kun StatuserManuelle).
     public static readonly string[] Statuser =
         { "Påbegynt søknad", "Nytt lead", "Ny søknad", "Oppfølging", "Pågår - Agent", "Sendt til bank",
-          "Sendt til bank - Timeout", "SBL Signert", "Utbetalt", "Avslått", "Avsluttet", "Kansellert", "Teknisk feil" };
+          "Sendt til bank - Timeout", "SBL Signert", "Utbetalt", "Avslag", "Kansellert", "Teknisk feil" };
 
     /// <summary>Statuser en saksbehandler kan sette manuelt i markeds-dropdownen. Øvrige er system-satt
     /// (webhook/API/bakgrunnsjobber) og kan bare endres ved å åpne kundekortet.</summary>
     public static readonly string[] StatuserManuelle =
-        { "Sendt til bank", "Utbetalt", "Avslått", "Kansellert" };
+        { "Sendt til bank", "Utbetalt", "Avslag", "Kansellert" };
 
     /// <summary>Statuser som ikke skal kunne velges manuelt i kundekort-dropdownen (system-satt).</summary>
     public static readonly string[] SkjulteManuelleStatuser =
@@ -39,14 +39,14 @@ public class KundekortService
     /// <summary>Lånedokument (SBL) signert av kunden — bekreftet av bank (f.eks. Soknedal via webhook).</summary>
     public const string StatusSignert = "SBL Signert";
     public const string StatusUtbetalt = "Utbetalt";
-    public const string StatusAvslatt = "Avslått";
+    public const string StatusAvslatt = "Avslag";
     /// <summary>Saken er avsluttet av banken uten utbetaling (f.eks. Soknedal via webhook).</summary>
     public const string StatusAvsluttet = "Avsluttet";
     public const string StatusKansellert = "Kansellert";
     public const string StatusTekniskFeil = "Teknisk feil";
 
     /// <summary>Statuser der saken er ferdig avklart — bl.a. brukt til å stoppe Instabank-polling.</summary>
-    public static readonly string[] StatuserAvklart = { "Utbetalt", "Avslått", "Kansellert" };
+    public static readonly string[] StatuserAvklart = { "Utbetalt", "Avslag", "Kansellert" };
 
     // Innstilling: antall dager en sak kan stå i «Sendt bank» før den auto-settes til timeout. 0 = av.
     public const string KeySendtBankTimeoutDager = "sendt_bank_timeout_dager";
@@ -55,7 +55,7 @@ public class KundekortService
     public static (string kode, string tekst, bool ferdig) TredjepartStatus(string? status) => status switch
     {
         StatusUtbetalt => ("utbetalt", "Utbetalt", true),
-        StatusAvslatt => ("avslatt", "Avslått", true),
+        StatusAvslatt => ("avslatt", "Avslag", true),
         StatusKansellert => ("kansellert", "Kansellert", true),
         _ => ("apen", "Åpen", false),
     };
@@ -384,7 +384,7 @@ public class KundekortService
         "adresse,postnummer,poststed,kommune,fylke,laanetype,produktkategori,laaneformal," +
         "onsket_laanebelop,onsket_lopetid_mnd,aarsinntekt_brutto,sivilstatus," +
         "arbeidssituasjon,boforhold,naavaerende_rente,navarende_bank,boliggjeld," +
-        "boligverdi,status,eier,eier_navn,eier_tatt_at,delegert_bank,kilde," +
+        "boligverdi,status,avslag_grunn,eier,eier_navn,eier_tatt_at,delegert_bank,kilde," +
         "siste_kontakt,neste_oppfolging,sendt_bank_at,created_at,updated_at";
 
     private async Task<List<Kundekort>> HentAlleLettAsync()
@@ -940,6 +940,25 @@ public class KundekortService
             InvaliderCache();
         }
         catch (Exception ex) { _log.LogError(ex, "Delegering til bank feilet"); }
+    }
+
+    /// <summary>Setter undergrunn for avslag (Soknedal-grunn eller Instabank-respons).</summary>
+    public async Task SetAvslagGrunnAsync(Guid id, string? grunn)
+    {
+        grunn = string.IsNullOrWhiteSpace(grunn) ? null : grunn.Trim();
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) k.AvslagGrunn = grunn;
+            return;
+        }
+        try
+        {
+            await EnsureReadyAsync();
+            await _client.From<Kundekort>().Where(x => x.Id == id).Set(x => x.AvslagGrunn!, grunn ?? "").Update();
+            InvaliderCache();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Lagring av avslagsgrunn feilet"); }
     }
 
     public async Task<Kundekort?> GetAsync(Guid id)
