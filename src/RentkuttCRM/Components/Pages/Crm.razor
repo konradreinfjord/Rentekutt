@@ -332,10 +332,10 @@ else
     private static readonly FunnelSteg[] _funnel =
     {
         new("Nye søknader", "#1f5fc4", "Nye leads som er kommet inn, men ikke sendt videre ennå.", new[] { "Ny søknad", "Nytt lead", "Påbegynt søknad" }),
-        new("Pågår", "#6b3fc4", "Sendt til bank og under behandling hos rådgiver.", new[] { "Sendt - I prosess", "Pågår - Agent" }),
+        new("Pågår", "#6b3fc4", "Sendt til bank og under behandling hos rådgiver.", new[] { "Sendt til bank", "Pågår - Agent" }),
         new("SBL Signert", "#12805a", "Kunden har signert lånesøknaden (SBL).", new[] { "SBL Signert" }),
         new("Frafall", "#b42318", "Saker som er avslått, kansellert, avsluttet eller feilet.", new[] { "Avslått", "Teknisk feil", "Avsluttet", "Kansellert", "Sendt til bank - Timeout" }),
-        new("Utbetalt / godkjent", "#266f32", "Lånet er innvilget og utbetalt.", new[] { "Utbetalt", "Sendt - Innvilget" }),
+        new("Utbetalt / godkjent", "#266f32", "Lånet er innvilget og utbetalt.", new[] { "Utbetalt" }),
     };
 
     private int _funnelTot, _funnelMax = 1;
@@ -360,11 +360,10 @@ else
         "Påbegynt søknad" => "#c2740a",     // amber
         "Nytt lead" => "#0891b2",           // cyan
         "Ny søknad" => "#2f8a3e",           // grønn
+        "Oppfølging" => "#d97706",
         "Pågår - Agent" => "#1f5fc4",       // blå
-        "Sendt - I prosess" => "#6b3fc4",   // lilla
-        "Sendt til bank - Timeout" => "#b42318", // rød
-        "Sendt - Innvilget" => "#0f8a8a",   // teal
-        "SBL Signert" => "#12805a",             // grønn-teal (signert)
+        "Sendt til bank" => "#6b3fc4",   // lilla
+        "Sendt til bank - Timeout" => "#b42318", // rød        "SBL Signert" => "#12805a",             // grønn-teal (signert)
         "Utbetalt" => "#266f32",            // mørk grønn
         "Avslått" => "#b42318",             // rød
         "Avsluttet" => "#5b6b7f",

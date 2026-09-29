@@ -148,6 +148,13 @@ a { color: var(--accent); text-decoration: none; }
 .nav-item.active .nav-icon { color: var(--green); opacity: 1; }
 .nav-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0; }
 .nav-icon svg { width: 16px; height: 16px; }
+/* Utvidbar «Database»-gruppe */
+.nav-parent { width: 100%; background: transparent; border: none; font-family: inherit; text-align: left; cursor: pointer; }
+.nav-caret { margin-left: auto; display: inline-flex; color: var(--text-muted); transition: transform .15s; }
+.nav-caret svg { width: 14px; height: 14px; }
+.nav-caret.open { transform: rotate(90deg); }
+.nav-item.nav-sub { margin-left: 14px; padding-left: 12px; border-left: 1px solid var(--border); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.nav-item.nav-sub.active::before { display: none; }
 
 .sidebar-footer { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
 .footer-user { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: var(--r-sm); }
@@ -204,6 +211,24 @@ a { color: var(--accent); text-decoration: none; }
 .stat-num .stat-unit { font-family: "Inter", sans-serif; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-left: 5px; letter-spacing: 0; }
 .stat-sub { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 11.5px; color: var(--text-muted); margin-top: auto; }
 .stat-sub .kilde-badge { font-size: 10.5px; padding: 1px 8px; }
+
+/* Slankt tidsromfilter (segmentert pille-kontroll) */
+.tf-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.tf-seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; gap: 2px; }
+.tf-seg button { border: none; background: transparent; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-2); padding: 5px 13px; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .12s, color .12s, box-shadow .12s; white-space: nowrap; }
+.tf-seg button:hover { color: var(--ink); }
+.tf-seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(16,24,40,.10); }
+.tf-seg .n { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.tf-seg button.on .n { color: #1f5fc4; }
+.tf-seg .n.red { color: #c1121f; }
+.tf-seg.tf-wrap { flex-wrap: wrap; border-radius: 14px; }
+.tf-custom { display: inline-flex; align-items: center; gap: 8px; }
+.tf-date { border: 1px solid var(--border); border-radius: 9px; padding: 5px 10px; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface); }
+.tf-dash { color: var(--text-muted); }
+.tf-count { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+
+/* Forfalt-badge på oppfølginger */
+.forfalt-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .03em; color: #fff; background: #c1121f; vertical-align: middle; white-space: nowrap; }
 
 /* Ringelogg-kolonne: antall dialer-forsøk + sist forsøk */
 .ringelogg-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; color: #1f5fc4; background: color-mix(in srgb, #1f5fc4 10%, transparent); border: 1px solid color-mix(in srgb, #1f5fc4 26%, transparent); white-space: nowrap; }
@@ -934,6 +959,7 @@ a { color: var(--accent); text-decoration: none; }
 .st-avslatt { background: #fdeceb; color: #a3271d; border-color: #f4cdc9; }
 .st-kansellert { background: #eef0f3; color: #5b6b7f; border-color: #dcdee3; }
 .st-teknisk { background: #c1121f; color: #fff; border-color: #9a0d18; font-weight: 700; }
+.st-oppfolging { background: #fef3e2; color: #b45309; border-color: #f7dcb0; }
 
 /* Delegert-til-bank chip */
 .delsel { border-radius: 999px; padding: 4px 11px; }

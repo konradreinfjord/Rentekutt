@@ -1,6 +1,8 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.AlarmService Alarmer
 @inject RentkuttCRM.Services.BugService Bugs
+@inject NavigationManager Nav
+@implements IDisposable
 
 <aside class="sidebar">
     <div class="sidebar-brand">
@@ -15,21 +17,30 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
                 </span> Dashbord
             </NavLink>
-            <NavLink class="nav-item" href="/crm/marked/person">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </span> Personmarked
-            </NavLink>
-            <NavLink class="nav-item" href="/crm/marked/bedrift">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
-                </span> Bedriftsmarked
-            </NavLink>
             <NavLink class="nav-item" href="/crm/oppfolging">
                 <span class="nav-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                </span> Mine søknader
+                </span> Saker
             </NavLink>
+            <button type="button" class="nav-item nav-parent @(_dbOpen ? "expanded" : "")" @onclick="() => _dbOpen = !_dbOpen">
+                <span class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+                </span> Database
+                <span class="nav-caret @(_dbOpen ? "open" : "")"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </button>
+            @if (_dbOpen)
+            {
+                <NavLink class="nav-item nav-sub" href="/crm/marked/person">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span> Personmarked
+                </NavLink>
+                <NavLink class="nav-item nav-sub" href="/crm/marked/bedrift">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
+                    </span> Bedriftsmarked
+                </NavLink>
+            }
             <NavLink class="nav-item" href="/crm/statistikk">
                 <span class="nav-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -87,9 +98,13 @@
 @code {
     private int _antAlarmer;
     private int _antBugs;
+    private bool _dbOpen;   // Database-gruppen (Person/Bedriftsmarked) utvidet?
 
     protected override async Task OnInitializedAsync()
     {
+        // Åpne Database-gruppen automatisk når vi står på et marked.
+        _dbOpen = Nav.Uri.Contains("/crm/marked", StringComparison.OrdinalIgnoreCase);
+        Nav.LocationChanged += OnLocationChanged;
         if (Session.IsAdmin)
         {
             _antAlarmer = await Alarmer.AntallAapneAsync();
@@ -97,6 +112,17 @@
             _antBugs = (await Bugs.GetBugsAsync()).Count(b => b.Status == BugService.StatusIkkeRegistrert);
         }
     }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (Nav.Uri.Contains("/crm/marked", StringComparison.OrdinalIgnoreCase) && !_dbOpen)
+        {
+            _dbOpen = true;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 
     private static string Initials(string? name)
     {

@@ -314,7 +314,7 @@ public class BankSendWorker : BackgroundService
                 AlarmService.Alvorlighet.Advarsel, $"banksending-feilet-{s.KundekortId}");
         }
         await ko.OppdaterAsync(s);
-        // Vellykket sending til bank → utled kundekortstatus fra bankene («Sendt - I prosess»
+        // Vellykket sending til bank → utled kundekortstatus fra bankene («Sendt til bank»
         // til Instabank-synk gir endelig utfall).
         if (utfall == Utfall.Ok)
         {

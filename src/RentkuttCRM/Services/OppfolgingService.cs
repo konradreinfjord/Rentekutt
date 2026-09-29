@@ -121,6 +121,19 @@ public class OppfolgingService
             DateTime? neste = aapne.Count == 0 ? null : aapne.Min(x => x.Forfaller);
             await _client.From<Kundekort>().Where(x => x.Id == kundekortId)
                 .Set(x => x.NesteOppfolging!, neste).Update();
+
+            // Sak med oppfølgingsdato → status «Oppfølging» (unntatt ferdige/positive slutt-tilstander).
+            if (neste is not null)
+            {
+                var kort = (await _client.From<Kundekort>().Select("id,status").Where(x => x.Id == kundekortId).Get())
+                    .Models.FirstOrDefault();
+                if (kort is not null && kort.Status != KundekortService.StatusOppfolging
+                    && !KundekortService.StatuserBeholdesVedOppfolging.Contains(kort.Status))
+                {
+                    await _client.From<Kundekort>().Where(x => x.Id == kundekortId)
+                        .Set(x => x.Status, KundekortService.StatusOppfolging).Update();
+                }
+            }
         }
         catch (Exception ex) { _log.LogWarning(ex, "Synk av neste_oppfolging feilet"); }
     }

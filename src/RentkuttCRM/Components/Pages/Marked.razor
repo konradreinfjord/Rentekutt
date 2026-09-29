@@ -102,9 +102,9 @@ else
             <tr>
                 @Header("opprettet", "Opprettet")
                 <th>Oppfølgingsdato</th>
-                <th>Ringelogg</th>
                 @Header("status", "Status")
-                @Header("delegert", "Delegert til bank")
+                @Header("delegert", "Sendt til bank")
+                <th>Ringelogg</th>
                 @if (ErBedrift) { <th>Firmanavn</th> }
                 @Header("navn", "Navn")
                 @Header("telefon", "Telefon")
@@ -134,6 +134,17 @@ else
                 <tr class="row-link @(tatt ? "row-locked" : "")" @onclick="() => Open(k.Id)">
                     <td class="mono-cell" title="@OpprettetTittel(k.CreatedAt)">@OpprettetTekst(k.CreatedAt)</td>
                     <td class="mono-cell">@if (k.NesteOppfolging is { } n) { <span class="opf-date @OppfDatoKlasse(n)">@n.ToString("dd.MM.yyyy")</span> } else { <span class="muted">—</span> }</td>
+                    <td @onclick:stopPropagation="true">
+                        <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "Systemstatuser endres ved å åpne kundekortet")" @onchange="e => ChangeStatus(k, e)">
+                            @foreach (var s in RadStatuser(k.Status)) { <option value="@s" selected="@(s == k.Status)">@s</option> }
+                        </select>
+                    </td>
+                    <td @onclick:stopPropagation="true">
+                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "delsel-unset" : "delsel-set")" disabled="@tatt" @onchange="e => DelegateBank(k, e)">
+                            <option value="">— ingen —</option>
+                            @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
+                        </select>
+                    </td>
                     <td>
                         @if (_ringelogg.TryGetValue(k.Id, out var rl))
                         {
@@ -147,17 +158,6 @@ else
                         {
                             <span class="muted" title="Ingen ringeforsøk registrert">—</span>
                         }
-                    </td>
-                    <td @onclick:stopPropagation="true">
-                        <select class="inline-select stsel @StatusKlasse(k.Status)" disabled="@tatt" title="@(tatt ? "Låst — eid av en annen rådgiver" : "Systemstatuser endres ved å åpne kundekortet")" @onchange="e => ChangeStatus(k, e)">
-                            @foreach (var s in RadStatuser(k.Status)) { <option value="@s" selected="@(s == k.Status)">@s</option> }
-                        </select>
-                    </td>
-                    <td @onclick:stopPropagation="true">
-                        <select class="inline-select delsel @(string.IsNullOrWhiteSpace(k.DelegertBank) ? "delsel-unset" : "delsel-set")" disabled="@tatt" @onchange="e => DelegateBank(k, e)">
-                            <option value="">— ingen —</option>
-                            @foreach (var p in _partnere) { <option value="@p.Navn" selected="@(p.Navn == k.DelegertBank)">@p.Navn</option> }
-                        </select>
                     </td>
                     @if (ErBedrift)
                     {
@@ -538,8 +538,8 @@ else
     private static string StatusKlasse(string s) => s switch
     {
         "Påbegynt søknad" => "st-manuell", "Nytt lead" => "st-nytt", "Ny søknad" => "st-apen",
-        "Pågår - Agent" => "st-pagar", "Sendt - I prosess" => "st-sendt",
-        "Sendt til bank - Timeout" => "st-avslatt", "Sendt - Innvilget" => "st-tilbud",
+        "Oppfølging" => "st-oppfolging", "Pågår - Agent" => "st-pagar", "Sendt til bank" => "st-sendt",
+        "Sendt til bank - Timeout" => "st-avslatt",
         "SBL Signert" => "st-tilbud",
         "Utbetalt" => "st-fullfort", "Avslått" => "st-avslatt", "Avsluttet" => "st-kansellert", "Kansellert" => "st-kansellert",
         "Teknisk feil" => "st-teknisk", _ => "",

@@ -6,46 +6,172 @@
 @inject RentkuttCRM.Services.RutingsregelService Ruting
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.OppfolgingService Oppf
+@inject RentkuttCRM.Services.DialerService Dialer
 @inject NavigationManager Nav
 
-<PageTitle>Mine søknader — Rentekutt</PageTitle>
+<PageTitle>Saker — Rentekutt</PageTitle>
 
 <div class="wide-page"></div>
 
-<h1 class="page-title">Mine søknader</h1>
-<p class="page-sub">Sakene du har plukket. Følg opp i tide — fargen på oppfølgingsdatoen viser forfalt/i dag.</p>
+<h1 class="page-title">Saker</h1>
+<p class="page-sub">Nye saker venter på å plukkes. Sakene du har plukket ligger under «Mine saker».</p>
+
+<div class="db-stats" style="margin-bottom:18px">
+    <div class="db-box click @(_delegertFilter == "" ? "on" : "")" @onclick='() => _delegertFilter = ""'>
+        <span class="db-box-num">@AktivBasis.Count()</span><span class="db-box-lbl">Alle saker</span>
+    </div>
+    <div class="db-box click @(_delegertFilter == "__ingen__" ? "on" : "")" @onclick='() => _delegertFilter = "__ingen__"'>
+        <span class="db-box-num">@AktivBasis.Count(k => string.IsNullOrWhiteSpace(k.DelegertBank))</span><span class="db-box-lbl">Ikke sendt til bank</span>
+    </div>
+    @foreach (var bank in _delegertBanker)
+    {
+        <div class="db-box click @(_delegertFilter == bank ? "on" : "")" @onclick="() => _delegertFilter = bank">
+            <span class="db-box-num">@AktivBasis.Count(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))</span>
+            <span class="db-box-lbl">Sendt til @bank</span>
+        </div>
+    }
+</div>
 
 <div class="kk-tabs" style="margin-bottom:16px">
-    <button class="@(_tab == "pagar" ? "active" : "")" @onclick='() => _tab = "pagar"'>Søknader som pågår (@_rows.Count)</button>
+    <button class="@(_tab == "alle" ? "active" : "")" @onclick='() => _tab = "alle"'>Alle saker (@_alleSaker.Count)</button>
+    <button class="@(_tab == "nye" ? "active" : "")" @onclick='() => _tab = "nye"'>Nye saker (@_nyeSaker.Count)</button>
+    <button class="@(_tab == "pagar" ? "active" : "")" @onclick='() => _tab = "pagar"'>Mine saker (@_rows.Count)</button>
     <button class="@(_tab == "oppfolginger" ? "active" : "")" @onclick='() => _tab = "oppfolginger"'>Oppfølginger (@_mineOppf.Count)</button>
 </div>
+
+@if (_tab == "alle")
+{
+    <div class="tf-bar">
+        <div class="tf-seg">
+            <button class="@(_alleType == "" ? "on" : "")" @onclick='() => _alleType = ""'>Alle</button>
+            <button class="@(_alleType == "B2C" ? "on" : "")" @onclick='() => _alleType = "B2C"'>B2C</button>
+            <button class="@(_alleType == "B2B" ? "on" : "")" @onclick='() => _alleType = "B2B"'>B2B</button>
+        </div>
+        @LaanetypeSeg
+            @StatusSeg
+        <span class="tf-count">@AlleVist.Count saker</span>
+    </div>
+    <div class="section">
+        @if (_loading) { <p class="page-sub">Laster…</p> }
+        else
+        {
+            <div class="table-scroll table-tall">
+            <table class="data-table">
+                <thead>@KundeThead</thead>
+                <tbody>
+                    @if (AlleVist.Count == 0)
+                    {
+                        <tr><td colspan="11" class="empty-row">Ingen saker i valgt filter.</td></tr>
+                    }
+                    @foreach (var k in AlleVist.OrderByDescending(k => k.CreatedAt))
+                    {
+                        <tr class="row-link" @onclick="() => Open(k.Id)">
+                            @FellesCeller(k)
+                            <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" @onclick="() => Open(k.Id)">Åpne</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        }
+    </div>
+}
+
+@if (_tab == "nye")
+{
+    <div class="tf-bar">
+        <div class="tf-seg">
+            <button class="@(_nyeType == "" ? "on" : "")" @onclick='() => _nyeType = ""'>Alle</button>
+            <button class="@(_nyeType == "B2C" ? "on" : "")" @onclick='() => _nyeType = "B2C"'>B2C</button>
+            <button class="@(_nyeType == "B2B" ? "on" : "")" @onclick='() => _nyeType = "B2B"'>B2B</button>
+        </div>
+        @LaanetypeSeg
+            @StatusSeg
+        <span class="tf-count">@NyeVist.Count nye saker</span>
+    </div>
+    <div class="section">
+        @if (_loading) { <p class="page-sub">Laster…</p> }
+        else
+        {
+            <div class="table-scroll table-tall">
+            <table class="data-table">
+                <thead>@KundeThead</thead>
+                <tbody>
+                    @if (NyeVist.Count == 0)
+                    {
+                        <tr><td colspan="11" class="empty-row">Ingen nye saker akkurat nå — alle er plukket. 🎉</td></tr>
+                    }
+                    @foreach (var k in NyeVist.OrderByDescending(k => k.CreatedAt))
+                    {
+                        <tr class="row-link" @onclick="() => Open(k.Id)">
+                            @FellesCeller(k)
+                            <td @onclick:stopPropagation="true"><button class="btn-primary btn-sm" @onclick="() => Plukk(k)">Ta eierskap</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        }
+    </div>
+}
 
 @if (_tab == "oppfolginger")
 {
     <div class="section">
-        <p class="page-sub" style="margin-top:0">Dine planlagte oppfølginger på tvers av søknader — tidligste forfall først. Opprett dem på hver søknad under Oversikt → Oppfølginger.</p>
+        <p class="page-sub" style="margin-top:0">Dine planlagte oppfølginger på tvers av søknader — forfalte først. Opprett dem på hver søknad under Oversikt → Oppfølginger.</p>
+        <div class="tf-bar">
+            <div class="tf-seg">
+                <button class="@(_oppfType == "" ? "on" : "")" @onclick='() => _oppfType = ""'>Alle</button>
+                <button class="@(_oppfType == "B2C" ? "on" : "")" @onclick='() => _oppfType = "B2C"'>B2C</button>
+                <button class="@(_oppfType == "B2B" ? "on" : "")" @onclick='() => _oppfType = "B2B"'>B2B</button>
+            </div>
+            <div class="tf-seg">
+                <button class="@(_oppfFilter == "" ? "on" : "")" @onclick='() => _oppfFilter = ""'>Alle <span class="n">@_mineOppf.Count</span></button>
+                <button class="@(_oppfFilter == "forfalt" ? "on" : "")" @onclick='() => _oppfFilter = "forfalt"'>Forfalt <span class="n red">@_mineOppf.Count(o => o.Forfaller.Date < Tid.IDag)</span></button>
+                <button class="@(_oppfFilter == "idag" ? "on" : "")" @onclick='() => _oppfFilter = "idag"'>I dag <span class="n">@_mineOppf.Count(o => o.Forfaller.Date == Tid.IDag)</span></button>
+                <button class="@(_oppfFilter == "uke" ? "on" : "")" @onclick='() => _oppfFilter = "uke"'>Uke <span class="n">@_mineOppf.Count(o => ErInnen(o, 7))</span></button>
+                <button class="@(_oppfFilter == "maaned" ? "on" : "")" @onclick='() => _oppfFilter = "maaned"'>Måned <span class="n">@_mineOppf.Count(o => ErInnen(o, 31))</span></button>
+                <button class="@(_oppfFilter == "custom" ? "on" : "")" @onclick='() => _oppfFilter = "custom"'>Egendefinert</button>
+            </div>
+            @LaanetypeSeg
+            @StatusSeg
+            @if (_oppfFilter == "custom")
+            {
+                <div class="tf-custom">
+                    <input type="date" class="tf-date" @bind="_oppfFra" />
+                    <span class="tf-dash">–</span>
+                    <input type="date" class="tf-date" @bind="_oppfTil" />
+                </div>
+            }
+            <span class="tf-count">@OppfVist.Count oppfølginger</span>
+        </div>
         @if (_loading)
         {
             <p class="page-sub">Laster…</p>
         }
-        else if (_mineOppf.Count == 0)
+        else if (OppfVist.Count == 0)
         {
-            <p class="notat-empty">Ingen åpne oppfølginger. Opprett en på en søknad (Oversikt → Oppfølginger).</p>
+            <p class="notat-empty">@(_mineOppf.Count == 0 ? "Ingen åpne oppfølginger. Opprett en på en søknad (Oversikt → Oppfølginger)." : "Ingen oppfølginger i valgt filter.")</p>
         }
         else
         {
             <div class="table-scroll table-tall">
             <table class="data-table">
-                <thead><tr><th>Forfaller</th><th>Søknad</th><th>Type</th><th>Notat</th><th>Handling</th></tr></thead>
+                <thead>@KundeThead</thead>
                 <tbody>
-                    @foreach (var o in _mineOppf.OrderBy(x => x.Forfaller))
+                    @foreach (var o in OppfVist)
                     {
                         var kort = KortFor(o.KundekortId);
                         <tr class="row-link" @onclick="() => Open(o.KundekortId)">
-                            <td @onclick:stopPropagation="true"><span class="opf-date @OppfKlasse(o)" style="font-weight:600">@o.Forfaller.ToString("dd.MM.yyyy")</span></td>
-                            <td>@(kort is null ? "—" : (string.IsNullOrWhiteSpace(kort.FulltNavn) ? "(uten navn)" : kort.FulltNavn))</td>
-                            <td>@if (kort is null) { <span class="muted">—</span> } else { <span class="type-tag @(kort.KundeType == "B2C" ? "lead" : "bank")">@kort.KundeType</span> }</td>
-                            <td>@(string.IsNullOrWhiteSpace(o.Notat) ? "—" : o.Notat)</td>
+                            @if (kort is not null)
+                            {
+                                @FellesCeller(kort, OppfBadge(o))
+                            }
+                            else
+                            {
+                                <td>@o.Forfaller.ToString("dd.MM.yyyy HH:mm")</td><td>—</td><td>—</td><td>—</td>
+                                <td>(ukjent søknad)@OppfBadge(o)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                            }
                             <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" @onclick="() => FullforOppf(o)" title="Marker fullført">✓ Fullfør</button></td>
                         </tr>
                     }
@@ -58,23 +184,17 @@
 
 @if (_tab == "pagar")
 {
-<div class="seg typeseg" style="margin-bottom:16px">
-    <button class="@(_typeFilter == "" ? "active" : "")" @onclick='() => _typeFilter = ""'>Vis begge (@_rows.Count)</button>
-    <button class="@(_typeFilter == "B2C" ? "active" : "")" @onclick='() => _typeFilter = "B2C"'>Privat · B2C (@_rows.Count(k => k.KundeType == "B2C"))</button>
-    <button class="@(_typeFilter == "B2B" ? "active" : "")" @onclick='() => _typeFilter = "B2B"'>Bedrift · B2B (@_rows.Count(k => k.KundeType == "B2B"))</button>
-</div>
-
-@* Hurtigfilter: sendt til bank vs ikke sendt *@
-<div class="seg typeseg" style="margin-bottom:16px">
-    <button class="@(_sendtFilter == "" ? "active" : "")" @onclick='() => _sendtFilter = ""'>Alle (@TypeBasis.Count())</button>
-    <button class="@(_sendtFilter == "sendt" ? "active" : "")" @onclick='() => _sendtFilter = "sendt"'>✓ Sendt til bank (@TypeBasis.Count(ErSendtTilBank))</button>
-    <button class="@(_sendtFilter == "ikke" ? "active" : "")" @onclick='() => _sendtFilter = "ikke"'>Ikke sendt (@TypeBasis.Count(k => !ErSendtTilBank(k)))</button>
-</div>
-
-@if (Session.IsAdmin)
-{
-    <div class="db-toolbar" style="margin-bottom:16px">
-        <label class="page-sub" style="margin:0; font-weight:600">Vis saker for:</label>
+<div class="tf-bar">
+    <div class="tf-seg">
+        <button class="@(_typeFilter == "" ? "on" : "")" @onclick='() => _typeFilter = ""'>Alle</button>
+        <button class="@(_typeFilter == "B2C" ? "on" : "")" @onclick='() => _typeFilter = "B2C"'>B2C</button>
+        <button class="@(_typeFilter == "B2B" ? "on" : "")" @onclick='() => _typeFilter = "B2B"'>B2B</button>
+    </div>
+    @LaanetypeSeg
+            @StatusSeg
+    @if (Session.IsAdmin)
+    {
+        <label class="page-sub" style="margin:0 0 0 4px; font-weight:600">Vis saker for:</label>
         <select class="db-select" @bind="_selectedEier" @bind:after="ApplyFilter">
             <option value="__mine__">Mine saker</option>
             <option value="__alle__">Alle rådgivere</option>
@@ -83,15 +203,8 @@
                 <option value="@o.Eier">@o.Navn (@o.Antall)</option>
             }
         </select>
-        <div class="db-spacer"></div>
-        <span class="db-count">@_rows.Count saker</span>
-    </div>
-}
-
-<div class="db-stats">
-    <div class="db-box"><span class="db-box-num">@Vist.Count</span><span class="db-box-lbl">@TypeLabel</span></div>
-    <div class="db-box accent-blue"><span class="db-box-num">@SnittTid</span><span class="db-box-lbl">Snitt tid per sak</span></div>
-    <div class="db-box"><span class="db-box-num">@Vist.Count(k => k.NesteOppfolging is { } n && n.Date <= Tid.IDag)</span><span class="db-box-lbl">Oppfølging forfalt/i dag</span></div>
+    }
+    <span class="tf-count">@Vist.Count saker</span>
 </div>
 
 <div class="section">
@@ -103,46 +216,17 @@
     {
         <div class="table-scroll table-tall">
         <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Status</th><th>Opprettet</th><th>Oppfølgingsdato</th>
-                    <th>Navn</th>@if (VisEier) { <th>Rådgiver</th> }<th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th>
-                    <th>Forslag til bank</th><th>Sendt til bank</th>
-                </tr>
-            </thead>
+            <thead>@KundeThead</thead>
             <tbody>
                 @if (Vist.Count == 0)
                 {
-                    <tr><td colspan="@(VisEier ? 11 : 10)" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak i Personmarked eller Bedriftsmarked." : "Ingen saker på valgt rådgiver.")</td></tr>
+                    <tr><td colspan="11" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak under Nye saker." : "Ingen saker på valgt rådgiver.")</td></tr>
                 }
                 @foreach (var k in Vist.OrderBy(SortNokkel))
                 {
                     <tr class="row-link" @onclick="() => Open(k.Id)">
-                        <td><span class="status on">@k.Status</span></td>
-                        <td>@k.CreatedAt.TilOslo().ToString("dd.MM.yyyy")</td>
-                        <td @onclick:stopPropagation="true">
-                            <input type="date" class="opf-date @OppfolgingKlasse(k)" value="@(k.NesteOppfolging?.ToString("yyyy-MM-dd"))" @onchange="e => SetOppfolging(k, e)" />
-                        </td>
-                        <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</td>
-                        @if (VisEier) { <td>@(k.Eier == MittEier ? "Deg" : k.EierNavn ?? k.Eier)</td> }
-                        <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
-                        <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
-                        <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
-                        <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
-                        <td>
-                            @{ var forslag = ForslagBank(k); }
-                            @if (forslag.Count == 0) { <span class="muted">—</span> }
-                            else { <span>@string.Join(", ", forslag)</span> }
-                        </td>
-                        <td>
-                            @{ var sendt = SendtFor(k); }
-                            @if (sendt is null) { <span class="muted">—</span> }
-                            else
-                            {
-                                <span class="status @SendtStatusKlasse(sendt.Status)">@sendt.Status</span>
-                                <span> @sendt.Bank</span>
-                            }
-                        </td>
+                        @FellesCeller(k)
+                        <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" @onclick="() => Open(k.Id)">Åpne</button></td>
                     </tr>
                 }
             </tbody>
@@ -155,8 +239,138 @@
 @code {
     private List<Kundekort> _rows = new();
     private bool _loading = true;
-    private string _tab = "pagar";                       // "pagar" | "oppfolginger"
+    private string _tab = "alle";                         // "alle" | "nye" | "pagar" | "oppfolginger"
     private List<OppfolgingOppgave> _mineOppf = new();          // mine åpne oppfølginger på tvers av søknader
+
+    // Tidsromfilter for oppfølginger: "" = alle, forfalt, idag, uke, maaned, custom.
+    private string _oppfFilter = "";
+    private string _oppfType = "";   // kundetypefilter på oppfølgingsfanen
+    private DateTime? _oppfFra, _oppfTil;
+    private static bool ErInnen(OppfolgingOppgave o, int dager) => o.Forfaller.Date >= Tid.IDag && o.Forfaller.Date <= Tid.IDag.AddDays(dager);
+    // Filtrert + sortert: forfalte øverst (eldst først), deretter kommende etter dato.
+    private List<OppfolgingOppgave> OppfFiltrert => _mineOppf
+        .Where(o => _oppfFilter switch
+        {
+            "forfalt" => o.Forfaller.Date < Tid.IDag,
+            "idag" => o.Forfaller.Date == Tid.IDag,
+            "uke" => ErInnen(o, 7),
+            "maaned" => ErInnen(o, 31),
+            "custom" => (_oppfFra is null || o.Forfaller.Date >= _oppfFra.Value.Date)
+                        && (_oppfTil is null || o.Forfaller.Date <= _oppfTil.Value.Date),
+            _ => true,
+        })
+        .OrderBy(o => o.Forfaller)
+        .ToList();
+
+    // Oppfølginger etter alle aktive filtre (tidsrom + kundetype + delegert bank).
+    private List<OppfolgingOppgave> OppfVist => OppfFiltrert.Where(o =>
+    {
+        var kk = KortFor(o.KundekortId);
+        if (kk is null) return _delegertFilter.Length == 0 && _oppfType.Length == 0 && _laanetypeFilter.Length == 0 && _statusFilter.Length == 0;
+        return MatchDelegert(kk) && MatchLaan(kk) && MatchStatus(kk) && (_oppfType.Length == 0 || kk.KundeType == _oppfType);
+    }).ToList();
+
+    // Alle saker = hele basen (uansett eier/status).
+    private List<Kundekort> _alleSaker = new();
+    private string _alleType = "";
+    private List<Kundekort> AlleVist => (_alleType.Length == 0 ? _alleSaker : _alleSaker.Where(k => k.KundeType == _alleType))
+        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).ToList();
+
+    // Nye saker = ingen eier + fortsatt aktiv (ikke fullført/avslått) — venter på å plukkes.
+    private List<Kundekort> _nyeSaker = new();
+    private string _nyeType = "";
+
+    // Delegert-bank-filter: "" = alle, "__ingen__" = ikke sendt, ellers banknavn. Filtrerer den aktive fanen.
+    private string _delegertFilter = "";
+    private List<string> _delegertBanker = new();
+
+    // Lånetypefilter (delt på tvers av fanene): "" = alle, ellers lånetypenavn.
+    private string _laanetypeFilter = "";
+    private List<string> _laanetyper = new();
+    private bool MatchLaan(Kundekort k) => _laanetypeFilter.Length == 0
+        || string.Equals(string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype, _laanetypeFilter, StringComparison.OrdinalIgnoreCase);
+
+    // Statusfilter (delt på tvers av fanene): "" = alle, ellers statusnavn.
+    private string _statusFilter = "";
+    private List<string> _statusValg = new();
+    private bool MatchStatus(Kundekort k) => _statusFilter.Length == 0 || k.Status == _statusFilter;
+    private bool MatchDelegert(Kundekort k) => _delegertFilter switch
+    {
+        "" => true,
+        "__ingen__" => string.IsNullOrWhiteSpace(k.DelegertBank),
+        var b => string.Equals(k.DelegertBank, b, StringComparison.OrdinalIgnoreCase),
+    };
+
+    // Grunnlaget for den aktive fanen (før delegert-filter) — brukes til boks-tellingene.
+    private IEnumerable<Kundekort> AktivBasis => _tab switch
+    {
+        "alle" => (_alleType.Length == 0 ? _alleSaker : _alleSaker.Where(k => k.KundeType == _alleType)).Where(MatchLaan).Where(MatchStatus),
+        "nye" => (_nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType)).Where(MatchLaan).Where(MatchStatus),
+        "pagar" => TypeBasis.Where(MatchLaan).Where(MatchStatus),
+        "oppfolginger" => OppfFiltrert.Select(o => KortFor(o.KundekortId)).Where(k => k is not null && (_oppfType.Length == 0 || k.KundeType == _oppfType) && MatchLaan(k) && MatchStatus(k))!,
+        _ => Enumerable.Empty<Kundekort>(),
+    };
+
+    private List<Kundekort> NyeVist => (_nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType))
+        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).ToList();
+
+    // Delt status-filter (knapper) — vises i alle fanene.
+    private RenderFragment StatusSeg =>
+        @<div class="tf-seg tf-wrap">
+            <button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser</button>
+            @foreach (var s in _statusValg)
+            {
+                <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s</button>
+            }
+        </div>;
+
+    // Delt lånetype-filter (knapper) — vises i alle fanene.
+    private RenderFragment LaanetypeSeg =>
+        @<div class="tf-seg">
+            <button class="@(_laanetypeFilter == "" ? "on" : "")" @onclick='() => _laanetypeFilter = ""'>Alle lån</button>
+            @foreach (var t in _laanetyper)
+            {
+                <button class="@(_laanetypeFilter == t ? "on" : "")" @onclick="() => _laanetypeFilter = t">@t</button>
+            }
+        </div>;
+
+    // Felles kolonner for alle tabellene (nye saker / mine saker / oppfølging).
+    private RenderFragment KundeThead =>
+        @<tr><th>Opprettet</th><th>Status</th><th>Sendt til bank</th><th>Ringelogg</th><th>Navn</th><th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th><th>Leadskilde</th><th>Handling</th></tr>;
+
+    // Forfaller-merke i Navn-kolonnen på oppfølgingsfanen: rød «Forfalt N d» eller kommende dato.
+    private RenderFragment OppfBadge(OppfolgingOppgave o) =>
+        @<text>@if (o.Forfaller.Date < Tid.IDag)
+        {
+            <span class="forfalt-badge">Forfalt @((Tid.IDag - o.Forfaller.Date).Days) d</span>
+        }
+        else
+        {
+            <span class="opf-date @OppfKlasse(o)" style="margin-left:8px; font-weight:600">Forfaller @o.Forfaller.ToString("dd.MM")</span>
+        }</text>;
+
+    private RenderFragment FellesCeller(Kundekort k, RenderFragment? navnBadge = null) =>
+        @<text>
+            <td>@k.CreatedAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
+            <td><span class="status on">@k.Status</span></td>
+            <td>@if (string.IsNullOrWhiteSpace(k.DelegertBank)) { <span class="muted">—</span> } else { <span>@k.DelegertBank</span> }</td>
+            <td>
+                @if (_ringelogg.TryGetValue(k.Id, out var rl))
+                {
+                    <span class="ringelogg-badge" title="@rl.Antall ringeforsøk · sist @RingSiden(rl.Sist)">
+                        <svg viewBox="0 0 24 24" width="12" height="12"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <b>@rl.Antall</b><span class="rl-sist">@RingSiden(rl.Sist)</span>
+                    </span>
+                }
+                else { <span class="muted">—</span> }
+            </td>
+            <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)@navnBadge</td>
+            <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
+            <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
+            <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
+            <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
+            <td>@if (string.IsNullOrWhiteSpace(k.Kilde)) { <span class="muted">—</span> } else { <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span> }</td>
+        </text>;
 
     private Kundekort? KortFor(Guid id) => _rows.FirstOrDefault(k => k.Id == id) ?? _alleEide.FirstOrDefault(k => k.Id == id);
 
@@ -193,7 +407,7 @@
     {
         get
         {
-            var q = TypeBasis;
+            var q = TypeBasis.Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus);
             if (_sendtFilter == "sendt") q = q.Where(ErSendtTilBank);
             else if (_sendtFilter == "ikke") q = q.Where(k => !ErSendtTilBank(k));
             return q.ToList();
@@ -229,13 +443,61 @@
             _rows = await Svc.ListByEierAsync(MittEier);
         }
 
+        // Hele basen + nye saker (ingen eier + fortsatt aktiv — felles kø alle kan plukke fra).
+        _alleSaker = await Svc.ListLettAsync();
+        _nyeSaker = _alleSaker
+            .Where(k => string.IsNullOrWhiteSpace(k.Eier)
+                        && k.Status is not (KundekortService.StatusUtbetalt or KundekortService.StatusAvslatt
+                                            or KundekortService.StatusAvsluttet or "Kansellert"))
+            .ToList();
+
         // For «Forslag til bank» (rutingsregler) og «Sendt til bank» (sendestatus).
         _partnere = await Partners.ListAsync();
         _regler = await Ruting.ListAsync();
         _sendtPerKort = await BankSending.SisteePerKundekortAsync();
         _mineOppf = await Oppf.AapneForEierAsync(MittEier);
+        _ringelogg = await Dialer.HentSammendragAsync();
+
+        // Delegert-bank-filterbokser: distinkte banker på tvers av alle sakene i visningen.
+        _delegertBanker = _alleSaker
+            .Select(k => k.DelegertBank)
+            .Where(b => !string.IsNullOrWhiteSpace(b))
+            .Select(b => b!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(b => b)
+            .ToList();
+        _laanetyper = _alleSaker
+            .Select(k => string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
+        // Statuser som faktisk finnes i basen, i kanonisk rekkefølge.
+        var finnes = _alleSaker.Select(k => k.Status).Where(s => !string.IsNullOrWhiteSpace(s)).ToHashSet();
+        _statusValg = KundekortService.Statuser.Where(finnes.Contains)
+            .Concat(finnes.Where(s => !KundekortService.Statuser.Contains(s)))
+            .ToList();
 
         _loading = false;
+    }
+
+    private Dictionary<Guid, (int Antall, DateTime Sist)> _ringelogg = new();
+    private static string RingSiden(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc.ToUniversalTime();
+        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} min";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours} t";
+        if (d.TotalDays < 30) return $"{(int)d.TotalDays} d";
+        return utc.TilOslo().ToString("dd.MM.yyyy");
+    }
+
+    // Ta eierskap til en ny sak → flytt «Ny søknad» til «Pågår - Agent», åpne kortet.
+    private async Task Plukk(Kundekort k)
+    {
+        var eier = MittEier;
+        var nyStatus = k.Status == KundekortService.StatusNySoknad ? KundekortService.StatusPagaarAgent : null;
+        await Svc.SetEierAsync(k.Id, eier, Session.UserName ?? eier, nyStatus);
+        _nyeSaker.RemoveAll(x => x.Id == k.Id);
+        Open(k.Id);
     }
 
     private List<Partner> _partnere = new();
