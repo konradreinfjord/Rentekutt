@@ -351,30 +351,34 @@
         @<text>
         @{ var tell = StatusTellBasis(); }
         <div class="tf-statusgrp">
-            <div class="tf-seg"><button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser <span class="n">@tell.Count</span></button></div>
+            <div class="tf-seg tf-alle"><button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser <span class="n">@tell.Count</span></button></div>
             @foreach (var g in StatusGrupper)
             {
                 var present = g.Statuser.Where(_statusValg.Contains).ToList();
                 @if (present.Count > 0)
                 {
-                    <span class="tf-grouplbl">@g.Gruppe</span>
-                    <div class="tf-seg">
-                        @foreach (var s in present)
-                        {
-                            <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s <span class="n">@tell.Count(k => k.Status == s)</span></button>
-                        }
+                    <div class="tf-group tf-group-@g.Gruppe.ToLower()">
+                        <span class="tf-grouplbl">@g.Gruppe</span>
+                        <div class="tf-seg">
+                            @foreach (var s in present)
+                            {
+                                <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s <span class="n">@tell.Count(k => k.Status == s)</span></button>
+                            }
+                        </div>
                     </div>
                 }
             }
             @{ var rest = _statusValg.Where(s => !StatusGrupper.Any(g => g.Statuser.Contains(s))).ToList(); }
             @if (rest.Count > 0)
             {
-                <span class="tf-grouplbl">Annet</span>
-                <div class="tf-seg">
-                    @foreach (var s in rest)
-                    {
-                        <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s <span class="n">@tell.Count(k => k.Status == s)</span></button>
-                    }
+                <div class="tf-group">
+                    <span class="tf-grouplbl">Annet</span>
+                    <div class="tf-seg">
+                        @foreach (var s in rest)
+                        {
+                            <button class="@(_statusFilter == s ? "on" : "")" @onclick="() => _statusFilter = s">@s <span class="n">@tell.Count(k => k.Status == s)</span></button>
+                        }
+                    </div>
                 </div>
             }
         </div>
