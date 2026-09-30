@@ -53,7 +53,7 @@
                         <path class="flyt-edge" data-from="@kant.Fra" data-to="@kant.Til" data-edge="@i" data-retning="@kant.Retning"
                               data-fraanker="@kant.FraAnker" data-tilanker="@kant.TilAnker" data-punkter="@PunkterJson(kant)" fill="none"
                               stroke="@(_valgtKant == kant ? "#1f5fc4" : "#94a3b8")" stroke-width="@(_valgtKant == kant ? 3 : 2)"
-                              stroke-linejoin="round" marker-end="url(#flyt-arrow)"></path>
+                              stroke-linejoin="round" marker-end="@(kant.Pil ? "url(#flyt-arrow)" : null)"></path>
                     }
                 </svg>
                 @for (var i = 0; i < _board.Kanter.Count; i++)
@@ -136,6 +136,12 @@
                     <button class="@(_valgtKant.Str == "l" ? "active" : "")" @onclick='() => SettStr(_valgtKant, "l")'>Stor</button>
                 </div>
 
+                <label class="flyt-lbl">Pilspiss</label>
+                <div class="seg onoff flyt-retning">
+                    <button class="@(_valgtKant.Pil ? "active" : "")" @onclick="() => SettPil(_valgtKant, true)">Pil →</button>
+                    <button class="@(!_valgtKant.Pil ? "active" : "")" @onclick="() => SettPil(_valgtKant, false)">Ingen</button>
+                </div>
+
                 <label class="flyt-lbl">Fest på «@NodeTekst(_valgtKant.Fra)» (fra)</label>
                 <div class="seg onoff flyt-anker">
                     <button class="@(_valgtKant.FraAnker == "" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, true, "")' title="Auto">Auto</button>
@@ -203,7 +209,7 @@
 
     public class FlytNode { public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8]; public string Tekst { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public string Farge { get; set; } = "#1f5fc4"; }
     public class Punkt { public double X { get; set; } public double Y { get; set; } }
-    public class FlytKant { public string Fra { get; set; } = ""; public string Til { get; set; } = ""; public string Etikett { get; set; } = ""; public string Retning { get; set; } = ""; public List<Punkt> Punkter { get; set; } = new(); public string EtikettFarge { get; set; } = ""; public string Str { get; set; } = "m"; public string FraAnker { get; set; } = ""; public string TilAnker { get; set; } = ""; }
+    public class FlytKant { public string Fra { get; set; } = ""; public string Til { get; set; } = ""; public string Etikett { get; set; } = ""; public string Retning { get; set; } = ""; public List<Punkt> Punkter { get; set; } = new(); public string EtikettFarge { get; set; } = ""; public string Str { get; set; } = "m"; public string FraAnker { get; set; } = ""; public string TilAnker { get; set; } = ""; public bool Pil { get; set; } = true; }
     public class FlytBoard { public List<FlytNode> Noder { get; set; } = new(); public List<FlytKant> Kanter { get; set; } = new(); public double Zoom { get; set; } = 1; }
 
     protected override async Task OnInitializedAsync()
@@ -280,6 +286,7 @@
     }
 
     private void SettRetning(FlytKant k, string r) { k.Retning = r; _ = Lagre(); }
+    private void SettPil(FlytKant k, bool pil) { k.Pil = pil; _ = Lagre(); }
     private async Task SettAnker(FlytKant k, bool fra, string a)
     {
         if (fra) k.FraAnker = a; else k.TilAnker = a;
