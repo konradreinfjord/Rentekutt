@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
+@inject RentkuttCRM.Services.SmsUtsendingService SmsUtsend
 @inject RentkuttCRM.Services.NotatService Notater
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.RutingsregelService Ruting
@@ -1092,6 +1093,64 @@
 </div>@* /kk-grid *@
 </div>@* /kk *@
 
+@* Popup ved «Ikke svar»: send ev. SMS-mal + vis SMS-logg *@
+@if (_ikkeSvarModal && _ikkeSvarOppg is not null)
+{
+    <div class="kk-modal-overlay" @onclick="AvbrytIkkeSvar">
+        <div class="kk-modal" @onclick:stopPropagation="true">
+            <div class="kk-modal-h">
+                <h2>Ikke svar — @_ikkeSvarOppg.Oppgave</h2>
+                <button class="kk-modal-x" @onclick="AvbrytIkkeSvar">✕</button>
+            </div>
+            <p class="page-sub" style="margin:0 0 12px">
+                Vil du sende en SMS til kunden før oppgaven utsettes @_utsattTimer timer?
+                Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>.
+            </p>
+
+            <div class="ff">
+                <label>SMS-mal @(string.IsNullOrWhiteSpace(_sisteMal) ? "" : $"(sist brukt: {_sisteMal})")</label>
+                <select value="@_isvMal" @onchange="IsvVelgMal">
+                    <option value="">— ingen / fri tekst —</option>
+                    @foreach (var m in _smsMaler) { <option value="@m.Navn" selected="@(m.Navn == _isvMal)">@m.Navn</option> }
+                </select>
+            </div>
+            <textarea class="note-area" style="margin-top:10px; min-height:80px" @bind="_isvTekst" placeholder="Meldingstekst — velg mal over eller skriv fritt…"></textarea>
+
+            <div class="isv-grense @(SmsGrenseNadd ? "full" : "")">
+                @SmsSisteUke av @SmsMaksPerUke SMS sendt siste 7 dager@(SmsGrenseNadd ? " — grense nådd" : "")
+            </div>
+
+            @if (_smsLogg.Count > 0)
+            {
+                <div class="isv-logg">
+                    <div class="isv-logg-tit">SMS-logg (@_smsLogg.Count)</div>
+                    <div class="isv-logg-liste">
+                        @foreach (var s in _smsLogg.Take(10))
+                        {
+                            <div class="isv-logg-rad">
+                                <span class="isv-logg-dato">@s.SendtAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</span>
+                                <span class="isv-logg-status @(s.Ok ? "ok" : "err")">@(s.Ok ? "Sendt" : "Feilet")</span>
+                                <span class="isv-logg-type">@s.Type</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_isvMsg)) { <div class="form-msg err" style="margin-top:10px">@_isvMsg</div> }
+
+            <div class="kk-modal-knapper">
+                <button class="btn-logout" @onclick="AvbrytIkkeSvar">Avbryt</button>
+                <button class="btn-sec" @onclick="IkkeSvarUtenSms">Marker ikke svar uten SMS</button>
+                <button class="btn-primary" @onclick="IkkeSvarMedSms"
+                        disabled="@(_isvSender || SmsGrenseNadd || string.IsNullOrWhiteSpace(_k.Mobilnummer) || string.IsNullOrWhiteSpace(_isvTekst))">
+                    @(_isvSender ? "Sender…" : "Send SMS og marker ikke svar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [SupplyParameterFromQuery] public string? Id { get; set; }
     /// <summary>Kundetype for et NYTT lead — «B2B» fra bedriftsmarked, ellers B2C. Ignoreres ved redigering.</summary>
@@ -1117,15 +1176,66 @@
         _arbBusy = false;
     }
 
-    private async Task OppgaveIkkeSvar(AktivOppgave o)
+    // «Ikke svar» åpner en popup: send ev. en SMS-mal + vis SMS-logg, før oppgaven utsettes.
+    private const int SmsMaksPerUke = 3;
+    private List<SmsUtsending> _smsLogg = new();
+    private string? _sisteMal;
+    private int SmsSisteUke => _smsLogg.Count(x => x.Ok && x.SendtAt >= DateTime.UtcNow.AddDays(-7));
+    private bool SmsGrenseNadd => SmsSisteUke >= SmsMaksPerUke;
+
+    private bool _ikkeSvarModal;
+    private AktivOppgave? _ikkeSvarOppg;
+    private string _isvMal = "";
+    private string _isvTekst = "";
+    private bool _isvSender;
+    private string? _isvMsg;
+
+    private void OppgaveIkkeSvar(AktivOppgave o)
     {
-        _arbBusy = true;
-        await Arbeidsliste.SettIkkeSvarAsync(_k.Id, o.RegelId, _utsattTimer);
-        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Arbeidsoppgave utsatt (ikke svar) i {_utsattTimer} t: {o.Oppgave}", "arbeidsoppgave");
+        _ikkeSvarOppg = o;
+        _isvMsg = null;
+        _isvMal = _smsMaler.Any(m => m.Navn == _sisteMal) ? _sisteMal! : "";
+        _isvTekst = _smsMaler.FirstOrDefault(m => m.Navn == _isvMal)?.Tekst ?? "";
+        _ikkeSvarModal = true;
+    }
+
+    private void IsvVelgMal(ChangeEventArgs e)
+    {
+        _isvMal = e.Value?.ToString() ?? "";
+        _isvTekst = _smsMaler.FirstOrDefault(m => m.Navn == _isvMal)?.Tekst ?? "";
+    }
+
+    private async Task IkkeSvarMedSms()
+    {
+        if (_ikkeSvarOppg is null) return;
+        if (SmsGrenseNadd) { _isvMsg = $"Grense nådd: maks {SmsMaksPerUke} SMS per uke."; return; }
+        if (string.IsNullOrWhiteSpace(_k.Mobilnummer)) { _isvMsg = "Kunden mangler mobilnummer."; return; }
+        if (string.IsNullOrWhiteSpace(_isvTekst)) { _isvMsg = "Velg en mal eller skriv en melding."; return; }
+        _isvSender = true; _isvMsg = null;
+        var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_k.Mobilnummer, _isvTekst, _k.FulltNavn);
+        await SmsUtsend.LoggAsync(_k.Id, "ikke_svar", _k.Mobilnummer, ok, detalj);
+        _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
+        _isvSender = false;
+        if (!ok) { _isvMsg = $"Kunne ikke sende: {detalj}"; return; }
+        if (!string.IsNullOrWhiteSpace(_isvMal)) { await SmsMaler.LagreSisteMalAsync(Session.Email ?? Session.UserName, _isvMal); _sisteMal = _isvMal; }
+        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"SMS sendt (ikke svar){(string.IsNullOrWhiteSpace(_isvMal) ? "" : $": mal «{_isvMal}»")}", "sms");
+        await FullforIkkeSvar();
+    }
+
+    private async Task IkkeSvarUtenSms() => await FullforIkkeSvar();
+
+    private async Task FullforIkkeSvar()
+    {
+        if (_ikkeSvarOppg is null) return;
+        await Arbeidsliste.SettIkkeSvarAsync(_k.Id, _ikkeSvarOppg.RegelId, _utsattTimer);
+        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Arbeidsoppgave utsatt (ikke svar) i {_utsattTimer} t: {_ikkeSvarOppg.Oppgave}", "arbeidsoppgave");
         _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
         _arbMsg = $"Utsatt {_utsattTimer} timer (ikke svar).";
-        _arbBusy = false;
+        _ikkeSvarModal = false;
+        _ikkeSvarOppg = null;
     }
+
+    private void AvbrytIkkeSvar() { _ikkeSvarModal = false; _ikkeSvarOppg = null; }
     private bool _saving;
     private bool _ok;
     private string? _msg;
@@ -1241,9 +1351,12 @@
     private async Task SendSms()
     {
         if (!KanEndre) return;
+        if (SmsGrenseNadd) { _smsOk = false; _smsMsg = $"Grense nådd: maks {SmsMaksPerUke} SMS per uke til kunden."; return; }
         _smsSending = true;
         _smsMsg = null;
         var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_k.Mobilnummer, _smsTekst, _k.FulltNavn);
+        await SmsUtsend.LoggAsync(_k.Id, "manuell", _k.Mobilnummer, ok, detalj);
+        _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
         _smsOk = ok;
         _smsMsg = ok ? "SMS sendt ✓" : $"Kunne ikke sende: {detalj}";
         _smsSending = false;
@@ -1307,6 +1420,8 @@
             _arbeidsRegler = await Arbeidsliste.HentAsync();
             _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
             _utsattTimer = await Arbeidsliste.HentUtsattTimerAsync();
+            _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
+            _sisteMal = await SmsMaler.HentSisteMalAsync(Session.Email ?? Session.UserName);
             // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
             await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");
         }

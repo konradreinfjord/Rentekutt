@@ -56,6 +56,20 @@ public class SmsUtsendingService
         catch (Exception ex) { _log.LogError(ex, "Logging av SMS-utsending feilet"); }
     }
 
+    /// <summary>Alle SMS-utsendinger for én sak, nyeste først.</summary>
+    public async Task<List<SmsUtsending>> ForKundeAsync(Guid kundekortId)
+    {
+        if (!IsConfigured) return _staging.Where(x => x.KundekortId == kundekortId).OrderByDescending(x => x.SendtAt).ToList();
+        try
+        {
+            return (await _client.From<SmsUtsending>()
+                .Where(x => x.KundekortId == kundekortId)
+                .Order(x => x.SendtAt, Constants.Ordering.Descending, Constants.NullPosition.Last)
+                .Get()).Models;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av SMS-logg for sak feilet"); return new(); }
+    }
+
     public async Task<List<SmsUtsending>> SisteAsync(int antall = 50)
     {
         if (!IsConfigured) return _staging.OrderByDescending(x => x.SendtAt).Take(antall).ToList();

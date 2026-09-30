@@ -21,6 +21,12 @@ public class SmsMalService
     public const string KeyAutoEnabled = "sms_auto_ny_soknad_enabled";
     public const string KeyAutoMal = "sms_auto_ny_soknad_mal";
 
+    // Husk hvilken mal agenten sist brukte (pr. agent).
+    public async Task<string?> HentSisteMalAsync(string? agent)
+        => await _settings.GetAsync($"sms_siste_mal:{(agent ?? "").Trim().ToLowerInvariant()}");
+    public Task LagreSisteMalAsync(string? agent, string malNavn)
+        => _settings.SetAsync($"sms_siste_mal:{(agent ?? "").Trim().ToLowerInvariant()}", malNavn);
+
     private readonly Supabase.Client _client;
     private readonly LinkMobilityService _sms;
     private readonly SettingsService _settings;
