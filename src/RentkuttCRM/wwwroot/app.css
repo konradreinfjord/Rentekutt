@@ -1264,6 +1264,17 @@ a { color: var(--accent); text-decoration: none; }
 
 /* Arbeidsoppgave — merker i Saker-tabellen + filterboks */
 .arbeidsoppgave-badge { display: inline-block; margin: 1px 3px 1px 0; padding: 2px 8px; font-size: 11px; font-weight: 600; line-height: 1.35; color: #7a4a00; background: #fff4e0; border: 1px solid #f4d59a; border-radius: 8px; }
+/* Arbeidsoppgave-boks på kundekortet (over Endre status) */
+.arb-card { border: 1px solid #f4d59a; background: #fffdf6; }
+.arb-naa { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arb-badge { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #7a4a00; background: #fdeecb; border: 1px solid #f4d59a; border-radius: 999px; padding: 2px 8px; }
+.arb-tekst { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.arb-knapper { display: flex; gap: 8px; margin-top: 10px; }
+.arb-knapper button { flex: 1; }
+.arb-ko { margin-top: 12px; border-top: 1px dashed #f0dca6; padding-top: 8px; }
+.arb-ko-tit { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #a86b00; margin-bottom: 4px; }
+.arb-ko-liste { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-2); line-height: 1.6; }
+
 .ab-box { border: 2px solid #f4d59a; }
 .ab-box .db-box-num { color: #a86b00; }
 .ab-box.on { border-color: #e0a800; background: #fdf6e3; }

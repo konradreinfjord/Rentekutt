@@ -305,8 +305,10 @@
 
     // Arbeidsliste: regler → arbeidsoppgaver pr. sak, og filter «Har arbeidsoppgave».
     private List<ArbeidsRegel> _arbeidsRegler = new();
+    private Dictionary<string, Dictionary<string, OppgaveTilstand>> _oppgaveTilstander = new();
     private bool _kunOppgaver { get => Ui.KunOppgaver; set => Ui.KunOppgaver = value; }
-    private List<string> Oppgaver(Kundekort k) => ArbeidslisteService.OppgaverFor(k, _arbeidsRegler);
+    private List<string> Oppgaver(Kundekort k) =>
+        ArbeidslisteService.AktiveOppgaver(k, _arbeidsRegler, _oppgaveTilstander, DateTime.UtcNow).Select(o => o.Oppgave).ToList();
     private bool HarOppgave(Kundekort k) => _arbeidsRegler.Count > 0 && Oppgaver(k).Count > 0;
     private bool MatchOppgave(Kundekort k) => !_kunOppgaver || HarOppgave(k);
 
@@ -562,6 +564,7 @@
         _mineOppf = await Oppf.AapneForEierAsync(MittEier);
         _ringelogg = await Dialer.HentSammendragAsync();
         _arbeidsRegler = await Arbeidsliste.HentAsync();
+        _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
 
         // Delegert-bank-filterbokser: distinkte banker på tvers av alle sakene i visningen.
         _delegertBanker = _alleSaker

@@ -1211,6 +1211,15 @@ else if (_active == "Arbeidsliste")
             Eller: Status «Sendt til bank» + bank «Soknedal Sparebank» → oppgave «Ring kunde og purre SBL».
         </p>
 
+        <div class="rule-builder" style="align-items:flex-end; margin-bottom:14px">
+            <div class="rb-field rb-op" style="max-width:280px">
+                <label>«Ikke svar» holder saken ute (timer)</label>
+                <input class="rb-input" type="number" min="1" @bind="_alUtsattTimer" />
+            </div>
+            <button class="btn-sec rb-add" @onclick="LagreUtsattTimer">Lagre</button>
+            <span class="page-sub" style="font-size:12px; margin:0 0 6px">Når en agent trykker «Ikke svar» på kundekortet, forsvinner oppgaven i så mange timer og dukker så opp igjen.</span>
+        </div>
+
         <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap; gap:12px">
             <div class="rb-field" style="min-width:220px; flex:1 1 220px">
                 <label>Arbeidsoppgave</label>
@@ -2331,14 +2340,17 @@ else if (_active == "GDPR")
         _active = t;
         if (t == "Dialer" && !_dialerLastet) await LastDialerData();
         if (t == "Duplikater" && _duplikater.Count == 0 && !_duplikaterLaster) await LastDuplikater();
-        if (t == "Arbeidsliste" && !_alLastet) { _alRegler = await Arbeidsliste.HentAsync(); _alLastet = true; }
+        if (t == "Arbeidsliste" && !_alLastet) { _alRegler = await Arbeidsliste.HentAsync(); _alUtsattTimer = await Arbeidsliste.HentUtsattTimerAsync(); _alLastet = true; }
     }
 
     // ---- Arbeidsliste (regler → arbeidsoppgaver på Saker) ----
     private List<ArbeidsRegel> _alRegler = new();
     private bool _alLastet;
     private string _alOppgave = "", _alStatus = "", _alBank = "", _alAvslag = "", _alKundeType = "", _alLaanetype = "";
+    private int _alUtsattTimer = ArbeidslisteService.StandardUtsattTimer;
     private string? _alMsg;
+
+    private async Task LagreUtsattTimer() { await Arbeidsliste.LagreUtsattTimerAsync(_alUtsattTimer); _alMsg = $"Lagret: «Ikke svar» holder saken ute i {_alUtsattTimer} timer."; }
     private static readonly string[] _alLaanetyper = { "Boliglån", "Refinansiering", "Annen finansiering" };
 
     private async Task LeggTilRegel()

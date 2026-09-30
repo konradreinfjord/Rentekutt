@@ -18,11 +18,28 @@ public class ArbeidsRegel
     public bool Aktiv { get; set; } = true;
 }
 
+/// <summary>Per sak + regel: kvittert ut («avklart») eller utsatt («ikke svar») til et tidspunkt.</summary>
+public class OppgaveTilstand
+{
+    public string Tilstand { get; set; } = "";   // "avklart" | "utsatt"
+    public DateTime? Til { get; set; }            // utsatt til (UTC) — for "utsatt"
+}
+
+/// <summary>En aktiv arbeidsoppgave på en sak (regel-id + tekst), i kørekkefølge.</summary>
+public class AktivOppgave
+{
+    public string RegelId { get; set; } = "";
+    public string Oppgave { get; set; } = "";
+}
+
 /// <summary>Arbeidsliste: regler lagres som JSON i innstillinger (som flyt-boardet).</summary>
 public class ArbeidslisteService
 {
     private readonly SettingsService _settings;
     private const string Key = "arbeidsliste_regler";
+    private const string StatusKey = "arbeidsoppgave_status";   // per sak/regel: avklart/utsatt
+    private const string TimerKey = "arbeidsliste_utsatt_timer"; // timer «ikke svar» holdes ute
+    public const int StandardUtsattTimer = 24;
 
     public ArbeidslisteService(SettingsService settings) => _settings = settings;
 
@@ -37,7 +54,67 @@ public class ArbeidslisteService
     public Task LagreAsync(List<ArbeidsRegel> regler) =>
         _settings.SetAsync(Key, JsonSerializer.Serialize(regler));
 
-    /// <summary>Arbeidsoppgavene som gjelder for en sak, ut fra de aktive reglene.</summary>
+    // ---- Innstilling: timer «ikke svar» holder saken ute av arbeidslisten ----
+    public async Task<int> HentUtsattTimerAsync()
+    {
+        var s = await _settings.GetAsync(TimerKey);
+        return int.TryParse(s, out var t) && t > 0 ? t : StandardUtsattTimer;
+    }
+    public Task LagreUtsattTimerAsync(int timer) =>
+        _settings.SetAsync(TimerKey, Math.Max(1, timer).ToString());
+
+    // ---- Tilstand pr. sak/regel (avklart / utsatt) ----
+    public async Task<Dictionary<string, Dictionary<string, OppgaveTilstand>>> HentTilstanderAsync()
+    {
+        var json = await _settings.GetAsync(StatusKey);
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, OppgaveTilstand>>>(json) ?? new(); }
+        catch { return new(); }
+    }
+
+    private Task LagreTilstanderAsync(Dictionary<string, Dictionary<string, OppgaveTilstand>> t) =>
+        _settings.SetAsync(StatusKey, JsonSerializer.Serialize(t));
+
+    /// <summary>«Avklart» — oppgaven kvitteres ut permanent for denne saken.</summary>
+    public Task SettAvklartAsync(Guid kundekortId, string regelId) =>
+        SettTilstandAsync(kundekortId, regelId, new OppgaveTilstand { Tilstand = "avklart" });
+
+    /// <summary>«Ikke svar» — saken ut av lista i angitt antall timer.</summary>
+    public async Task SettIkkeSvarAsync(Guid kundekortId, string regelId, int? timer = null)
+    {
+        var t = timer ?? await HentUtsattTimerAsync();
+        await SettTilstandAsync(kundekortId, regelId, new OppgaveTilstand { Tilstand = "utsatt", Til = DateTime.UtcNow.AddHours(t) });
+    }
+
+    private async Task SettTilstandAsync(Guid kundekortId, string regelId, OppgaveTilstand tilstand)
+    {
+        var alle = await HentTilstanderAsync();
+        var key = kundekortId.ToString();
+        if (!alle.TryGetValue(key, out var forKort)) { forKort = new(); alle[key] = forKort; }
+        forKort[regelId] = tilstand;
+        await LagreTilstanderAsync(alle);
+    }
+
+    /// <summary>Aktive oppgaver på en sak (køen), i regelrekkefølge — hopper over avklarte og utsatte.</summary>
+    public static List<AktivOppgave> AktiveOppgaver(Kundekort k, IEnumerable<ArbeidsRegel> regler,
+        Dictionary<string, Dictionary<string, OppgaveTilstand>> tilstander, DateTime nowUtc)
+    {
+        tilstander.TryGetValue(k.Id.ToString(), out var forKort);
+        var res = new List<AktivOppgave>();
+        foreach (var r in regler)
+        {
+            if (!r.Aktiv || string.IsNullOrWhiteSpace(r.Oppgave) || !Matcher(r, k)) continue;
+            if (forKort != null && forKort.TryGetValue(r.Id, out var t))
+            {
+                if (t.Tilstand == "avklart") continue;
+                if (t.Tilstand == "utsatt" && t.Til.HasValue && t.Til.Value > nowUtc) continue;
+            }
+            res.Add(new AktivOppgave { RegelId = r.Id, Oppgave = r.Oppgave.Trim() });
+        }
+        return res;
+    }
+
+    /// <summary>Arbeidsoppgavene som gjelder for en sak, ut fra de aktive reglene (uten tilstand).</summary>
     public static List<string> OppgaverFor(Kundekort k, IEnumerable<ArbeidsRegel> regler) =>
         regler.Where(r => r.Aktiv && !string.IsNullOrWhiteSpace(r.Oppgave) && Matcher(r, k))
               .Select(r => r.Oppgave.Trim())

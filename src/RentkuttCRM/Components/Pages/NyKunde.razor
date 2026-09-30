@@ -15,6 +15,7 @@
 @inject RentkuttCRM.Services.FagforeningService Fagforeninger
 @inject RentkuttCRM.Services.DialerCallService DialerCall
 @inject RentkuttCRM.Services.DialerService Dialer
+@inject RentkuttCRM.Services.ArbeidslisteService Arbeidsliste
 @inject RentkuttCRM.Services.SupabaseUserService Brukere
 @inject RentkuttCRM.Services.BrregService Brreg
 @inject NavigationManager Nav
@@ -178,6 +179,37 @@
 
 <div class="kk-grid">
 <div class="kk-side">
+
+@* Arbeidsoppgave — kø av oppgaver fra arbeidslisten, med «Ikke svar»/«Avklart» *@
+@{ var aktiveOppg = _isEdit ? ArbeidslisteService.AktiveOppgaver(_k, _arbeidsRegler, _oppgaveTilstander, DateTime.UtcNow) : new(); }
+@if (aktiveOppg.Count > 0)
+{
+    var naa = aktiveOppg[0];
+    <div class="kk-side-title">Arbeidsoppgave</div>
+    <div class="form-card arb-card">
+        <div class="arb-naa">
+            <span class="arb-badge">Nåværende</span>
+            <span class="arb-tekst">@naa.Oppgave</span>
+        </div>
+        <div class="arb-knapper">
+            <button class="btn-sec btn-sm" @onclick="() => OppgaveIkkeSvar(naa)" disabled="@(!KanEndre || _arbBusy)" title="Forsøkt ringt uten svar — ut av lista i @_utsattTimer timer">Ikke svar</button>
+            <button class="btn-primary btn-sm" @onclick="() => OppgaveAvklart(naa)" disabled="@(!KanEndre || _arbBusy)" title="Ferdig — ut av lista">Avklart</button>
+        </div>
+        @if (aktiveOppg.Count > 1)
+        {
+            <div class="arb-ko">
+                <div class="arb-ko-tit">Neste (@(aktiveOppg.Count - 1))</div>
+                <ol class="arb-ko-liste">
+                    @for (var i = 1; i < aktiveOppg.Count; i++)
+                    {
+                        <li>@aktiveOppg[i].Oppgave</li>
+                    }
+                </ol>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_arbMsg)) { <div class="page-sub" style="margin:6px 0 0; font-size:11.5px; color:#2f8a3e">@_arbMsg</div> }
+    </div>
+}
 
 @* Statuskort — samlet status + hvilke banker saken er i prosess hos *@
 <div class="kk-side-title">Status</div>
@@ -1067,6 +1099,33 @@
 
     private Kundekort _k = new();
     private bool _isEdit;
+
+    // ---- Arbeidsoppgaver (fra arbeidslisten) ----
+    private List<ArbeidsRegel> _arbeidsRegler = new();
+    private Dictionary<string, Dictionary<string, OppgaveTilstand>> _oppgaveTilstander = new();
+    private int _utsattTimer = ArbeidslisteService.StandardUtsattTimer;
+    private bool _arbBusy;
+    private string? _arbMsg;
+
+    private async Task OppgaveAvklart(AktivOppgave o)
+    {
+        _arbBusy = true;
+        await Arbeidsliste.SettAvklartAsync(_k.Id, o.RegelId);
+        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Arbeidsoppgave avklart: {o.Oppgave}", "arbeidsoppgave");
+        _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
+        _arbMsg = "Oppgave avklart.";
+        _arbBusy = false;
+    }
+
+    private async Task OppgaveIkkeSvar(AktivOppgave o)
+    {
+        _arbBusy = true;
+        await Arbeidsliste.SettIkkeSvarAsync(_k.Id, o.RegelId, _utsattTimer);
+        await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Arbeidsoppgave utsatt (ikke svar) i {_utsattTimer} t: {o.Oppgave}", "arbeidsoppgave");
+        _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
+        _arbMsg = $"Utsatt {_utsattTimer} timer (ikke svar).";
+        _arbBusy = false;
+    }
     private bool _saving;
     private bool _ok;
     private string? _msg;
@@ -1245,6 +1304,9 @@
                 _jegHarGodkjent = _godkjenninger.Any(g => string.Equals(g.GodkjentAv, mittEpost, StringComparison.OrdinalIgnoreCase));
             }
             _oppfolginger = await Oppf.ForKundekortAsync(_k.Id);
+            _arbeidsRegler = await Arbeidsliste.HentAsync();
+            _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
+            _utsattTimer = await Arbeidsliste.HentUtsattTimerAsync();
             // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
             await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");
         }
