@@ -1065,16 +1065,21 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
                     @foreach (var m in _smsMaler)
                     {
                         <tr>
-                            <td><strong>@m.Navn</strong></td>
-                            <td class="brk-kilde">@m.Tekst</td>
-                            <td><button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button></td>
+                            <td style="vertical-align:top"><strong>@m.Navn</strong></td>
+                            <td style="white-space:pre-wrap; max-width:560px; line-height:1.5">@m.Tekst</td>
+                            <td style="vertical-align:top"><button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button></td>
                         </tr>
                     }
                 </tbody>
             </table>
             <div class="rule-builder" style="align-items:flex-start">
                 <div class="rb-field" style="max-width:200px"><label>Malnavn</label><input class="rb-input" @bind="_nyMalNavn" placeholder="F.eks. Velkomst" /></div>
-                <div class="rb-field" style="flex:1"><label>Meldingstekst</label><input class="rb-input" @bind="_nyMalTekst" placeholder="Hei {navn}, vi har mottatt søknaden din …" /></div>
+                <div class="rb-field" style="flex:1; min-width:280px">
+                    <label>Meldingstekst</label>
+                    <textarea class="rb-input" style="min-height:120px; resize:vertical; line-height:1.5" rows="5" @bind="_nyMalTekst"
+                              placeholder="Hei {navn},&#10;&#10;Vi har mottatt søknaden din …&#10;&#10;Mvh Rentekutt"></textarea>
+                    <span class="page-sub" style="font-size:11px; margin-top:4px">Trykk Enter for linjeskift/avsnitt. <code>{navn}</code> = kundens fornavn.</span>
+                </div>
                 <button class="btn-primary rb-add" @onclick="LeggTilMal">Legg til mal</button>
             </div>
             @if (!string.IsNullOrEmpty(_malMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_malMsg</p> }
