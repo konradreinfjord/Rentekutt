@@ -18,7 +18,7 @@ public class KundekortService
 
     /// <summary>Statuser som ikke skal kunne velges manuelt i kundekort-dropdownen (system-satt).</summary>
     public static readonly string[] SkjulteManuelleStatuser =
-        { "Pågår - Agent", "Sendt til bank - Timeout", "Oppfølging" };
+        { "Pågår - Agent", "Sendt til bank - Timeout" };
 
     /// <summary>Nytt, ueid lead (f.eks. fra Prismatch) som ikke er plukket/behandlet ennå.</summary>
     public const string StatusNyttLead = "Nytt lead";

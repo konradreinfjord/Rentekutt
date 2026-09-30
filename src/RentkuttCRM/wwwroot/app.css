@@ -1245,9 +1245,39 @@ a { color: var(--accent); text-decoration: none; }
 .flyt-koble-banner .lenke { border: none; background: none; color: #1f5fc4; text-decoration: underline; cursor: pointer; font: inherit; }
 .flyt-lagret { font-size: 12px; color: #2f8a3e; font-weight: 600; }
 .flyt-layout { display: flex; gap: 14px; align-items: flex-start; }
-.flyt-canvas { position: relative; flex: 1; min-width: 0; overflow: auto; max-height: 72vh; background: var(--surface); background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 22px 22px; border: 1px solid var(--border); border-radius: 14px; }
+.flyt-canvas { position: relative; flex: 1; min-width: 0; overflow: auto; max-height: 74vh; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.flyt-scaler { position: relative; }
+.flyt-content { position: relative; transform-origin: 0 0; background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 22px 22px; }
+.flyt-content.wp-mode { cursor: crosshair; }
+.flyt-zoom { display: inline-flex; align-items: center; gap: 4px; }
+.flyt-zoom-tall { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); min-width: 42px; text-align: center; }
+.flyt-retning { max-width: 100%; }
+.flyt-retning button { font-size: 11px; padding: 4px 8px; }
+.flyt-wp-banner { font-size: 12px; color: #1f5fc4; background: #eaf1fc; border: 1px solid #cfe0f8; border-radius: 9px; padding: 7px 10px; }
+.flyt-wp-banner .lenke { border: none; background: none; color: #1f5fc4; text-decoration: underline; cursor: pointer; font: inherit; }
 .flyt-edges { position: absolute; top: 0; left: 0; pointer-events: none; }
 .flyt-edges line, .flyt-edges rect, .flyt-edges text { pointer-events: auto; }
+.flyt-edge-hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; cursor: pointer; }
+.flyt-content.wp-mode .flyt-edge-hit { pointer-events: none; }
+.flyt-anker { flex-wrap: wrap; }
+.flyt-anker button { font-size: 12px; padding: 4px 9px; min-width: 30px; }
+
+/* Arbeidsoppgave — merker i Saker-tabellen + filterboks */
+.arbeidsoppgave-badge { display: inline-block; margin: 1px 3px 1px 0; padding: 2px 8px; font-size: 11px; font-weight: 600; line-height: 1.35; color: #7a4a00; background: #fff4e0; border: 1px solid #f4d59a; border-radius: 8px; }
+.ab-box { border: 2px solid #f4d59a; }
+.ab-box .db-box-num { color: #a86b00; }
+.ab-box.on { border-color: #e0a800; background: #fdf6e3; }
+
+/* Fargerammer på Saker-boksene så de er lette å skille */
+.db-box--alle { border: 2px solid #cfe0f8; }
+.db-box--alle .db-box-num { color: #1f5fc4; }
+.db-box--alle.on { border-color: #1f5fc4; background: #f4f8ff; }
+.db-box--ingen { border: 2px solid #e2e8f0; }
+.db-box--ingen .db-box-num { color: #475569; }
+.db-box--ingen.on { border-color: #64748b; background: #f8fafc; }
+.db-box--bank { border: 2px solid #cdebd4; }
+.db-box--bank .db-box-num { color: #1f6e33; }
+.db-box--bank.on { border-color: #2f8a3e; background: #f4fbf5; }
 .flyt-node { position: absolute; width: 190px; min-height: 58px; box-sizing: border-box; display: flex; align-items: center; gap: 9px; padding: 10px 13px; background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--nc, #1f5fc4); border-radius: 12px; box-shadow: 0 2px 8px rgba(16,24,40,.10); cursor: grab; user-select: none; touch-action: none; font-size: 12.5px; font-weight: 600; color: var(--ink); z-index: 2; }
 .flyt-node:hover { box-shadow: 0 6px 18px rgba(16,24,40,.16); }
 .flyt-node.valgt { outline: 2px solid var(--nc, #1f5fc4); outline-offset: 1px; }
@@ -1266,3 +1296,9 @@ a { color: var(--accent); text-decoration: none; }
 .flyt-kant-etikett:hover { border-color: #1f5fc4; color: #1f5fc4; }
 .flyt-kant-etikett.tom { color: #94a3b8; padding: 1px 6px; opacity: .7; }
 .flyt-kant-etikett.tom:hover { opacity: 1; }
+.flyt-node.flyt-snap { outline: 2px dashed #1f5fc4; outline-offset: 2px; }
+.flyt-kant-etikett[style*="--ec"] { background: var(--ec); border-color: var(--ec); color: #fff; }
+.flyt-kant-etikett[style*="--ec"]:hover { color: #fff; filter: brightness(1.06); }
+.flyt-kant-etikett.valgt { outline: 2px solid #1f5fc4; outline-offset: 1px; }
+.flyt-kant-etikett.flyt-str-s { font-size: 9px; padding: 1px 7px; }
+.flyt-kant-etikett.flyt-str-l { font-size: 13.5px; font-weight: 700; padding: 4px 12px; }

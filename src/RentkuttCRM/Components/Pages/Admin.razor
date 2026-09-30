@@ -24,6 +24,7 @@
 @inject RentkuttCRM.Services.AlarmService Alarm
 @inject RentkuttCRM.Services.ZissonService Zisson
 @inject RentkuttCRM.Services.NextcomService Nextcom
+@inject RentkuttCRM.Services.ArbeidslisteService Arbeidsliste
 @inject Microsoft.Extensions.Hosting.IHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -897,6 +898,8 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                     <span class="v">@(string.IsNullOrWhiteSpace(sok.WebhookUrl) ? "Ikke satt" : "Satt ✓")</span>
                     <span class="k">Auto-send</span>
                     <span class="v">@(sok.AutoSend ? "På — matchende leads sendes automatisk" : "Av — vises kun som foreslått bank")</span>
+                    <span class="k">Samtykke</span>
+                    <span class="v">@(sok.KreverIkkeSamtykke ? "Ikke påkrevd — kun webhook, ingen registeroppslag" : "Påkrevd (gjeldsregister/kredittsjekk) før sending")</span>
                     <span class="k">Felt sendt</span>
                     <span class="v">FirstName · SecondName · Email · CellPhone · Extra2 (bank) · Extra3 (rente) · Extra4 (lånesum)</span>
                 </div>
@@ -920,6 +923,13 @@ Instabank__AgentEmail    = &lt;agent-e-post&gt;   (påkrevd for bedriftslån)</p
                         <div class="seg onoff">
                             <button class="@(!sok.AutoPaabegynt ? "active av" : "")" @onclick="() => SettSoknedalAutoPaabegynt(sok, false)">AV</button>
                             <button class="@(sok.AutoPaabegynt ? "active" : "")" @onclick="() => SettSoknedalAutoPaabegynt(sok, true)">PÅ</button>
+                        </div>
+                    </div>
+                    <div class="rb-field" style="max-width:210px" title="Soknedal mottar kun kontaktinfo via webhook (ingen registeroppslag), så samtykke til gjeldsregister/kredittsjekk kreves ikke før sending.">
+                        <label>Krever ikke samtykke</label>
+                        <div class="seg onoff">
+                            <button class="@(!sok.KreverIkkeSamtykke ? "active av" : "")" @onclick="() => SettSoknedalSamtykke(sok, false)">AV</button>
+                            <button class="@(sok.KreverIkkeSamtykke ? "active" : "")" @onclick="() => SettSoknedalSamtykke(sok, true)">PÅ</button>
                         </div>
                     </div>
                     <button class="btn-primary rb-add" @onclick="() => TestSoknedal(sok)" disabled="@_soknedalTester">@(_soknedalTester ? "Tester…" : "Test webhook")</button>
@@ -1186,6 +1196,112 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
             new[] { "Kredittscore og risikoklasse", "Betalingsanmerkninger og inkasso", "Bekreftet inntekt (skattedata)" },
             "Kredittsjekk__ClientId      = <klient-ID>\nKredittsjekk__ClientSecret  = <hemmelighet>\nKredittsjekk__ApiUrl        = <endepunkt>")
     }
+}
+else if (_active == "Arbeidsliste")
+{
+    <div class="section">
+        <h2>Arbeidsliste</h2>
+        <p class="page-sub" style="margin:-4px 0 14px; max-width:760px">
+            Lag regler som gir saker en <strong>arbeidsoppgave</strong> når de matcher vilkårene.
+            Oppgaven vises i egen kolonne på <strong>Saker</strong>, og du kan filtrere på «Har arbeidsoppgave».
+            Vilkår du lar stå tomme, ignoreres — men minst ett vilkår må være satt.
+        </p>
+        <p class="page-sub" style="margin:0 0 14px; font-size:12px; color:var(--text-muted)">
+            Eks.: Avslagsgrunn inneholder «likviditet» fra Soknedal → oppgave «Send kunden til Instabank».
+            Eller: Status «Sendt til bank» + bank «Soknedal Sparebank» → oppgave «Ring kunde og purre SBL».
+        </p>
+
+        <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap; gap:12px">
+            <div class="rb-field" style="min-width:220px; flex:1 1 220px">
+                <label>Arbeidsoppgave</label>
+                <input class="rb-input" @bind="_alOppgave" placeholder="F.eks. Send kunden til Instabank" />
+            </div>
+            <div class="rb-field rb-op" style="max-width:200px">
+                <label>Status</label>
+                <select class="rb-input" @bind="_alStatus">
+                    <option value="">Alle</option>
+                    @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
+                </select>
+            </div>
+            <div class="rb-field rb-op" style="max-width:210px">
+                <label>Bank (sendt til)</label>
+                <select class="rb-input" @bind="_alBank">
+                    <option value="">Alle</option>
+                    @foreach (var b in _banks) { <option value="@b.Navn">@b.Navn</option> }
+                </select>
+            </div>
+            <div class="rb-field rb-op" style="max-width:200px">
+                <label>Avslagsgrunn inneholder</label>
+                <input class="rb-input" @bind="_alAvslag" placeholder="f.eks. likviditet" />
+            </div>
+            <div class="rb-field rb-op" style="max-width:130px">
+                <label>Kundetype</label>
+                <select class="rb-input" @bind="_alKundeType">
+                    <option value="">Alle</option>
+                    <option value="B2C">B2C</option>
+                    <option value="B2B">B2B</option>
+                </select>
+            </div>
+            <div class="rb-field rb-op" style="max-width:180px">
+                <label>Lånetype</label>
+                <select class="rb-input" @bind="_alLaanetype">
+                    <option value="">Alle</option>
+                    @foreach (var t in _alLaanetyper) { <option value="@t">@t</option> }
+                </select>
+            </div>
+            <button class="btn-primary rb-add" @onclick="LeggTilRegel">Legg til</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_alMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_alMsg</p> }
+    </div>
+
+    <div class="section">
+        <h3 style="margin:0 0 10px">Regler <span class="pill pill-warn">@_alRegler.Count</span></h3>
+        <table class="data-table">
+            <thead>
+                <tr><th>Arbeidsoppgave</th><th>Status</th><th>Bank</th><th>Avslagsgrunn</th><th>Kundetype</th><th>Lånetype</th><th>Aktiv</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (_alRegler.Count == 0)
+                {
+                    <tr><td colspan="8" class="empty-row">Ingen regler ennå.</td></tr>
+                }
+                @foreach (var r in _alRegler)
+                {
+                    <tr>
+                        <td><input class="inline-input" style="min-width:190px" @bind="r.Oppgave" @bind:after="LagreEndring" /></td>
+                        <td>
+                            <select class="inline-input" @bind="r.Status" @bind:after="LagreEndring">
+                                <option value="">Alle</option>
+                                @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
+                            </select>
+                        </td>
+                        <td>
+                            <select class="inline-input" @bind="r.Bank" @bind:after="LagreEndring">
+                                <option value="">Alle</option>
+                                @foreach (var b in _banks) { <option value="@b.Navn">@b.Navn</option> }
+                            </select>
+                        </td>
+                        <td><input class="inline-input" style="min-width:120px" placeholder="alle" @bind="r.AvslagGrunn" @bind:after="LagreEndring" /></td>
+                        <td>
+                            <select class="inline-input" @bind="r.KundeType" @bind:after="LagreEndring">
+                                <option value="">Alle</option>
+                                <option value="B2C">B2C</option>
+                                <option value="B2B">B2B</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select class="inline-input" @bind="r.Laanetype" @bind:after="LagreEndring">
+                                <option value="">Alle</option>
+                                @foreach (var t in _alLaanetyper) { <option value="@t">@t</option> }
+                            </select>
+                        </td>
+                        <td><input type="checkbox" checked="@r.Aktiv" @onchange="e => ToggleRegel(r, (bool)e.Value!)" /></td>
+                        <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" style="color:#b42318" @onclick="() => SlettRegel(r)">Slett</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 else if (_active == "Kommunikasjon")
 {
@@ -2215,7 +2331,35 @@ else if (_active == "GDPR")
         _active = t;
         if (t == "Dialer" && !_dialerLastet) await LastDialerData();
         if (t == "Duplikater" && _duplikater.Count == 0 && !_duplikaterLaster) await LastDuplikater();
+        if (t == "Arbeidsliste" && !_alLastet) { _alRegler = await Arbeidsliste.HentAsync(); _alLastet = true; }
     }
+
+    // ---- Arbeidsliste (regler → arbeidsoppgaver på Saker) ----
+    private List<ArbeidsRegel> _alRegler = new();
+    private bool _alLastet;
+    private string _alOppgave = "", _alStatus = "", _alBank = "", _alAvslag = "", _alKundeType = "", _alLaanetype = "";
+    private string? _alMsg;
+    private static readonly string[] _alLaanetyper = { "Boliglån", "Refinansiering", "Annen finansiering" };
+
+    private async Task LeggTilRegel()
+    {
+        if (string.IsNullOrWhiteSpace(_alOppgave)) { _alMsg = "Skriv en arbeidsoppgave."; return; }
+        var noeVilkaar = new[] { _alStatus, _alBank, _alAvslag, _alKundeType, _alLaanetype }.Any(v => !string.IsNullOrWhiteSpace(v));
+        if (!noeVilkaar) { _alMsg = "Sett minst ett vilkår (status, bank, avslagsgrunn, kundetype eller lånetype)."; return; }
+        _alRegler.Add(new ArbeidsRegel
+        {
+            Oppgave = _alOppgave.Trim(),
+            Status = _alStatus, Bank = _alBank, AvslagGrunn = _alAvslag.Trim(),
+            KundeType = _alKundeType, Laanetype = _alLaanetype,
+        });
+        await Arbeidsliste.LagreAsync(_alRegler);
+        _alOppgave = _alStatus = _alBank = _alAvslag = _alKundeType = _alLaanetype = "";
+        _alMsg = "Regel lagret.";
+    }
+
+    private async Task ToggleRegel(ArbeidsRegel r, bool aktiv) { r.Aktiv = aktiv; await Arbeidsliste.LagreAsync(_alRegler); }
+    private async Task SlettRegel(ArbeidsRegel r) { _alRegler.Remove(r); await Arbeidsliste.LagreAsync(_alRegler); _alMsg = "Regel slettet."; }
+    private async Task LagreEndring() { await Arbeidsliste.LagreAsync(_alRegler); _alMsg = "Endring lagret."; }
 
     // ---- Soknedal Sparebank (Nextcom webhook) ----
     private Partner? Soknedal => _banks.FirstOrDefault(b => string.Equals(b.Navn, "Soknedal Sparebank", StringComparison.OrdinalIgnoreCase));
@@ -2258,6 +2402,12 @@ else if (_active == "GDPR")
     {
         await Partners.UpdateAutoPaabegyntAsync(sok.Id, på);
         sok.AutoPaabegynt = på;
+    }
+
+    private async Task SettSoknedalSamtykke(Partner sok, bool på)
+    {
+        await Partners.UpdateKreverIkkeSamtykkeAsync(sok.Id, på);
+        sok.KreverIkkeSamtykke = på;
     }
 
     private async Task TestSoknedal(Partner sok)
@@ -2603,7 +2753,7 @@ else if (_active == "GDPR")
         _creating = false;
     }
 
-    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Kommunikasjon", "Duplikater", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
+    private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Arbeidsliste", "Kommunikasjon", "Duplikater", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
     private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };

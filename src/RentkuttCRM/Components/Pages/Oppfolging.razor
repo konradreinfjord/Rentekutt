@@ -7,6 +7,8 @@
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.OppfolgingService Oppf
 @inject RentkuttCRM.Services.DialerService Dialer
+@inject RentkuttCRM.Services.ArbeidslisteService Arbeidsliste
+@inject RentkuttCRM.Services.SakerUiState Ui
 @inject NavigationManager Nav
 
 <PageTitle>Saker — Rentekutt</PageTitle>
@@ -17,15 +19,21 @@
 <p class="page-sub">Nye saker venter på å plukkes. Sakene du har plukket ligger under «Mine saker».</p>
 
 <div class="db-stats" style="margin-bottom:18px">
-    <div class="db-box click @(_delegertFilter == "" ? "on" : "")" @onclick='() => _delegertFilter = ""'>
+    <div class="db-box click db-box--alle @(_delegertFilter == "" ? "on" : "")" @onclick='() => _delegertFilter = ""'>
         <span class="db-box-num">@AktivBasis.Count()</span><span class="db-box-lbl">Alle saker</span>
     </div>
-    <div class="db-box click @(_delegertFilter == "__ingen__" ? "on" : "")" @onclick='() => _delegertFilter = "__ingen__"'>
+    @if (_arbeidsRegler.Count > 0)
+    {
+        <div class="db-box click ab-box @(_kunOppgaver ? "on" : "")" @onclick="() => _kunOppgaver = !_kunOppgaver">
+            <span class="db-box-num">@AktivBasis.Count(HarOppgave)</span><span class="db-box-lbl">Har arbeidsoppgave</span>
+        </div>
+    }
+    <div class="db-box click db-box--ingen @(_delegertFilter == "__ingen__" ? "on" : "")" @onclick='() => _delegertFilter = "__ingen__"'>
         <span class="db-box-num">@AktivBasis.Count(k => string.IsNullOrWhiteSpace(k.DelegertBank))</span><span class="db-box-lbl">Ikke sendt til bank</span>
     </div>
     @foreach (var bank in _delegertBanker)
     {
-        <div class="db-box click @(_delegertFilter == bank ? "on" : "")" @onclick="() => _delegertFilter = bank">
+        <div class="db-box click db-box--bank @(_delegertFilter == bank ? "on" : "")" @onclick="() => _delegertFilter = bank">
             <span class="db-box-num">@AktivBasis.Count(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))</span>
             <span class="db-box-lbl">Sendt til @bank</span>
         </div>
@@ -61,7 +69,7 @@
                 <tbody>
                     @if (AlleVist.Count == 0)
                     {
-                        <tr><td colspan="11" class="empty-row">Ingen saker i valgt filter.</td></tr>
+                        <tr><td colspan="12" class="empty-row">Ingen saker i valgt filter.</td></tr>
                     }
                     @foreach (var k in AlleVist.OrderByDescending(k => k.CreatedAt))
                     {
@@ -99,7 +107,7 @@
                 <tbody>
                     @if (NyeVist.Count == 0)
                     {
-                        <tr><td colspan="11" class="empty-row">Ingen nye saker akkurat nå — alle er plukket. 🎉</td></tr>
+                        <tr><td colspan="12" class="empty-row">Ingen nye saker akkurat nå — alle er plukket. 🎉</td></tr>
                     }
                     @foreach (var k in NyeVist.OrderByDescending(k => k.CreatedAt))
                     {
@@ -169,7 +177,7 @@
                             }
                             else
                             {
-                                <td>@o.Forfaller.ToString("dd.MM.yyyy HH:mm")</td><td>—</td><td>—</td><td>—</td>
+                                <td>@o.Forfaller.ToString("dd.MM.yyyy HH:mm")</td><td>—</td><td>—</td><td>—</td><td>—</td>
                                 <td>(ukjent søknad)@OppfBadge(o)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
                             }
                             <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" @onclick="() => FullforOppf(o)" title="Marker fullført">✓ Fullfør</button></td>
@@ -220,7 +228,7 @@
             <tbody>
                 @if (Vist.Count == 0)
                 {
-                    <tr><td colspan="11" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak under Nye saker." : "Ingen saker på valgt rådgiver.")</td></tr>
+                    <tr><td colspan="12" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak under Nye saker." : "Ingen saker på valgt rådgiver.")</td></tr>
                 }
                 @foreach (var k in Vist.OrderBy(SortNokkel))
                 {
@@ -239,13 +247,14 @@
 @code {
     private List<Kundekort> _rows = new();
     private bool _loading = true;
-    private string _tab = "alle";                         // "alle" | "nye" | "pagar" | "oppfolginger"
+    private string _tab { get => Ui.Tab; set => Ui.Tab = value; }   // "alle" | "nye" | "pagar" | "oppfolginger"
     private List<OppfolgingOppgave> _mineOppf = new();          // mine åpne oppfølginger på tvers av søknader
 
     // Tidsromfilter for oppfølginger: "" = alle, forfalt, idag, uke, maaned, custom.
-    private string _oppfFilter = "";
-    private string _oppfType = "";   // kundetypefilter på oppfølgingsfanen
-    private DateTime? _oppfFra, _oppfTil;
+    private string _oppfFilter { get => Ui.OppfFilter; set => Ui.OppfFilter = value; }
+    private string _oppfType { get => Ui.OppfType; set => Ui.OppfType = value; }   // kundetypefilter på oppfølgingsfanen
+    private DateTime? _oppfFra { get => Ui.OppfFra; set => Ui.OppfFra = value; }
+    private DateTime? _oppfTil { get => Ui.OppfTil; set => Ui.OppfTil = value; }
     private static bool ErInnen(OppfolgingOppgave o, int dager) => o.Forfaller.Date >= Tid.IDag && o.Forfaller.Date <= Tid.IDag.AddDays(dager);
     // Filtrert + sortert: forfalte øverst (eldst først), deretter kommende etter dato.
     private List<OppfolgingOppgave> OppfFiltrert => _mineOppf
@@ -266,32 +275,47 @@
     private List<OppfolgingOppgave> OppfVist => OppfFiltrert.Where(o =>
     {
         var kk = KortFor(o.KundekortId);
-        if (kk is null) return _delegertFilter.Length == 0 && _oppfType.Length == 0 && _laanetypeFilter.Length == 0 && _statusFilter.Length == 0;
-        return MatchDelegert(kk) && MatchLaan(kk) && MatchStatus(kk) && (_oppfType.Length == 0 || kk.KundeType == _oppfType);
+        if (kk is null) return !_kunOppgaver && _delegertFilter.Length == 0 && _oppfType.Length == 0 && _laanetypeFilter.Length == 0 && _statusFilter.Length == 0;
+        return MatchDelegert(kk) && MatchLaan(kk) && MatchStatus(kk) && MatchOppgave(kk) && (_oppfType.Length == 0 || kk.KundeType == _oppfType);
     }).ToList();
 
     // Alle saker = hele basen (uansett eier/status).
     private List<Kundekort> _alleSaker = new();
-    private string _alleType = "";
+    private string _alleType { get => Ui.AlleType; set => Ui.AlleType = value; }
     private List<Kundekort> AlleVist => (_alleType.Length == 0 ? _alleSaker : _alleSaker.Where(k => k.KundeType == _alleType))
-        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).ToList();
+        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).ToList();
 
     // Nye saker = ingen eier + fortsatt aktiv (ikke fullført/avslått) — venter på å plukkes.
     private List<Kundekort> _nyeSaker = new();
-    private string _nyeType = "";
+    private string _nyeType { get => Ui.NyeType; set => Ui.NyeType = value; }
 
     // Delegert-bank-filter: "" = alle, "__ingen__" = ikke sendt, ellers banknavn. Filtrerer den aktive fanen.
-    private string _delegertFilter = "";
+    private string _delegertFilter { get => Ui.DelegertFilter; set => Ui.DelegertFilter = value; }
     private List<string> _delegertBanker = new();
 
     // Lånetypefilter (delt på tvers av fanene): "" = alle, ellers lånetypenavn.
-    private string _laanetypeFilter = "";
+    private string _laanetypeFilter { get => Ui.LaanetypeFilter; set => Ui.LaanetypeFilter = value; }
     private List<string> _laanetyper = new();
     private bool MatchLaan(Kundekort k) => _laanetypeFilter.Length == 0
         || string.Equals(string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype, _laanetypeFilter, StringComparison.OrdinalIgnoreCase);
 
     // Statusfilter (delt på tvers av fanene): "" = alle, ellers statusnavn.
-    private string _statusFilter = "";
+    private string _statusFilter { get => Ui.StatusFilter; set => Ui.StatusFilter = value; }
+    private bool _visStatus { get => Ui.VisStatus; set => Ui.VisStatus = value; }   // status-kategoriene er skjult til man trykker «Status»
+
+    // Arbeidsliste: regler → arbeidsoppgaver pr. sak, og filter «Har arbeidsoppgave».
+    private List<ArbeidsRegel> _arbeidsRegler = new();
+    private bool _kunOppgaver { get => Ui.KunOppgaver; set => Ui.KunOppgaver = value; }
+    private List<string> Oppgaver(Kundekort k) => ArbeidslisteService.OppgaverFor(k, _arbeidsRegler);
+    private bool HarOppgave(Kundekort k) => _arbeidsRegler.Count > 0 && Oppgaver(k).Count > 0;
+    private bool MatchOppgave(Kundekort k) => !_kunOppgaver || HarOppgave(k);
+
+    // «Status» (skjult) ⇄ «Alle statuser» (vist). Å trykke «Alle statuser» nullstiller filteret og lukker igjen.
+    private void ToggleStatus()
+    {
+        if (_visStatus) { _statusFilter = ""; _visStatus = false; }
+        else _visStatus = true;
+    }
     private List<string> _statusValg = new();
     private bool MatchStatus(Kundekort k) => _statusFilter.Length == 0 || k.Status == _statusFilter;
 
@@ -312,6 +336,13 @@
         ("Pågår", new[] { "SBL Signert", "Sendt til bank", "Teknisk feil", "Oppfølging", "Pågår - Agent", "Sendt til bank - Timeout" }),
         ("Ferdig", new[] { "Utbetalt", "Avslag", "Kansellert" }),
     };
+    // Statuser som alltid vises i sin gruppe (også med 0 treff), så kategoriene aldri er «skjult» før data er lastet.
+    private static readonly HashSet<string> KjerneStatuser = new()
+    {
+        "Påbegynt søknad", "Nytt lead", "Ny søknad",
+        "SBL Signert", "Sendt til bank", "Teknisk feil", "Oppfølging",
+        "Utbetalt", "Avslag", "Kansellert",
+    };
     private bool MatchDelegert(Kundekort k) => _delegertFilter switch
     {
         "" => true,
@@ -330,7 +361,7 @@
     };
 
     private List<Kundekort> NyeVist => (_nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType))
-        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).ToList();
+        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).ToList();
 
     // Aktiv fanes rader med alle filtre UNNTATT status — brukes til antall i status-knappene.
     private List<Kundekort> StatusTellBasis()
@@ -349,12 +380,20 @@
     // Delt status-filter (knapper) — inline, gruppert med små etiketter (Ny/Pågår/Ferdig) + antall.
     private RenderFragment StatusSeg =>
         @<text>
-        @{ var tell = StatusTellBasis(); }
+        @{ var tell = StatusTellBasis(); var rest = _statusValg.Where(s => !StatusGrupper.Any(g => g.Statuser.Contains(s))).ToList(); }
         <div class="tf-statusgrp">
-            <div class="tf-seg tf-alle"><button class="@(_statusFilter == "" ? "on" : "")" @onclick='() => _statusFilter = ""'>Alle statuser <span class="n">@tell.Count</span></button></div>
+            <div class="tf-seg tf-alle">
+                <button class="@(_visStatus ? "on" : "")" @onclick="ToggleStatus">
+                    @(_visStatus ? "Alle statuser" : "Status")
+                    @if (!_visStatus && _statusFilter != "") { <span class="n">1</span> }
+                    else if (_visStatus) { <span class="n">@tell.Count</span> }
+                </button>
+            </div>
+            @if (_visStatus)
+            {
             @foreach (var g in StatusGrupper)
             {
-                var present = g.Statuser.Where(_statusValg.Contains).ToList();
+                var present = g.Statuser.Where(s => _statusValg.Contains(s) || KjerneStatuser.Contains(s)).ToList();
                 @if (present.Count > 0)
                 {
                     <div class="tf-group tf-group-@g.Gruppe.ToLower()">
@@ -368,7 +407,6 @@
                     </div>
                 }
             }
-            @{ var rest = _statusValg.Where(s => !StatusGrupper.Any(g => g.Statuser.Contains(s))).ToList(); }
             @if (rest.Count > 0)
             {
                 <div class="tf-group">
@@ -380,6 +418,7 @@
                         }
                     </div>
                 </div>
+            }
             }
         </div>
         </text>;
@@ -396,7 +435,7 @@
 
     // Felles kolonner for alle tabellene (nye saker / mine saker / oppfølging).
     private RenderFragment KundeThead =>
-        @<tr><th>Opprettet</th><th>Status</th><th>Sendt til bank</th><th>Ringelogg</th><th>Navn</th><th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th><th>Leadskilde</th><th>Handling</th></tr>;
+        @<tr><th>Opprettet</th><th>Arbeidsoppgave</th><th>Status</th><th>Sendt til bank</th><th>Ringelogg</th><th>Navn</th><th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th><th>Leadskilde</th><th>Handling</th></tr>;
 
     // Forfaller-merke i Navn-kolonnen på oppfølgingsfanen: rød «Forfalt N d» eller kommende dato.
     private RenderFragment OppfBadge(OppfolgingOppgave o) =>
@@ -412,6 +451,11 @@
     private RenderFragment FellesCeller(Kundekort k, RenderFragment? navnBadge = null) =>
         @<text>
             <td>@k.CreatedAt.TilOslo().ToString("dd.MM.yyyy HH:mm")</td>
+            <td>
+                @{ var oppg = Oppgaver(k); }
+                @if (oppg.Count == 0) { <span class="muted">—</span> }
+                else { @foreach (var o in oppg) { <span class="arbeidsoppgave-badge" title="@o">@o</span> } }
+            </td>
             <td><span class="status @StatusKlasse(k.Status)">@k.Status</span>@if (!string.IsNullOrWhiteSpace(k.AvslagGrunn)) { <div class="avslag-grunn" title="@k.AvslagGrunn">@k.AvslagGrunn</div> }</td>
             <td>@if (string.IsNullOrWhiteSpace(k.DelegertBank)) { <span class="muted">—</span> } else { <span>@k.DelegertBank</span> }</td>
             <td>
@@ -448,7 +492,7 @@
     }
 
     // Admin kan bytte hvilken rådgivers saker som vises.
-    private string _selectedEier = "__mine__";
+    private string _selectedEier { get => Ui.SelectedEier; set => Ui.SelectedEier = value; }
     private List<Kundekort> _alleEide = new();
     private List<(string Eier, string Navn, int Antall)> _owners = new();
     private string MittEier => Session.Email ?? Session.UserName ?? "";
@@ -456,9 +500,9 @@
     private bool VisEier => Session.IsAdmin && _selectedEier != "__mine__";
 
     // Skille B2B/B2C: "" = begge, ellers "B2C"/"B2B".
-    private string _typeFilter = "";
+    private string _typeFilter { get => Ui.TypeFilter; set => Ui.TypeFilter = value; }
     // Sendt-til-bank-hurtigfilter: "" = alle, "sendt" = sendt til bank, "ikke" = ikke sendt.
-    private string _sendtFilter = "";
+    private string _sendtFilter { get => Ui.SendtFilter; set => Ui.SendtFilter = value; }
 
     // Type-filtrert grunnlag (før sendt-filter) — brukes til hurtigknapp-tellingene.
     private IEnumerable<Kundekort> TypeBasis => _typeFilter.Length == 0 ? _rows : _rows.Where(k => k.KundeType == _typeFilter);
@@ -467,7 +511,7 @@
     {
         get
         {
-            var q = TypeBasis.Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus);
+            var q = TypeBasis.Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave);
             if (_sendtFilter == "sendt") q = q.Where(ErSendtTilBank);
             else if (_sendtFilter == "ikke") q = q.Where(k => !ErSendtTilBank(k));
             return q.ToList();
@@ -517,6 +561,7 @@
         _sendtPerKort = await BankSending.SisteePerKundekortAsync();
         _mineOppf = await Oppf.AapneForEierAsync(MittEier);
         _ringelogg = await Dialer.HentSammendragAsync();
+        _arbeidsRegler = await Arbeidsliste.HentAsync();
 
         // Delegert-bank-filterbokser: distinkte banker på tvers av alle sakene i visningen.
         _delegertBanker = _alleSaker

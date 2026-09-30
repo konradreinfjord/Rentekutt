@@ -23,6 +23,12 @@
         <span class="flyt-koble-banner">Klikk målnoden for å koble fra «@NodeTekst(_kobleFra)» — <button class="lenke" @onclick="() => _kobleFra = null">avbryt</button></span>
     }
     <div class="db-spacer"></div>
+    <div class="flyt-zoom">
+        <button class="btn-sec btn-sm" @onclick="() => Zoom(-0.1)" title="Zoom ut">−</button>
+        <span class="flyt-zoom-tall">@((int)Math.Round(_board.Zoom * 100)) %</span>
+        <button class="btn-sec btn-sm" @onclick="() => Zoom(0.1)" title="Zoom inn">+</button>
+        <button class="btn-sec btn-sm" @onclick="() => SettZoom(1)" title="Tilbakestill zoom">100 %</button>
+    </div>
     @if (_lagret)
     {
         <span class="flyt-lagret">Lagret ✓</span>
@@ -31,40 +37,46 @@
 </div>
 
 <div class="flyt-layout">
-    <div class="flyt-canvas" style="width:@(Bredde)px; height:@(Hoyde)px">
-        <svg class="flyt-edges" width="@Bredde" height="@Hoyde">
-            <defs>
-                <marker id="flyt-arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto">
-                    <path d="M0,0 L9,4 L0,8 Z" fill="#94a3b8" />
-                </marker>
-            </defs>
-            @foreach (var kant in _board.Kanter)
-            {
-                var fra = Finn(kant.Fra); var til = Finn(kant.Til);
-                if (fra is null || til is null) { continue; }
-                var (x1, y1) = BoxKant(SenterX(fra), SenterY(fra), SenterX(til), SenterY(til));
-                var (x2, y2) = BoxKant(SenterX(til), SenterY(til), SenterX(fra), SenterY(fra));
-                <line x1="@F(x1)" y1="@F(y1)" x2="@F(x2)" y2="@F(y2)" stroke="@(_valgtKant == kant ? "#1f5fc4" : "#94a3b8")" stroke-width="@(_valgtKant == kant ? 3 : 2)" marker-end="url(#flyt-arrow)" />
-            }
-        </svg>
-        @foreach (var kant in _board.Kanter)
-        {
-            var fra = Finn(kant.Fra); var til = Finn(kant.Til);
-            if (fra is null || til is null) { continue; }
-            var mx = (SenterX(fra) + SenterX(til)) / 2;
-            var my = (SenterY(fra) + SenterY(til)) / 2;
-            <div class="flyt-kant-etikett @(string.IsNullOrWhiteSpace(kant.Etikett) ? "tom" : "")" style="left:@(F(mx))px; top:@(F(my))px" @onclick="() => VelgKant(kant)">
-                @(string.IsNullOrWhiteSpace(kant.Etikett) ? "＋" : kant.Etikett)
+    <div class="flyt-canvas" data-zoom="@F(_board.Zoom)" data-off="@F(Off)">
+        <div class="flyt-scaler" style="width:@(F(CW * _board.Zoom))px; height:@(F(CH * _board.Zoom))px">
+            <div class="flyt-content" style="width:@(F(CW))px; height:@(F(CH))px; transform:scale(@F(_board.Zoom)); transform-origin:0 0">
+                <svg class="flyt-edges" width="@F(CW)" height="@F(CH)">
+                    <defs>
+                        <marker id="flyt-arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto">
+                            <path d="M0,0 L9,4 L0,8 Z" fill="#94a3b8" />
+                        </marker>
+                    </defs>
+                    @for (var i = 0; i < _board.Kanter.Count; i++)
+                    {
+                        var kant = _board.Kanter[i];
+                        <path class="flyt-edge-hit" data-edge="@i" @onclick="() => VelgKant(kant)"></path>
+                        <path class="flyt-edge" data-from="@kant.Fra" data-to="@kant.Til" data-edge="@i" data-retning="@kant.Retning"
+                              data-fraanker="@kant.FraAnker" data-tilanker="@kant.TilAnker" data-punkter="@PunkterJson(kant)" fill="none"
+                              stroke="@(_valgtKant == kant ? "#1f5fc4" : "#94a3b8")" stroke-width="@(_valgtKant == kant ? 3 : 2)"
+                              stroke-linejoin="round" marker-end="url(#flyt-arrow)"></path>
+                    }
+                </svg>
+                @for (var i = 0; i < _board.Kanter.Count; i++)
+                {
+                    var kant = _board.Kanter[i];
+                    var fra = Finn(kant.Fra); var til = Finn(kant.Til);
+                    if (fra is null || til is null) { continue; }
+                    var mx = (SenterX(fra) + SenterX(til)) / 2 + Off;
+                    var my = (SenterY(fra) + SenterY(til)) / 2 + Off;
+                    <div class="flyt-kant-etikett flyt-str-@(kant.Str) @(_valgtKant == kant ? "valgt" : "") @(string.IsNullOrWhiteSpace(kant.Etikett) ? "tom" : "")" data-edge="@i" style="left:@(F(mx))px; top:@(F(my))px; @(string.IsNullOrWhiteSpace(kant.EtikettFarge) ? "" : $"--ec:{kant.EtikettFarge}")" @onclick="() => VelgKant(kant)">
+                        @(string.IsNullOrWhiteSpace(kant.Etikett) ? "＋" : kant.Etikett)
+                    </div>
+                }
+                @foreach (var node in _board.Noder)
+                {
+                    <div class="flyt-node @(_valgtNode == node.Id ? "valgt" : "")" @key="node.Id" data-flytid="@node.Id"
+                         style="left:@(F(node.X + Off))px; top:@(F(node.Y + Off))px; --nc:@node.Farge">
+                        <span class="flyt-node-dot"></span>
+                        <span class="flyt-node-tekst">@node.Tekst</span>
+                    </div>
+                }
             </div>
-        }
-        @foreach (var node in _board.Noder)
-        {
-            <div class="flyt-node @(_valgtNode == node.Id ? "valgt" : "")" @key="node.Id" data-flytid="@node.Id"
-                 style="left:@(F(node.X))px; top:@(F(node.Y))px; --nc:@node.Farge">
-                <span class="flyt-node-dot"></span>
-                <span class="flyt-node-tekst">@node.Tekst</span>
-            </div>
-        }
+        </div>
     </div>
 
     <div class="flyt-side">
@@ -89,9 +101,72 @@
         {
             <div class="flyt-panel">
                 <div class="flyt-panel-h">Pil</div>
-                <div class="page-sub" style="margin:0 0 8px">@NodeTekst(_valgtKant.Fra) → @NodeTekst(_valgtKant.Til)</div>
+
+                <label class="flyt-lbl">Fra</label>
+                <select class="flyt-inp" value="@_valgtKant.Fra" @onchange="e => KobleOm(_valgtKant, (string?)e.Value, null)">
+                    @foreach (var nd in _board.Noder)
+                    {
+                        <option value="@nd.Id" selected="@(nd.Id == _valgtKant.Fra)">@nd.Tekst</option>
+                    }
+                </select>
+                <label class="flyt-lbl">Til</label>
+                <select class="flyt-inp" value="@_valgtKant.Til" @onchange="e => KobleOm(_valgtKant, null, (string?)e.Value)">
+                    @foreach (var nd in _board.Noder)
+                    {
+                        <option value="@nd.Id" selected="@(nd.Id == _valgtKant.Til)">@nd.Tekst</option>
+                    }
+                </select>
+
                 <label class="flyt-lbl">Etikett (f.eks. «avslag», «postnr 7288»)</label>
                 <input class="flyt-inp" @bind="_valgtKant.Etikett" @bind:after="Lagre" placeholder="valgfri tekst" />
+
+                <label class="flyt-lbl">Etikett-farge</label>
+                <div class="flyt-farger">
+                    <button class="flyt-farge @(_valgtKant.EtikettFarge == "" ? "on" : "")" style="background:#fff; border-color:#cbd5e1" title="Standard" @onclick='() => SettEtikettFarge(_valgtKant, "")'></button>
+                    @foreach (var f in Farger)
+                    {
+                        <button class="flyt-farge @(_valgtKant.EtikettFarge == f ? "on" : "")" style="background:@f" @onclick="() => SettEtikettFarge(_valgtKant, f)"></button>
+                    }
+                </div>
+
+                <label class="flyt-lbl">Etikett-størrelse</label>
+                <div class="seg onoff flyt-retning">
+                    <button class="@(_valgtKant.Str == "s" ? "active" : "")" @onclick='() => SettStr(_valgtKant, "s")'>Liten</button>
+                    <button class="@(_valgtKant.Str == "m" ? "active" : "")" @onclick='() => SettStr(_valgtKant, "m")'>Normal</button>
+                    <button class="@(_valgtKant.Str == "l" ? "active" : "")" @onclick='() => SettStr(_valgtKant, "l")'>Stor</button>
+                </div>
+
+                <label class="flyt-lbl">Fest på «@NodeTekst(_valgtKant.Fra)» (fra)</label>
+                <div class="seg onoff flyt-anker">
+                    <button class="@(_valgtKant.FraAnker == "" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, true, "")' title="Auto">Auto</button>
+                    <button class="@(_valgtKant.FraAnker == "t" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, true, "t")' title="Topp">↑</button>
+                    <button class="@(_valgtKant.FraAnker == "r" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, true, "r")' title="Høyre">→</button>
+                    <button class="@(_valgtKant.FraAnker == "b" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, true, "b")' title="Bunn">↓</button>
+                    <button class="@(_valgtKant.FraAnker == "l" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, true, "l")' title="Venstre">←</button>
+                </div>
+                <label class="flyt-lbl">Fest på «@NodeTekst(_valgtKant.Til)» (til)</label>
+                <div class="seg onoff flyt-anker">
+                    <button class="@(_valgtKant.TilAnker == "" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, false, "")' title="Auto">Auto</button>
+                    <button class="@(_valgtKant.TilAnker == "t" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, false, "t")' title="Topp">↑</button>
+                    <button class="@(_valgtKant.TilAnker == "r" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, false, "r")' title="Høyre">→</button>
+                    <button class="@(_valgtKant.TilAnker == "b" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, false, "b")' title="Bunn">↓</button>
+                    <button class="@(_valgtKant.TilAnker == "l" ? "active" : "")" @onclick='() => SettAnker(_valgtKant, false, "l")' title="Venstre">←</button>
+                </div>
+
+                <label class="flyt-lbl">Egen vei (punktvis)</label>
+                @if (_wpEdge == _board.Kanter.IndexOf(_valgtKant))
+                {
+                    <div class="flyt-wp-banner">Klikk på lerretet for å legge veipunkter… <button class="lenke" @onclick="StoppWaypoint">ferdig</button></div>
+                }
+                else
+                {
+                    <button class="btn-sec btn-sm" style="width:100%" @onclick="() => StartWaypoint(_valgtKant)">✏ Tegn egen vei</button>
+                }
+                @if (_valgtKant.Punkter.Count > 0)
+                {
+                    <button class="btn-sec btn-sm" style="width:100%; margin-top:6px" @onclick="() => NullstillVei(_valgtKant)">Nullstill vei (@_valgtKant.Punkter.Count punkt)</button>
+                }
+
                 <button class="btn-sec btn-sm" style="margin-top:10px; width:100%; color:#b42318" @onclick="SlettKant">Slett pil</button>
             </div>
         }
@@ -107,6 +182,8 @@
 
 @code {
     private const double Bredde = 2400, Hoyde = 1500;
+    private const double Off = 800;                 // ledig plass til venstre/oppe (så noder kan flyttes utenfor origo)
+    private const double CW = Bredde + Off, CH = Hoyde + Off;   // faktisk innhold-størrelse
     private const double NodeW = 190, NodeH = 58;
     private static readonly string[] Farger = { "#1f5fc4", "#2f8a3e", "#e0a800", "#b42318", "#6b3fc4", "#0e7490", "#5b6b7f" };
 
@@ -114,15 +191,20 @@
     private string? _valgtNode;
     private FlytKant? _valgtKant;
     private string? _kobleFra;
+    private int _wpEdge = -1;   // kant-indeks vi legger veipunkter på (-1 = av)
     private bool _lagret;
     private IJSObjectReference? _module;
     private DotNetObjectReference<Flyt>? _ref;
 
     private const string Key = "flyt_board";
 
+    private static string PunkterJson(FlytKant k) =>
+        System.Text.Json.JsonSerializer.Serialize(k.Punkter.Select(p => new { x = p.X + Off, y = p.Y + Off }));
+
     public class FlytNode { public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8]; public string Tekst { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public string Farge { get; set; } = "#1f5fc4"; }
-    public class FlytKant { public string Fra { get; set; } = ""; public string Til { get; set; } = ""; public string Etikett { get; set; } = ""; }
-    public class FlytBoard { public List<FlytNode> Noder { get; set; } = new(); public List<FlytKant> Kanter { get; set; } = new(); }
+    public class Punkt { public double X { get; set; } public double Y { get; set; } }
+    public class FlytKant { public string Fra { get; set; } = ""; public string Til { get; set; } = ""; public string Etikett { get; set; } = ""; public string Retning { get; set; } = ""; public List<Punkt> Punkter { get; set; } = new(); public string EtikettFarge { get; set; } = ""; public string Str { get; set; } = "m"; public string FraAnker { get; set; } = ""; public string TilAnker { get; set; } = ""; }
+    public class FlytBoard { public List<FlytNode> Noder { get; set; } = new(); public List<FlytKant> Kanter { get; set; } = new(); public double Zoom { get; set; } = 1; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -143,7 +225,11 @@
             _ref = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync("init", _ref);
         }
-        if (_module is not null) await _module.InvokeVoidAsync("attachAll");
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("attachAll");
+            await _module.InvokeVoidAsync("redrawEdges");
+        }
     }
 
     [JSInvokable]
@@ -182,8 +268,59 @@
     }
 
     private void StartKobling(string id) { _kobleFra = id; _valgtNode = null; _valgtKant = null; }
-    private void VelgKant(FlytKant k) { _valgtKant = k; _valgtNode = null; }
+    private void VelgKant(FlytKant k) { _valgtKant = k; _valgtNode = null; _ = StoppWaypoint(); }
     private void SettFarge(FlytNode n, string f) { n.Farge = f; _ = Lagre(); }
+
+    private async Task Zoom(double delta) => await SettZoom(_board.Zoom + delta);
+    private async Task SettZoom(double z)
+    {
+        _board.Zoom = Math.Clamp(Math.Round(z, 2), 0.4, 2.0);
+        await Lagre();
+        if (_module is not null) { await _module.InvokeVoidAsync("redrawEdges"); }
+    }
+
+    private void SettRetning(FlytKant k, string r) { k.Retning = r; _ = Lagre(); }
+    private async Task SettAnker(FlytKant k, bool fra, string a)
+    {
+        if (fra) k.FraAnker = a; else k.TilAnker = a;
+        await Lagre();
+        if (_module is not null) await _module.InvokeVoidAsync("redrawEdges");
+    }
+    private void SettEtikettFarge(FlytKant k, string f) { k.EtikettFarge = f; _ = Lagre(); }
+    private void SettStr(FlytKant k, string s) { k.Str = s; _ = Lagre(); }
+
+    // Koble om pilens endepunkt (fra/til) til en annen node.
+    private async Task KobleOm(FlytKant k, string? fra, string? til)
+    {
+        if (fra is not null) k.Fra = fra;
+        if (til is not null) k.Til = til;
+        k.Punkter.Clear();   // gammel egendefinert vei passer ikke lenger
+        await Lagre();
+        if (_module is not null) await _module.InvokeVoidAsync("redrawEdges");
+    }
+
+    // Veipunkt-modus: klikk på lerretet legger punkter på valgt kant.
+    private async Task StartWaypoint(FlytKant k)
+    {
+        _wpEdge = _board.Kanter.IndexOf(k);
+        if (_module is not null) await _module.InvokeVoidAsync("settWaypointModus", _wpEdge);
+    }
+    private async Task StoppWaypoint()
+    {
+        if (_wpEdge < 0) return;
+        _wpEdge = -1;
+        if (_module is not null) await _module.InvokeVoidAsync("settWaypointModus", -1);
+    }
+    private async Task NullstillVei(FlytKant k) { k.Punkter.Clear(); await Lagre(); if (_module is not null) await _module.InvokeVoidAsync("redrawEdges"); }
+
+    [JSInvokable]
+    public async Task LeggTilPunkt(int edgeIdx, double x, double y)
+    {
+        if (edgeIdx < 0 || edgeIdx >= _board.Kanter.Count) return;
+        _board.Kanter[edgeIdx].Punkter.Add(new Punkt { X = Math.Round(x - Off), Y = Math.Round(y - Off) });
+        await Lagre();
+        if (_module is not null) await _module.InvokeVoidAsync("redrawEdges");
+    }
 
     private void SlettNode(FlytNode n)
     {
@@ -216,18 +353,6 @@
     private double SenterX(FlytNode n) => n.X + NodeW / 2;
     private double SenterY(FlytNode n) => n.Y + NodeH / 2;
     private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-
-    // Punkt der linjen fra (cx,cy) mot senter (tx,ty) treffer målboksens kant.
-    private static (double, double) BoxKant(double tx, double ty, double cx, double cy)
-    {
-        double dx = cx - tx, dy = cy - ty;
-        if (dx == 0 && dy == 0) return (tx, ty);
-        double hw = NodeW / 2, hh = NodeH / 2;
-        double sx = dx == 0 ? double.PositiveInfinity : hw / Math.Abs(dx);
-        double sy = dy == 0 ? double.PositiveInfinity : hh / Math.Abs(dy);
-        double t = Math.Min(sx, sy);
-        return (tx + dx * t, ty + dy * t);
-    }
 
     private static FlytBoard Standard() => new()
     {

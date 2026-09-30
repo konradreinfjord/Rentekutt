@@ -4,6 +4,7 @@
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.BeregningService Beregning
+@inject RentkuttCRM.Services.SakerUiState Ui
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -53,6 +54,7 @@
         @foreach (var f in KommunerPerFylke)
         {
             <optgroup label="@f.Fylke">
+                <option value="fylke:@f.Fylke">Hele @f.Fylke (@f.Kommuner.Sum(o => o.Antall))</option>
                 @foreach (var o in f.Kommuner) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
             </optgroup>
         }
@@ -205,12 +207,12 @@ else
     private static string OppfDatoKlasse(DateTime n) =>
         n.Date < Tid.IDag ? "opf-rod" : n.Date == Tid.IDag ? "opf-amber" : "";
 
-    private string _search = "";
-    private string _statusFilter = "";
-    private string _typeFilter = "";
-    private string _bankFilter = "";
-    private string _delegertFilter = "";
-    private string _kommuneFilter = "";
+    private string _search { get => Ui.Database.Search; set => Ui.Database.Search = value; }
+    private string _statusFilter { get => Ui.Database.StatusFilter; set => Ui.Database.StatusFilter = value; }
+    private string _typeFilter { get => Ui.Database.TypeFilter; set => Ui.Database.TypeFilter = value; }
+    private string _bankFilter { get => Ui.Database.BankFilter; set => Ui.Database.BankFilter = value; }
+    private string _delegertFilter { get => Ui.Database.DelegertFilter; set => Ui.Database.DelegertFilter = value; }
+    private string _kommuneFilter { get => Ui.Database.KommuneFilter; set => Ui.Database.KommuneFilter = value; }
 
     // Facet-listene avhenger kun av _rows (settes ved init) — beregn én gang, ikke per render.
     private IEnumerable<(string Navn, int Antall)>? _bankListe;
@@ -241,8 +243,8 @@ else
         .Select(g => (Fylke: g.Key, Kommuner: g.OrderByDescending(o => o.Antall).ThenBy(o => o.Navn).ToList()))
         .OrderBy(x => { var i = Array.IndexOf(NorskeKommuner.Fylker, x.Fylke); return i < 0 ? 999 : i; })
         .ToList();
-    private string _sortField = "opprettet";
-    private bool _sortAsc = false;
+    private string _sortField { get => Ui.Database.SortField; set => Ui.Database.SortField = value; }
+    private bool _sortAsc { get => Ui.Database.SortAsc; set => Ui.Database.SortAsc = value; }
 
     private readonly string[] _statuses = KundekortService.Statuser;
 
@@ -407,7 +409,12 @@ else
             if (!string.IsNullOrEmpty(_bankFilter)) q = q.Where(k => k.NavarendeBank == _bankFilter);
             if (_delegertFilter == "__ingen__") q = q.Where(k => string.IsNullOrWhiteSpace(k.DelegertBank));
             else if (!string.IsNullOrEmpty(_delegertFilter)) q = q.Where(k => k.DelegertBank == _delegertFilter);
-            if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
+            if (_kommuneFilter.StartsWith("fylke:"))
+            {
+                var fylke = _kommuneFilter["fylke:".Length..];
+                q = q.Where(k => !string.IsNullOrWhiteSpace(k.Kommune) && NorskeKommuner.Fylke(k.Kommune!) == fylke);
+            }
+            else if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
 
             Func<Kundekort, object?> key = _sortField switch
             {

@@ -28,6 +28,10 @@ public class Partner : BaseModel
     // 30 min etter registrering sendes automatisk til banken. Uavhengig av AutoSend.
     [Column("auto_paabegynt")] public bool AutoPaabegynt { get; set; }
 
+    // Kun webhook-levering (kontaktinfo), ingen registeroppslag → krever ikke GDPR-samtykke
+    // (gjeldsregister/kredittsjekk) før sending. Brukes f.eks. for Soknedal Sparebank.
+    [Column("krever_ikke_samtykke")] public bool KreverIkkeSamtykke { get; set; }
+
     // Transient (ikke persistert) — metode-valg i API-fanen. JsonIgnore så den
     // ikke sendes til databasen (ingen Method-kolonne der).
     [JsonIgnore] public string Method { get; set; } = "Webhook";
@@ -162,6 +166,24 @@ public class PartnerService
                 .Update();
         }
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av auto-påbegynt feilet"); }
+    }
+
+    public async Task UpdateKreverIkkeSamtykkeAsync(Guid id, bool på)
+    {
+        if (!IsConfigured)
+        {
+            var p = _staging.FirstOrDefault(x => x.Id == id);
+            if (p is not null) p.KreverIkkeSamtykke = på;
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<Partner>().Where(x => x.Id == id)
+                .Set(x => x.KreverIkkeSamtykke, på)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av «krever ikke samtykke» feilet"); }
     }
 
     public async Task UpdateWebhookUrlAsync(Guid id, string? url)

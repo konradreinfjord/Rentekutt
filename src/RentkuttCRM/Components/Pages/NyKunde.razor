@@ -1604,8 +1604,11 @@
         if (valgbare.Count > 0 && string.IsNullOrWhiteSpace(_valgtProduktId)) return;
         var valgtProdukt = valgbare.FirstOrDefault(p => p.Id.ToString() == _valgtProduktId);
 
-        // GDPR-sperre: ikke send til bank uten gyldig samtykke.
-        if (!_harSamtykke)
+        // GDPR-sperre: ikke send til bank uten gyldig samtykke — MED unntak for banker som kun
+        // mottar kontaktinfo via webhook (ingen registeroppslag), f.eks. Soknedal Sparebank.
+        var bankPartner = _banker.FirstOrDefault(b => b.Navn == _valgtBank);
+        var kreverIkkeSamtykke = bankPartner?.KreverIkkeSamtykke == true;
+        if (!_harSamtykke && !kreverIkkeSamtykke)
         {
             _sendOk = false;
             _sendMsg = "Mangler samtykke (Gjeldsregister og kredittsjekk). Registrer samtykke i Oversikt-fanen før sending.";

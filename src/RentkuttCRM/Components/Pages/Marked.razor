@@ -81,6 +81,7 @@
         @foreach (var f in KommunerPerFylke)
         {
             <optgroup label="@f.Fylke">
+                <option value="fylke:@f.Fylke">Hele @f.Fylke (@f.Kommuner.Sum(o => o.Antall))</option>
                 @foreach (var o in f.Kommuner) { <option value="@o.Navn">@o.Navn (@o.Antall)</option> }
             </optgroup>
         }
@@ -467,7 +468,12 @@ else
             if (!string.IsNullOrEmpty(_statusFilter)) q = q.Where(k => k.Status == _statusFilter);
             if (!string.IsNullOrEmpty(_laanetypeFilter)) q = q.Where(k => k.Laanetype == _laanetypeFilter);
             if (!string.IsNullOrEmpty(_bankFilter)) q = q.Where(k => k.NavarendeBank == _bankFilter);
-            if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
+            if (_kommuneFilter.StartsWith("fylke:"))
+            {
+                var fylke = _kommuneFilter["fylke:".Length..];
+                q = q.Where(k => !string.IsNullOrWhiteSpace(k.Kommune) && NorskeKommuner.Fylke(k.Kommune!) == fylke);
+            }
+            else if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
             if (_forslagFilter == "__ingen__") q = q.Where(k => Forslag(k).Count == 0);
             else if (!string.IsNullOrEmpty(_forslagFilter)) q = q.Where(k => Forslag(k).Contains(_forslagFilter));
 
