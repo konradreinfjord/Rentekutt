@@ -133,6 +133,13 @@ public class Kundekort : BaseModel
     [Column("belaaningsgrad")] public decimal? Belaaningsgrad { get; set; }
     [Column("naavaerende_laanebelop")] public decimal? NaavaerendeLaanebelop { get; set; }
 
+    /// <summary>Belåningsgrad (LTV) i prosent: ønsket lånebeløp målt mot oppgitt boligverdi.
+    /// Null når boligverdi mangler/er 0 (f.eks. forbrukslån uten bolig). Ikke en DB-kolonne.</summary>
+    [Newtonsoft.Json.JsonIgnore]
+    public double? Ltv => Boligverdi is > 0 && OnsketLaanebelop.HasValue
+        ? (double)(OnsketLaanebelop.Value / Boligverdi.Value) * 100.0
+        : null;
+
     // G. Boliglån — eiendom/sikkerhet. Kreves av Instabank boliglån (produkt 180). Matrikkel
     // (kommune/gnr/bnr/fnr/snr) er påkrevd for selveier; borettslag-feltene for andel/sameie.
     [Column("eiendom_kommune")] public string? EiendomKommune { get; set; }

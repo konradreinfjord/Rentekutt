@@ -22,6 +22,8 @@ public class SakerUiState
     public DateTime? OppfFra;
     public DateTime? OppfTil;
     public string SelectedEier = "__mine__";
+    public double? LtvFra;
+    public double? LtvTil;
 
     // ---- Database (/crm/database) ----
     public DatabaseFilter Database { get; } = new();
@@ -45,6 +47,8 @@ public class DatabaseFilter
     public string KommuneFilter = "";
     public string SortField = "opprettet";
     public bool SortAsc;
+    public double? LtvFra;
+    public double? LtvTil;
 }
 
 public class MarkedFilter

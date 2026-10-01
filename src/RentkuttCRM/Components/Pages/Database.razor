@@ -59,6 +59,12 @@
             </optgroup>
         }
     </select>
+    <span class="db-ltv-filter" title="Filtrer på belåningsgrad (LTV)">
+        <span class="db-ltv-lbl">LTV %</span>
+        <input type="number" class="db-ltv" min="0" max="300" placeholder="fra" @bind="_ltvFra" @bind:after="ResetPage" />
+        <span class="db-ltv-dash">–</span>
+        <input type="number" class="db-ltv" min="0" max="300" placeholder="til" @bind="_ltvTil" @bind:after="ResetPage" />
+    </span>
     <div class="db-spacer"></div>
     <span class="db-count">@View.Count av @_rows.Count</span>
 </div>
@@ -84,6 +90,7 @@ else
                 @Header("laanetype", "Lånetype")
                 @Header("bank", "Bank")
                 @Header("forslag", "Forslag bank")
+                @Header("ltv", "LTV")
                 @Header("belop", "Ønsket beløp")
                 @Header("kommune", "Kommune")
                 @Header("postnr", "Postnr")
@@ -156,6 +163,7 @@ else
                             }
                         }
                     </td>
+                    <td>@(k.Ltv is { } ltv ? $"{ltv:N0} %" : "—")</td>
                     <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
                     <td>
                         @(string.IsNullOrWhiteSpace(k.Kommune) ? "—" : k.Kommune)
@@ -213,6 +221,8 @@ else
     private string _bankFilter { get => Ui.Database.BankFilter; set => Ui.Database.BankFilter = value; }
     private string _delegertFilter { get => Ui.Database.DelegertFilter; set => Ui.Database.DelegertFilter = value; }
     private string _kommuneFilter { get => Ui.Database.KommuneFilter; set => Ui.Database.KommuneFilter = value; }
+    private double? _ltvFra { get => Ui.Database.LtvFra; set => Ui.Database.LtvFra = value; }
+    private double? _ltvTil { get => Ui.Database.LtvTil; set => Ui.Database.LtvTil = value; }
 
     // Facet-listene avhenger kun av _rows (settes ved init) — beregn én gang, ikke per render.
     private IEnumerable<(string Navn, int Antall)>? _bankListe;
@@ -415,6 +425,8 @@ else
                 q = q.Where(k => !string.IsNullOrWhiteSpace(k.Kommune) && NorskeKommuner.Fylke(k.Kommune!) == fylke);
             }
             else if (!string.IsNullOrEmpty(_kommuneFilter)) q = q.Where(k => k.Kommune == _kommuneFilter);
+            if (_ltvFra is { } lf) q = q.Where(k => k.Ltv is { } v && v >= lf);
+            if (_ltvTil is { } lt) q = q.Where(k => k.Ltv is { } v && v <= lt);
 
             Func<Kundekort, object?> key = _sortField switch
             {
@@ -430,6 +442,7 @@ else
                 "laanetype" => k => k.Laanetype ?? "",
                 "bank" => k => k.NavarendeBank ?? "",
                 "forslag" => k => Forslag(k).FirstOrDefault() ?? "",
+                "ltv" => k => k.Ltv ?? -1,
                 "belop" => k => k.OnsketLaanebelop ?? 0,
                 "belaning" => k => Ber(k).Belaningsgrad,
                 "likviditet" => k => Ber(k).Likviditet,

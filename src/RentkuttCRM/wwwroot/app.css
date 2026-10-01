@@ -1304,6 +1304,12 @@ a { color: var(--accent); text-decoration: none; }
     .syk-dur { left: auto; right: -18px; top: 50%; transform: translateY(-50%); }
 }
 
+/* LTV-filter (Saker + Database) */
+.tf-ltv, .db-ltv-filter { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; background: var(--surface); }
+.tf-ltv-lbl, .db-ltv-lbl { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+.tf-ltv-inp, .db-ltv { width: 54px; border: 1px solid var(--border); border-radius: 7px; padding: 3px 6px; font: inherit; font-size: 12px; }
+.tf-ltv-dash, .db-ltv-dash { color: var(--text-muted); }
+
 /* Refinansiering-mapping: brede nedtrekk så hele produkt-/lånetypenavnet vises */
 .refi-select { min-width: 200px; width: 100%; max-width: 260px; }
 

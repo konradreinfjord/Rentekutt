@@ -57,6 +57,7 @@
         </div>
         @LaanetypeSeg
             @StatusSeg
+            @LtvSeg
         <span class="tf-count">@AlleVist.Count saker</span>
     </div>
     <div class="section">
@@ -69,7 +70,7 @@
                 <tbody>
                     @if (AlleVist.Count == 0)
                     {
-                        <tr><td colspan="12" class="empty-row">Ingen saker i valgt filter.</td></tr>
+                        <tr><td colspan="13" class="empty-row">Ingen saker i valgt filter.</td></tr>
                     }
                     @foreach (var k in AlleVist.OrderByDescending(k => k.CreatedAt))
                     {
@@ -95,6 +96,7 @@
         </div>
         @LaanetypeSeg
             @StatusSeg
+            @LtvSeg
         <span class="tf-count">@NyeVist.Count nye saker</span>
     </div>
     <div class="section">
@@ -107,7 +109,7 @@
                 <tbody>
                     @if (NyeVist.Count == 0)
                     {
-                        <tr><td colspan="12" class="empty-row">Ingen nye saker akkurat nå — alle er plukket. 🎉</td></tr>
+                        <tr><td colspan="13" class="empty-row">Ingen nye saker akkurat nå — alle er plukket. 🎉</td></tr>
                     }
                     @foreach (var k in NyeVist.OrderByDescending(k => k.CreatedAt))
                     {
@@ -143,6 +145,7 @@
             </div>
             @LaanetypeSeg
             @StatusSeg
+            @LtvSeg
             @if (_oppfFilter == "custom")
             {
                 <div class="tf-custom">
@@ -178,7 +181,7 @@
                             else
                             {
                                 <td>@o.Forfaller.ToString("dd.MM.yyyy HH:mm")</td><td>—</td><td>—</td><td>—</td><td>—</td>
-                                <td>(ukjent søknad)@OppfBadge(o)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                                <td>(ukjent søknad)@OppfBadge(o)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
                             }
                             <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" @onclick="() => FullforOppf(o)" title="Marker fullført">✓ Fullfør</button></td>
                         </tr>
@@ -200,6 +203,7 @@
     </div>
     @LaanetypeSeg
             @StatusSeg
+            @LtvSeg
     @if (Session.IsAdmin)
     {
         <label class="page-sub" style="margin:0 0 0 4px; font-weight:600">Vis saker for:</label>
@@ -228,7 +232,7 @@
             <tbody>
                 @if (Vist.Count == 0)
                 {
-                    <tr><td colspan="12" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak under Nye saker." : "Ingen saker på valgt rådgiver.")</td></tr>
+                    <tr><td colspan="13" class="empty-row">@(_selectedEier == "__mine__" ? "Du har ingen saker ennå — plukk en sak under Nye saker." : "Ingen saker på valgt rådgiver.")</td></tr>
                 }
                 @foreach (var k in Vist.OrderBy(SortNokkel))
                 {
@@ -276,14 +280,14 @@
     {
         var kk = KortFor(o.KundekortId);
         if (kk is null) return !_kunOppgaver && _delegertFilter.Length == 0 && _oppfType.Length == 0 && _laanetypeFilter.Length == 0 && _statusFilter.Length == 0;
-        return MatchDelegert(kk) && MatchLaan(kk) && MatchStatus(kk) && MatchOppgave(kk) && (_oppfType.Length == 0 || kk.KundeType == _oppfType);
+        return MatchDelegert(kk) && MatchLaan(kk) && MatchStatus(kk) && MatchOppgave(kk) && MatchLtv(kk) && (_oppfType.Length == 0 || kk.KundeType == _oppfType);
     }).ToList();
 
     // Alle saker = hele basen (uansett eier/status).
     private List<Kundekort> _alleSaker = new();
     private string _alleType { get => Ui.AlleType; set => Ui.AlleType = value; }
     private List<Kundekort> AlleVist => (_alleType.Length == 0 ? _alleSaker : _alleSaker.Where(k => k.KundeType == _alleType))
-        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).ToList();
+        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).Where(MatchLtv).ToList();
 
     // Nye saker = ingen eier + fortsatt aktiv (ikke fullført/avslått) — venter på å plukkes.
     private List<Kundekort> _nyeSaker = new();
@@ -298,6 +302,21 @@
     private List<string> _laanetyper = new();
     private bool MatchLaan(Kundekort k) => _laanetypeFilter.Length == 0
         || string.Equals(string.IsNullOrWhiteSpace(k.Laanetype) ? "Ukjent" : k.Laanetype, _laanetypeFilter, StringComparison.OrdinalIgnoreCase);
+
+    // LTV-filter (belåningsgrad %) — valgfritt fra/til. Saker uten LTV faller ut når et filter er satt.
+    private double? _ltvFra { get => Ui.LtvFra; set => Ui.LtvFra = value; }
+    private double? _ltvTil { get => Ui.LtvTil; set => Ui.LtvTil = value; }
+    private bool MatchLtv(Kundekort k)
+        => (_ltvFra is not { } lf || (k.Ltv is { } v1 && v1 >= lf))
+        && (_ltvTil is not { } lt || (k.Ltv is { } v2 && v2 <= lt));
+
+    private RenderFragment LtvSeg =>
+        @<div class="tf-ltv" title="Filtrer på belåningsgrad (LTV)">
+            <span class="tf-ltv-lbl">LTV %</span>
+            <input type="number" class="tf-ltv-inp" min="0" max="300" placeholder="fra" @bind="_ltvFra" />
+            <span class="tf-ltv-dash">–</span>
+            <input type="number" class="tf-ltv-inp" min="0" max="300" placeholder="til" @bind="_ltvTil" />
+        </div>;
 
     // Statusfilter (delt på tvers av fanene): "" = alle, ellers statusnavn.
     private string _statusFilter { get => Ui.StatusFilter; set => Ui.StatusFilter = value; }
@@ -366,7 +385,7 @@
     };
 
     private List<Kundekort> NyeVist => (_nyeType.Length == 0 ? _nyeSaker : _nyeSaker.Where(k => k.KundeType == _nyeType))
-        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).ToList();
+        .Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).Where(MatchLtv).ToList();
 
     // Aktiv fanes rader med alle filtre UNNTATT status — brukes til antall i status-knappene.
     private List<Kundekort> StatusTellBasis()
@@ -440,7 +459,7 @@
 
     // Felles kolonner for alle tabellene (nye saker / mine saker / oppfølging).
     private RenderFragment KundeThead =>
-        @<tr><th>Opprettet</th><th>Arbeidsoppgave</th><th>Status</th><th>Sendt til bank</th><th>Ringelogg</th><th>Navn</th><th>Type</th><th>Telefon</th><th>Lånetype</th><th>Ønsket beløp</th><th>Leadskilde</th><th>Handling</th></tr>;
+        @<tr><th>Opprettet</th><th>Arbeidsoppgave</th><th>Status</th><th>Sendt til bank</th><th>Ringelogg</th><th>Navn</th><th>Type</th><th>Telefon</th><th>Lånetype</th><th>LTV</th><th>Ønsket beløp</th><th>Leadskilde</th><th>Handling</th></tr>;
 
     // Forfaller-merke i Navn-kolonnen på oppfølgingsfanen: rød «Forfalt N d» eller kommende dato.
     private RenderFragment OppfBadge(OppfolgingOppgave o) =>
@@ -477,6 +496,7 @@
             <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
             <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
             <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
+            <td>@(k.Ltv is { } ltv ? $"{ltv:N0} %" : "—")</td>
             <td>@(k.OnsketLaanebelop.HasValue ? $"{k.OnsketLaanebelop:N0} kr" : "—")</td>
             <td>@if (string.IsNullOrWhiteSpace(k.Kilde)) { <span class="muted">—</span> } else { <span class="kilde-badge @KundekortService.KildeBadgeKlasse(k.Kilde)">@k.Kilde</span> }</td>
         </text>;
@@ -516,7 +536,7 @@
     {
         get
         {
-            var q = TypeBasis.Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave);
+            var q = TypeBasis.Where(MatchDelegert).Where(MatchLaan).Where(MatchStatus).Where(MatchOppgave).Where(MatchLtv);
             if (_sendtFilter == "sendt") q = q.Where(ErSendtTilBank);
             else if (_sendtFilter == "ikke") q = q.Where(k => !ErSendtTilBank(k));
             return q.ToList();

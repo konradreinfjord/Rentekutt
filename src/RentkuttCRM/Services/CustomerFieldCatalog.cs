@@ -48,7 +48,7 @@ public class CustomerFieldCatalog
 
         // ---- Økonomi ----
         new("gjeldsgrad",   "Gjeldsgrad",          "Økonomi", FieldType.Number, Unit: "%", Placeholder: "f.eks. 400"),
-        new("belaaningsgrad","Belåningsgrad",      "Økonomi", FieldType.Number, Unit: "%", Placeholder: "f.eks. 85"),
+        new("belaaningsgrad","Belåningsgrad (LTV)", "Økonomi", FieldType.Number, Unit: "%", Placeholder: "f.eks. 85"),
         new("kredittscore", "Kredittscore",        "Økonomi", FieldType.Number, Placeholder: "0–1000"),
         new("aarsinntekt",  "Årsinntekt",          "Økonomi", FieldType.Number, Unit: "kr", Placeholder: "f.eks. 650 000"),
         new("anmerkninger", "Betalingsanmerkninger","Økonomi", FieldType.Enum, Options: new[] { "Ja", "Nei" }),

@@ -101,6 +101,7 @@
     </div>
     <div class="kk-head-facts">
         <div><span>Ønsket beløp</span><strong>@(_k.OnsketLaanebelop.HasValue ? $"{_k.OnsketLaanebelop:N0} kr" : "—")</strong></div>
+        <div><span>LTV (belåningsgrad)</span><strong>@(_k.Ltv is { } ltv ? $"{ltv:N0} %" : "—")</strong></div>
         <div><span>Lånetype</span><strong>@Vis(_k.Laanetype)</strong></div>
         <div><span>Nåværende bank</span><strong>@Vis(_k.NavarendeBank)</strong></div>
         <div><span>Adresse</span><strong>@Vis(_k.Adresse)</strong></div>

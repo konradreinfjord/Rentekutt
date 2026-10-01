@@ -216,6 +216,8 @@ public static class RutingEval
         "ansettelse" => k.Arbeidssituasjon,
         "boligstatus" => Boligstatus(k.Boforhold),
         "naavaerende_bank" => k.NavarendeBank,
+        // Utledet: belåningsgrad (LTV) = ønsket lånebeløp / boligverdi.
+        "belaaningsgrad" => k.Ltv?.ToString("0.##", Inv),
         // Utledet: alder fra fødselsnummer.
         "alder" => BeregningService.FnrInfo(k.Foedselsnummer).Alder?.ToString(Inv),
         // Utledet: fødselsår fra fødselsnummer (brukes av «Boliglån ung»: fødselsår >= 1993).
