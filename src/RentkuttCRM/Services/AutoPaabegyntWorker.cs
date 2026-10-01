@@ -101,6 +101,7 @@ public class AutoPaabegyntWorker : BackgroundService
         var samtykke = scope.ServiceProvider.GetRequiredService<SamtykkeService>();
         var instabank = scope.ServiceProvider.GetRequiredService<InstabankService>();
         var logg = scope.ServiceProvider.GetRequiredService<LoggService>();
+        var refiCfg = await scope.ServiceProvider.GetRequiredService<RefinansieringMappingService>().HentAsync();
 
         foreach (var lett in kandidater)
         {
@@ -126,7 +127,7 @@ public class AutoPaabegyntWorker : BackgroundService
                 if (eksisterende.Contains(bankNavn)) continue;
 
                 var partner = autoBanker.First(b => string.Equals(b.Navn, bankNavn, StringComparison.OrdinalIgnoreCase));
-                var (klar, produkt, kode, hopp) = ForberedSending(partner, k, produkter, instabank);
+                var (klar, produkt, kode, hopp) = ForberedSending(partner, k, produkter, instabank, refiCfg);
                 if (!klar) { if (hopp is not null) _log.LogInformation("Auto-påbegynt: hopper over {Bank} for {Id}: {Grunn}", bankNavn, k.Id, hopp); continue; }
 
                 // Instabank krever gyldig samtykke — uten det ville sendekøen feilmarkere leadet.
@@ -170,7 +171,7 @@ public class AutoPaabegyntWorker : BackgroundService
     // Avgjør om leadet kan sendes til banken og hvilket produkt/kode som skal brukes.
     // Speiler den manuelle «Send til matchet bank»-logikken (segment + lånetype → produkt).
     private static (bool Klar, string? Produkt, int? Kode, string? Hopp) ForberedSending(
-        Partner partner, Kundekort k, List<PartnerProdukt> alleProdukter, InstabankService instabank)
+        Partner partner, Kundekort k, List<PartnerProdukt> alleProdukter, InstabankService instabank, List<RefiMapRad> refiCfg)
     {
         // Webhook-/manuelle banker (ikke Instabank): ingen produktkode nødvendig.
         if (!InstabankService.ErInstabankNavn(partner.Navn))
@@ -187,12 +188,23 @@ public class AutoPaabegyntWorker : BackgroundService
         var etterLaanetype = forBank.Where(p => p.GjelderLaanetype(k.Laanetype)).ToList();
         var valgt = etterLaanetype.Count == 1 ? etterLaanetype[0] : forBank[0];
 
-        // Beløpsbarriere: overstiger ønsket beløp maksgrensen for produktet, ikke send auto.
-        var maks = instabank.MaksBelopFor(valgt.Kode);
-        if (maks > 0 && (k.OnsketLaanebelop ?? 0) > maks)
-            return (false, null, null, $"beløp {k.OnsketLaanebelop:N0} over maks {maks:N0} for {valgt.Navn}");
+        var kode = valgt.Kode;
+        var navn = valgt.Navn;
 
-        return (true, valgt.Navn, valgt.Kode, null);
+        // Overstyr produkt fra refinansiering-mappingen (Logikk-matrise): lånetype → Instabank-produktkode.
+        var overstyrt = RefinansieringMappingService.ProduktForLaanetype(refiCfg, k.Laanetype);
+        if (overstyrt is { } ok && ok != kode)
+        {
+            kode = ok;
+            navn = forBank.FirstOrDefault(p => p.Kode == ok)?.Navn ?? InstabankService.ProduktNavn(ok);
+        }
+
+        // Beløpsbarriere: overstiger ønsket beløp maksgrensen for produktet, ikke send auto.
+        var maks = instabank.MaksBelopFor(kode);
+        if (maks > 0 && (k.OnsketLaanebelop ?? 0) > maks)
+            return (false, null, null, $"beløp {k.OnsketLaanebelop:N0} over maks {maks:N0} for {navn}");
+
+        return (true, navn, kode, null);
     }
 
     // Statuser som fortsatt er «i vente» og kan auto-rutes: påbegynt (uferdig) eller ny søknad

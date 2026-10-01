@@ -86,6 +86,7 @@ builder.Services.AddScoped<GjeldsregisterService>();
 builder.Services.AddScoped<LeadMottakService>();
 builder.Services.AddScoped<BugService>();
 builder.Services.AddScoped<ArbeidslisteService>();
+builder.Services.AddScoped<RefinansieringMappingService>();
 builder.Services.AddScoped<SakerUiState>();
 
 // Tidsstemplede saksnotater.

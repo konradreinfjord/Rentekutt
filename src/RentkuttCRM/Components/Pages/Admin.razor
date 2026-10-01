@@ -25,6 +25,7 @@
 @inject RentkuttCRM.Services.ZissonService Zisson
 @inject RentkuttCRM.Services.NextcomService Nextcom
 @inject RentkuttCRM.Services.ArbeidslisteService Arbeidsliste
+@inject RentkuttCRM.Services.RefinansieringMappingService RefiMap
 @inject Microsoft.Extensions.Hosting.IHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -1460,6 +1461,44 @@ else if (_active == "Hendelseslogg")
 else if (_active == "Logikk-matrise")
 {
     <div class="section">
+        <h2>Refinansiering → lånetype og Instabank-produkt</h2>
+        <p class="page-sub" style="margin:-4px 0 14px; max-width:820px">
+            Når en refinansiering-søknad kommer inn, sender skjemaet <code>refinansieres_laanetype</code>
+            (Begge / Forbrukslån / Kredittkort). Her styrer du hvilken <strong>lånetype</strong> den settes til,
+            og hvilket <strong>Instabank-produkt</strong> saken sendes på. (Refinansiere boliglån kommer med
+            lånetype «Boliglån» og egne bolig-felt, og berøres ikke av dette.)
+        </p>
+        <table class="data-table" style="margin-bottom:12px">
+            <thead>
+                <tr><th>Refinansieres (fra skjema)</th><th>Settes til lånetype</th><th>Instabank-produkt</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _refiRader)
+                {
+                    <tr>
+                        <td><strong>@r.Etikett</strong></td>
+                        <td>
+                            <select class="inline-input" @bind="r.Laanetype">
+                                @foreach (var lt in _refiLaanetyper) { <option value="@lt">@lt</option> }
+                            </select>
+                        </td>
+                        <td>
+                            <select class="inline-input" @bind="r.ProduktKode">
+                                @foreach (var p in RentkuttCRM.Services.InstabankService.StandardProdukter.Where(p => p.Segment == "privat"))
+                                {
+                                    <option value="@p.Kode">@p.Navn</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <button class="btn-primary" @onclick="LagreRefiMap">Lagre refinansiering-mapping</button>
+        @if (!string.IsNullOrEmpty(_refiMsg)) { <span class="page-sub" style="margin-left:10px; font-size:12px">@_refiMsg</span> }
+    </div>
+
+    <div class="section">
         <h2>Rutingsregler <span class="pill pill-warn">@_rules.Count(r => r.Aktiv) aktive</span>
             <span class="pill" title="Innholdsbasert versjon av regelsettet — logges på hver bankforslag-avgjørelse">v@(RutingEval.RegelsettVersjon(_rules))</span>
         </h2>
@@ -2388,7 +2427,15 @@ else if (_active == "GDPR")
         if (t == "Dialer" && !_dialerLastet) await LastDialerData();
         if (t == "Duplikater" && _duplikater.Count == 0 && !_duplikaterLaster) await LastDuplikater();
         if (t == "Arbeidsliste" && !_alLastet) { _alRegler = await Arbeidsliste.HentAsync(); _alUtsattTimer = await Arbeidsliste.HentUtsattTimerAsync(); _alLastet = true; }
+        if (t == "Logikk-matrise" && !_refiLastet) { _refiRader = await RefiMap.HentAsync(); _refiLastet = true; }
     }
+
+    // ---- Refinansiering-mapping (Logikk-matrise) ----
+    private List<RefiMapRad> _refiRader = new();
+    private bool _refiLastet;
+    private string? _refiMsg;
+    private static readonly string[] _refiLaanetyper = { "Forbrukslån", "Kredittkort", "Boliglån", "Annen finansiering", "Refinansiering" };
+    private async Task LagreRefiMap() { await RefiMap.LagreAsync(_refiRader); _refiMsg = "Lagret ✓"; }
 
     // ---- Arbeidsliste (regler → arbeidsoppgaver på Saker) ----
     private List<ArbeidsRegel> _alRegler = new();

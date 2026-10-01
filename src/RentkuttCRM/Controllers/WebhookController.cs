@@ -23,10 +23,12 @@ public class WebhookController : ControllerBase
     private readonly ILogger<WebhookController> _log;
 
     private readonly KlaviyoService _klaviyo;
+    private readonly RefinansieringMappingService _refiMap;
 
     public WebhookController(WebhookService hooks, KundekortService kundekort, EventService events,
         SmsMalService sms, SamtykkeService samtykke, AlarmService alarm, WebhookPayloadService payloads,
-        LoggService logg, KlaviyoService klaviyo, IWebHostEnvironment env, ILogger<WebhookController> log)
+        LoggService logg, KlaviyoService klaviyo, RefinansieringMappingService refiMap,
+        IWebHostEnvironment env, ILogger<WebhookController> log)
     {
         _hooks = hooks;
         _kundekort = kundekort;
@@ -37,6 +39,7 @@ public class WebhookController : ControllerBase
         _payloads = payloads;
         _logg = logg;
         _klaviyo = klaviyo;
+        _refiMap = refiMap;
         _env = env;
         _log = log;
     }
@@ -81,6 +84,7 @@ public class WebhookController : ControllerBase
                 ? body.EnumerateArray().ToList()
                 : new List<JsonElement> { body };
             var feltLogget = false;
+            var refiCfg = await _refiMap.HentAsync();   // konfigurerbar refinansiering → lånetype (Logikk-matrise)
 
             foreach (var el in elements)
             {
@@ -95,6 +99,13 @@ public class WebhookController : ControllerBase
 
                 var k = MapFlexible(flat);
                 k.Kilde = KildeLabel(hook.Name);
+
+                // Refinansiering av gjeld: sett lånetype ut fra konfigurerbar mapping (Logikk-matrise).
+                // refinansieres_laanetype (Begge/Forbrukslån/Kredittkort) → lånetype. Boliglån har ikke feltet.
+                var refiRaw = Get(flat, "refinansieres_laanetype_kode", "refinansieres_laanetype");
+                if (!string.IsNullOrWhiteSpace(refiRaw) &&
+                    RefinansieringMappingService.LaanetypeFor(refiCfg, refiRaw) is { Length: > 0 } refiLaanetype)
+                    k.Laanetype = refiLaanetype;
 
                 // Prismatch-leads er forenklede, ueide leads (kontakt + grunnleggende lånedata) uten
                 // samtykke/2FA. De settes i status «Nytt lead» til en rådgiver plukker dem.
@@ -489,15 +500,9 @@ public class WebhookController : ControllerBase
         // Kontaktperson kun for B2B, og kun når vi faktisk har et firmanavn å skille personen fra.
         var kontaktperson = type == "B2B" && !string.IsNullOrWhiteSpace(firmaNavn) ? personNavn : null;
 
-        // Lånetype: ved refinansiering av GJELD (forbrukslån/kredittkort) sender skjemaet
-        // laanetype="Refinansiering" + lanedetaljer.refinansieres_laanetype (Begge/Forbrukslån/Kredittkort).
-        // Vi mapper til konkret produkt-lånetype (Instabank auto-velger produkt ut fra lånetype):
-        //   Begge / Forbrukslån → «Forbrukslån»,  Kredittkort → «Kredittkort».
-        // Boliglån-refinansiering kommer med laanetype="Boliglån" (ingen refinansieres_laanetype) og beholdes.
+        // Rå lånetype fra skjemaet. Ved refinansiering av gjeld overstyres denne av den
+        // konfigurerbare mappingen i Soknad() (refinansieres_laanetype → lånetype, se Logikk-matrise).
         var laanetype = Get(f, "laanetype", "lanetype", "loantype");
-        var refiType = (Get(f, "refinansieres_laanetype_kode", "refinansieres_laanetype") ?? "").Trim().ToLowerInvariant();
-        if (!string.IsNullOrWhiteSpace(refiType))
-            laanetype = refiType is "kredittkort" or "kredittkort_kode" ? "Kredittkort" : "Forbrukslån";
 
         var medsokerFnr = Get(f, "medsoeker_fodselsnummer", "medsoker_fodselsnummer");
         var harMedsoker = GetBool(f, "medsoeker_har_medsoeker", "har_medsoeker", "har_medsoker")
