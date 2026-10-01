@@ -1304,6 +1304,9 @@ a { color: var(--accent); text-decoration: none; }
     .syk-dur { left: auto; right: -18px; top: 50%; transform: translateY(-50%); }
 }
 
+/* Refinansiering-mapping: brede nedtrekk så hele produkt-/lånetypenavnet vises */
+.refi-select { min-width: 200px; width: 100%; max-width: 260px; }
+
 /* Arbeidsliste-regler: skjema + vilkårs-chips */
 .al-form { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface-2); }
 .al-form-tit { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }

@@ -1478,12 +1478,12 @@ else if (_active == "Logikk-matrise")
                     <tr>
                         <td><strong>@r.Etikett</strong></td>
                         <td>
-                            <select class="inline-input" @bind="r.Laanetype">
+                            <select class="db-select refi-select" @bind="r.Laanetype">
                                 @foreach (var lt in _refiLaanetyper) { <option value="@lt">@lt</option> }
                             </select>
                         </td>
                         <td>
-                            <select class="inline-input" @bind="r.ProduktKode">
+                            <select class="db-select refi-select" @bind="r.ProduktKode">
                                 @foreach (var p in RentkuttCRM.Services.InstabankService.StandardProdukter.Where(p => p.Segment == "privat"))
                                 {
                                     <option value="@p.Kode">@p.Navn</option>
