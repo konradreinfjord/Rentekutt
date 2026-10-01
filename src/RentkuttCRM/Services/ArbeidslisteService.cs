@@ -15,6 +15,13 @@ public class ArbeidsRegel
     public string AvslagGrunn { get; set; } = "";    // "" = alle (delstreng, ikke-sensitiv)
     public string KundeType { get; set; } = "";      // "" / B2C / B2B
     public string Laanetype { get; set; } = "";      // "" = alle
+    // Nye vilkår:
+    public string NavarendeBank { get; set; } = ""; // kundens nåværende bank (eksakt)
+    public string Postnr { get; set; } = "";         // komma-separert; eksakt eller prefiks ("72" = alle 72xx)
+    public string Fylke { get; set; } = "";          // fylke (fra kundens fylke eller utledet fra kommune)
+    public string Kilde { get; set; } = "";          // leadskilde (eksakt)
+    public decimal? BelopMin { get; set; }           // ønsket lånebeløp fra/til
+    public decimal? BelopMax { get; set; }
     public bool Aktiv { get; set; } = true;
 }
 
@@ -150,6 +157,32 @@ public class ArbeidslisteService
             noeSatt = true;
             if (!string.Equals(k.Laanetype?.Trim(), r.Laanetype.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         }
+        if (!string.IsNullOrWhiteSpace(r.NavarendeBank))
+        {
+            noeSatt = true;
+            if (!string.Equals(k.NavarendeBank?.Trim(), r.NavarendeBank.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        if (!string.IsNullOrWhiteSpace(r.Postnr))
+        {
+            noeSatt = true;
+            var pnr = (k.Postnummer ?? "").Trim();
+            var tokens = r.Postnr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (pnr.Length == 0 || !tokens.Any(t => pnr == t || pnr.StartsWith(t, StringComparison.Ordinal))) return false;
+        }
+        if (!string.IsNullOrWhiteSpace(r.Fylke))
+        {
+            noeSatt = true;
+            var fylke = !string.IsNullOrWhiteSpace(k.Fylke) ? k.Fylke!.Trim()
+                      : !string.IsNullOrWhiteSpace(k.Kommune) ? NorskeKommuner.Fylke(k.Kommune!.Trim()) : "";
+            if (!string.Equals(fylke, r.Fylke.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        if (!string.IsNullOrWhiteSpace(r.Kilde))
+        {
+            noeSatt = true;
+            if (!string.Equals(k.Kilde?.Trim(), r.Kilde.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        if (r.BelopMin.HasValue) { noeSatt = true; if (!(k.OnsketLaanebelop >= r.BelopMin.Value)) return false; }
+        if (r.BelopMax.HasValue) { noeSatt = true; if (!(k.OnsketLaanebelop <= r.BelopMax.Value)) return false; }
         return noeSatt;
     }
 }

@@ -1225,92 +1225,111 @@ else if (_active == "Arbeidsliste")
             <span class="page-sub" style="font-size:12px; margin:0 0 6px">Når en agent trykker «Ikke svar» på kundekortet, forsvinner oppgaven i så mange timer og dukker så opp igjen.</span>
         </div>
 
-        <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap; gap:12px">
-            <div class="rb-field" style="min-width:220px; flex:1 1 220px">
-                <label>Arbeidsoppgave</label>
-                <input class="rb-input" @bind="_alOppgave" placeholder="F.eks. Send kunden til Instabank" />
+        <div class="al-form">
+            <div class="al-form-tit">@(_alRedigererId is null ? "Ny regel" : "Endre regel")</div>
+            <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap; gap:12px">
+                <div class="rb-field" style="min-width:220px; flex:1 1 240px">
+                    <label>Arbeidsoppgave</label>
+                    <input class="rb-input" @bind="_alUtkast.Oppgave" placeholder="F.eks. Send kunden til Instabank" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:190px">
+                    <label>Status</label>
+                    <select class="rb-input" @bind="_alUtkast.Status">
+                        <option value="">Alle</option>
+                        @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
+                    </select>
+                </div>
+                <div class="rb-field rb-op" style="max-width:190px">
+                    <label>Bank (sendt til)</label>
+                    <select class="rb-input" @bind="_alUtkast.Bank">
+                        <option value="">Alle</option>
+                        @foreach (var b in _banks) { <option value="@b.Navn">@b.Navn</option> }
+                    </select>
+                </div>
+                <div class="rb-field rb-op" style="max-width:190px">
+                    <label>Nåværende bank</label>
+                    <select class="rb-input" @bind="_alUtkast.NavarendeBank">
+                        <option value="">Alle</option>
+                        @foreach (var b in _banks) { <option value="@b.Navn">@b.Navn</option> }
+                    </select>
+                </div>
+                <div class="rb-field rb-op" style="max-width:190px">
+                    <label>Postnr</label>
+                    <input class="rb-input" @bind="_alUtkast.Postnr" placeholder="7288, eller 72 (prefiks)" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:180px">
+                    <label>Fylke</label>
+                    <select class="rb-input" @bind="_alUtkast.Fylke">
+                        <option value="">Alle</option>
+                        @foreach (var f in NorskeKommuner.Fylker) { <option value="@f">@f</option> }
+                    </select>
+                </div>
+                <div class="rb-field rb-op" style="max-width:160px">
+                    <label>Leadskilde</label>
+                    <input class="rb-input" @bind="_alUtkast.Kilde" placeholder="f.eks. Prismatch" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:130px">
+                    <label>Kundetype</label>
+                    <select class="rb-input" @bind="_alUtkast.KundeType">
+                        <option value="">Alle</option>
+                        <option value="B2C">B2C</option>
+                        <option value="B2B">B2B</option>
+                    </select>
+                </div>
+                <div class="rb-field rb-op" style="max-width:170px">
+                    <label>Lånetype</label>
+                    <select class="rb-input" @bind="_alUtkast.Laanetype">
+                        <option value="">Alle</option>
+                        @foreach (var t in _alLaanetyper) { <option value="@t">@t</option> }
+                    </select>
+                </div>
+                <div class="rb-field rb-op" style="max-width:140px">
+                    <label>Beløp fra (kr)</label>
+                    <input class="rb-input" type="number" min="0" step="10000" @bind="_alUtkast.BelopMin" placeholder="—" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:140px">
+                    <label>Beløp til (kr)</label>
+                    <input class="rb-input" type="number" min="0" step="10000" @bind="_alUtkast.BelopMax" placeholder="—" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:200px">
+                    <label>Avslagsgrunn inneholder</label>
+                    <input class="rb-input" @bind="_alUtkast.AvslagGrunn" placeholder="f.eks. likviditet" />
+                </div>
+                <button class="btn-primary rb-add" @onclick="LagreRegel">@(_alRedigererId is null ? "Legg til" : "Lagre endring")</button>
+                @if (_alRedigererId is not null)
+                {
+                    <button class="btn-sec rb-add" @onclick="AvbrytRedigering">Avbryt</button>
+                }
             </div>
-            <div class="rb-field rb-op" style="max-width:200px">
-                <label>Status</label>
-                <select class="rb-input" @bind="_alStatus">
-                    <option value="">Alle</option>
-                    @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
-                </select>
-            </div>
-            <div class="rb-field rb-op" style="max-width:210px">
-                <label>Bank (sendt til)</label>
-                <select class="rb-input" @bind="_alBank">
-                    <option value="">Alle</option>
-                    @foreach (var b in _banks) { <option value="@b.Navn">@b.Navn</option> }
-                </select>
-            </div>
-            <div class="rb-field rb-op" style="max-width:200px">
-                <label>Avslagsgrunn inneholder</label>
-                <input class="rb-input" @bind="_alAvslag" placeholder="f.eks. likviditet" />
-            </div>
-            <div class="rb-field rb-op" style="max-width:130px">
-                <label>Kundetype</label>
-                <select class="rb-input" @bind="_alKundeType">
-                    <option value="">Alle</option>
-                    <option value="B2C">B2C</option>
-                    <option value="B2B">B2B</option>
-                </select>
-            </div>
-            <div class="rb-field rb-op" style="max-width:180px">
-                <label>Lånetype</label>
-                <select class="rb-input" @bind="_alLaanetype">
-                    <option value="">Alle</option>
-                    @foreach (var t in _alLaanetyper) { <option value="@t">@t</option> }
-                </select>
-            </div>
-            <button class="btn-primary rb-add" @onclick="LeggTilRegel">Legg til</button>
+            @if (!string.IsNullOrEmpty(_alMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_alMsg</p> }
         </div>
-        @if (!string.IsNullOrEmpty(_alMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_alMsg</p> }
     </div>
 
     <div class="section">
         <h3 style="margin:0 0 10px">Regler <span class="pill pill-warn">@_alRegler.Count</span></h3>
         <table class="data-table">
             <thead>
-                <tr><th>Arbeidsoppgave</th><th>Status</th><th>Bank</th><th>Avslagsgrunn</th><th>Kundetype</th><th>Lånetype</th><th>Aktiv</th><th></th></tr>
+                <tr><th>Arbeidsoppgave</th><th>Vilkår</th><th>Aktiv</th><th></th></tr>
             </thead>
             <tbody>
                 @if (_alRegler.Count == 0)
                 {
-                    <tr><td colspan="8" class="empty-row">Ingen regler ennå.</td></tr>
+                    <tr><td colspan="4" class="empty-row">Ingen regler ennå.</td></tr>
                 }
                 @foreach (var r in _alRegler)
                 {
-                    <tr>
-                        <td><input class="inline-input" style="min-width:190px" @bind="r.Oppgave" @bind:after="LagreEndring" /></td>
+                    <tr class="@(_alRedigererId == r.Id ? "al-rediger" : "")">
+                        <td style="vertical-align:top"><strong>@r.Oppgave</strong></td>
                         <td>
-                            <select class="inline-input" @bind="r.Status" @bind:after="LagreEndring">
-                                <option value="">Alle</option>
-                                @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
-                            </select>
+                            @{ var vilkaar = Vilkaar(r); }
+                            @if (vilkaar.Count == 0) { <span class="muted">—</span> }
+                            else { @foreach (var v in vilkaar) { <span class="al-chip">@v</span> } }
                         </td>
-                        <td>
-                            <select class="inline-input" @bind="r.Bank" @bind:after="LagreEndring">
-                                <option value="">Alle</option>
-                                @foreach (var b in _banks) { <option value="@b.Navn">@b.Navn</option> }
-                            </select>
+                        <td style="vertical-align:top"><input type="checkbox" checked="@r.Aktiv" @onchange="e => ToggleRegel(r, (bool)e.Value!)" /></td>
+                        <td style="vertical-align:top; white-space:nowrap" @onclick:stopPropagation="true">
+                            <button class="btn-sec btn-sm" @onclick="() => StartRediger(r)">Endre</button>
+                            <button class="btn-sec btn-sm" style="color:#b42318" @onclick="() => SlettRegel(r)">Slett</button>
                         </td>
-                        <td><input class="inline-input" style="min-width:120px" placeholder="alle" @bind="r.AvslagGrunn" @bind:after="LagreEndring" /></td>
-                        <td>
-                            <select class="inline-input" @bind="r.KundeType" @bind:after="LagreEndring">
-                                <option value="">Alle</option>
-                                <option value="B2C">B2C</option>
-                                <option value="B2B">B2B</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="inline-input" @bind="r.Laanetype" @bind:after="LagreEndring">
-                                <option value="">Alle</option>
-                                @foreach (var t in _alLaanetyper) { <option value="@t">@t</option> }
-                            </select>
-                        </td>
-                        <td><input type="checkbox" checked="@r.Aktiv" @onchange="e => ToggleRegel(r, (bool)e.Value!)" /></td>
-                        <td @onclick:stopPropagation="true"><button class="btn-sec btn-sm" style="color:#b42318" @onclick="() => SlettRegel(r)">Slett</button></td>
                     </tr>
                 }
             </tbody>
@@ -2351,32 +2370,81 @@ else if (_active == "GDPR")
     // ---- Arbeidsliste (regler → arbeidsoppgaver på Saker) ----
     private List<ArbeidsRegel> _alRegler = new();
     private bool _alLastet;
-    private string _alOppgave = "", _alStatus = "", _alBank = "", _alAvslag = "", _alKundeType = "", _alLaanetype = "";
+    private ArbeidsRegel _alUtkast = new();     // skjemaet (ny eller redigering)
+    private string? _alRedigererId;             // id på regelen som redigeres (null = ny)
     private int _alUtsattTimer = ArbeidslisteService.StandardUtsattTimer;
     private string? _alMsg;
 
     private async Task LagreUtsattTimer() { await Arbeidsliste.LagreUtsattTimerAsync(_alUtsattTimer); _alMsg = $"Lagret: «Ikke svar» holder saken ute i {_alUtsattTimer} timer."; }
     private static readonly string[] _alLaanetyper = { "Boliglån", "Refinansiering", "Annen finansiering" };
 
-    private async Task LeggTilRegel()
+    private static bool HarVilkaar(ArbeidsRegel r) =>
+        new[] { r.Status, r.Bank, r.NavarendeBank, r.Postnr, r.Fylke, r.Kilde, r.AvslagGrunn, r.KundeType, r.Laanetype }
+            .Any(v => !string.IsNullOrWhiteSpace(v)) || r.BelopMin.HasValue || r.BelopMax.HasValue;
+
+    private async Task LagreRegel()
     {
-        if (string.IsNullOrWhiteSpace(_alOppgave)) { _alMsg = "Skriv en arbeidsoppgave."; return; }
-        var noeVilkaar = new[] { _alStatus, _alBank, _alAvslag, _alKundeType, _alLaanetype }.Any(v => !string.IsNullOrWhiteSpace(v));
-        if (!noeVilkaar) { _alMsg = "Sett minst ett vilkår (status, bank, avslagsgrunn, kundetype eller lånetype)."; return; }
-        _alRegler.Add(new ArbeidsRegel
+        if (string.IsNullOrWhiteSpace(_alUtkast.Oppgave)) { _alMsg = "Skriv en arbeidsoppgave."; return; }
+        if (!HarVilkaar(_alUtkast)) { _alMsg = "Sett minst ett vilkår."; return; }
+        _alUtkast.Oppgave = _alUtkast.Oppgave.Trim();
+        if (_alRedigererId is null)
         {
-            Oppgave = _alOppgave.Trim(),
-            Status = _alStatus, Bank = _alBank, AvslagGrunn = _alAvslag.Trim(),
-            KundeType = _alKundeType, Laanetype = _alLaanetype,
-        });
+            _alRegler.Add(_alUtkast);
+            _alMsg = "Regel lagret.";
+        }
+        else
+        {
+            var idx = _alRegler.FindIndex(x => x.Id == _alRedigererId);
+            if (idx >= 0) _alRegler[idx] = _alUtkast;
+            _alMsg = "Endring lagret.";
+        }
         await Arbeidsliste.LagreAsync(_alRegler);
-        _alOppgave = _alStatus = _alBank = _alAvslag = _alKundeType = _alLaanetype = "";
-        _alMsg = "Regel lagret.";
+        _alUtkast = new();
+        _alRedigererId = null;
+    }
+
+    private void StartRediger(ArbeidsRegel r)
+    {
+        _alRedigererId = r.Id;
+        _alUtkast = Klon(r);
+        _alMsg = null;
+    }
+
+    private void AvbrytRedigering() { _alRedigererId = null; _alUtkast = new(); _alMsg = null; }
+
+    private static ArbeidsRegel Klon(ArbeidsRegel r) => new()
+    {
+        Id = r.Id, Oppgave = r.Oppgave, Status = r.Status, Bank = r.Bank, NavarendeBank = r.NavarendeBank,
+        Postnr = r.Postnr, Fylke = r.Fylke, Kilde = r.Kilde, AvslagGrunn = r.AvslagGrunn,
+        KundeType = r.KundeType, Laanetype = r.Laanetype, BelopMin = r.BelopMin, BelopMax = r.BelopMax, Aktiv = r.Aktiv,
+    };
+
+    // Kompakt vilkårssammendrag (chips) i regeltabellen.
+    private static List<string> Vilkaar(ArbeidsRegel r)
+    {
+        var v = new List<string>();
+        if (!string.IsNullOrWhiteSpace(r.Status)) v.Add($"Status: {r.Status}");
+        if (!string.IsNullOrWhiteSpace(r.Bank)) v.Add($"Sendt til: {r.Bank}");
+        if (!string.IsNullOrWhiteSpace(r.NavarendeBank)) v.Add($"Nåv. bank: {r.NavarendeBank}");
+        if (!string.IsNullOrWhiteSpace(r.Postnr)) v.Add($"Postnr: {r.Postnr}");
+        if (!string.IsNullOrWhiteSpace(r.Fylke)) v.Add($"Fylke: {r.Fylke}");
+        if (!string.IsNullOrWhiteSpace(r.Kilde)) v.Add($"Kilde: {r.Kilde}");
+        if (!string.IsNullOrWhiteSpace(r.KundeType)) v.Add(r.KundeType);
+        if (!string.IsNullOrWhiteSpace(r.Laanetype)) v.Add(r.Laanetype);
+        if (r.BelopMin.HasValue) v.Add($"≥ {r.BelopMin:N0} kr");
+        if (r.BelopMax.HasValue) v.Add($"≤ {r.BelopMax:N0} kr");
+        if (!string.IsNullOrWhiteSpace(r.AvslagGrunn)) v.Add($"Avslag: «{r.AvslagGrunn}»");
+        return v;
     }
 
     private async Task ToggleRegel(ArbeidsRegel r, bool aktiv) { r.Aktiv = aktiv; await Arbeidsliste.LagreAsync(_alRegler); }
-    private async Task SlettRegel(ArbeidsRegel r) { _alRegler.Remove(r); await Arbeidsliste.LagreAsync(_alRegler); _alMsg = "Regel slettet."; }
-    private async Task LagreEndring() { await Arbeidsliste.LagreAsync(_alRegler); _alMsg = "Endring lagret."; }
+    private async Task SlettRegel(ArbeidsRegel r)
+    {
+        _alRegler.Remove(r);
+        if (_alRedigererId == r.Id) AvbrytRedigering();
+        await Arbeidsliste.LagreAsync(_alRegler);
+        _alMsg = "Regel slettet.";
+    }
 
     // ---- Soknedal Sparebank (Nextcom webhook) ----
     private Partner? Soknedal => _banks.FirstOrDefault(b => string.Equals(b.Navn, "Soknedal Sparebank", StringComparison.OrdinalIgnoreCase));
