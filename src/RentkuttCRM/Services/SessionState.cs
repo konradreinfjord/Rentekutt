@@ -54,6 +54,7 @@ public class SessionState
     {
         public string Search = "", Status = "", Bank = "", Kommune = "", Forslag = "", Laanetype = "", SortField = "opprettet";
         public bool SkjulTatte, SortAsc;
+        public double? LtvFra, LtvTil;
     }
 
     public Dictionary<string, MarkedFilterState> MarkedFiltre { get; } = new();
