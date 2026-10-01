@@ -19,21 +19,21 @@
 <p class="page-sub">Nye saker venter på å plukkes. Sakene du har plukket ligger under «Mine saker».</p>
 
 <div class="db-stats" style="margin-bottom:18px">
-    <div class="db-box click db-box--alle @(_delegertFilter == "" ? "on" : "")" @onclick='() => _delegertFilter = ""'>
+    <div class="db-box click db-box--alle @(_delegertFilter == "" && !_kunOppgaver ? "on" : "")" @onclick='() => VelgDelegert("")'>
         <span class="db-box-num">@AktivBasis.Count()</span><span class="db-box-lbl">Alle saker</span>
     </div>
     @if (_arbeidsRegler.Count > 0)
     {
-        <div class="db-box click ab-box @(_kunOppgaver ? "on" : "")" @onclick="() => _kunOppgaver = !_kunOppgaver">
+        <div class="db-box click ab-box @(_kunOppgaver ? "on" : "")" @onclick="VelgOppgaver">
             <span class="db-box-num">@AktivBasis.Count(HarOppgave)</span><span class="db-box-lbl">Har arbeidsoppgave</span>
         </div>
     }
-    <div class="db-box click db-box--ingen @(_delegertFilter == "__ingen__" ? "on" : "")" @onclick='() => _delegertFilter = "__ingen__"'>
+    <div class="db-box click db-box--ingen @(_delegertFilter == "__ingen__" && !_kunOppgaver ? "on" : "")" @onclick='() => VelgDelegert("__ingen__")'>
         <span class="db-box-num">@AktivBasis.Count(k => string.IsNullOrWhiteSpace(k.DelegertBank))</span><span class="db-box-lbl">Ikke sendt til bank</span>
     </div>
     @foreach (var bank in _delegertBanker)
     {
-        <div class="db-box click db-box--bank @(_delegertFilter == bank ? "on" : "")" @onclick="() => _delegertFilter = bank">
+        <div class="db-box click db-box--bank @(_delegertFilter == bank && !_kunOppgaver ? "on" : "")" @onclick="() => VelgDelegert(bank)">
             <span class="db-box-num">@AktivBasis.Count(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))</span>
             <span class="db-box-lbl">Sendt til @bank</span>
         </div>
@@ -307,6 +307,9 @@
     private List<ArbeidsRegel> _arbeidsRegler = new();
     private Dictionary<string, Dictionary<string, OppgaveTilstand>> _oppgaveTilstander = new();
     private bool _kunOppgaver { get => Ui.KunOppgaver; set => Ui.KunOppgaver = value; }
+    // Boksene øverst er gjensidig utelukkende: å velge en delegert-boks løsner «Har arbeidsoppgave», og omvendt.
+    private void VelgDelegert(string b) { _delegertFilter = b; _kunOppgaver = false; }
+    private void VelgOppgaver() { _kunOppgaver = !_kunOppgaver; if (_kunOppgaver) _delegertFilter = ""; }
     private List<string> Oppgaver(Kundekort k) =>
         ArbeidslisteService.AktiveOppgaver(k, _arbeidsRegler, _oppgaveTilstander, DateTime.UtcNow).Select(o => o.Oppgave).ToList();
     private bool HarOppgave(Kundekort k) => _arbeidsRegler.Count > 0 && Oppgaver(k).Count > 0;

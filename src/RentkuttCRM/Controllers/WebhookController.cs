@@ -489,6 +489,16 @@ public class WebhookController : ControllerBase
         // Kontaktperson kun for B2B, og kun når vi faktisk har et firmanavn å skille personen fra.
         var kontaktperson = type == "B2B" && !string.IsNullOrWhiteSpace(firmaNavn) ? personNavn : null;
 
+        // Lånetype: ved refinansiering av GJELD (forbrukslån/kredittkort) sender skjemaet
+        // laanetype="Refinansiering" + lanedetaljer.refinansieres_laanetype (Begge/Forbrukslån/Kredittkort).
+        // Vi mapper til konkret produkt-lånetype (Instabank auto-velger produkt ut fra lånetype):
+        //   Begge / Forbrukslån → «Forbrukslån»,  Kredittkort → «Kredittkort».
+        // Boliglån-refinansiering kommer med laanetype="Boliglån" (ingen refinansieres_laanetype) og beholdes.
+        var laanetype = Get(f, "laanetype", "lanetype", "loantype");
+        var refiType = (Get(f, "refinansieres_laanetype_kode", "refinansieres_laanetype") ?? "").Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(refiType))
+            laanetype = refiType is "kredittkort" or "kredittkort_kode" ? "Kredittkort" : "Forbrukslån";
+
         var medsokerFnr = Get(f, "medsoeker_fodselsnummer", "medsoker_fodselsnummer");
         var harMedsoker = GetBool(f, "medsoeker_har_medsoeker", "har_medsoeker", "har_medsoker")
                           || !string.IsNullOrWhiteSpace(medsokerFnr)
@@ -552,7 +562,7 @@ public class WebhookController : ControllerBase
             // Lånedetaljer
             OnsketLaanebelop = GetDec(f, "onsket_laanebelop", "sum_laan", "sum_lan", "laanebelop", "lanebelop", "belop", "amount", "loanamount", "sum", "lanesum"),
             OnsketLopetidMnd = lopetidMnd,
-            Laanetype = Get(f, "laanetype", "lanetype", "loantype"),
+            Laanetype = laanetype,
             Laaneformal = Get(f, "laaneformal", "formaal"),
             LaaneformalKode = Get(f, "laaneformal_kode"),
             NaavaerendeRente = GetDec(f, "naavaerende_rente", "nåværende rente på boliglån", "nåværende rente boliglån",

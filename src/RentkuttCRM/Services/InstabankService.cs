@@ -34,7 +34,7 @@ public class InstabankService
         new("Forbrukslån",     ProduktForbrukslaan,   "privat",  "Forbrukslån,Refinansiering"),
         new("Boliglån",        ProduktBoliglaan,      "privat",  "Boliglån"),
         new("Kredittlinje",    ProduktKredittlinje,   "privat",  ""),
-        new("Kredittkort",     ProduktKredittkort,    "privat",  ""),
+        new("Kredittkort",     ProduktKredittkort,    "privat",  "Kredittkort"),
         new("Bedriftslån",     ProduktBedriftslaan,   "bedrift", ""),
         new("Bedriftskreditt", ProduktBedriftKreditt, "bedrift", ""),
     };

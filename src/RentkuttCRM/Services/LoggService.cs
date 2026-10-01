@@ -78,6 +78,56 @@ public class LoggService
         catch (Exception ex) { _log.LogError(ex, "Henting av kundekort-logg feilet"); return new(); }
     }
 
+    public record StatusHendelse(Guid KundekortId, string Status, DateTime Opprettet);
+
+    /// <summary>Alle statusendringer (fra endringsloggen) etter et tidspunkt — brukes til syklustider.
+    /// Leser logglinjer «Endret status: X → Y» og «Endret status til Y», paginert for å unngå rad-tak.</summary>
+    public async Task<List<StatusHendelse>> StatusHendelserSidenAsync(DateTime fraUtc)
+    {
+        var res = new List<StatusHendelse>();
+        void LeggTil(IEnumerable<KundekortLogg> rader)
+        {
+            foreach (var r in rader)
+            {
+                var s = ParseStatus(r.Tekst);
+                if (s is not null) res.Add(new StatusHendelse(r.KundekortId, s, r.Opprettet));
+            }
+        }
+
+        if (!IsConfigured)
+        {
+            LeggTil(_staging.Where(x => x.Kategori == "endring" && x.Opprettet >= fraUtc));
+            return res;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            const int side = 1000;
+            for (var from = 0; from <= 200000; from += side)
+            {
+                var batch = (await _client.From<KundekortLogg>()
+                    .Where(x => x.Kategori == "endring")
+                    .Filter("opprettet", Constants.Operator.GreaterThanOrEqual, fraUtc.ToUniversalTime().ToString("o"))
+                    .Order(x => x.Opprettet, Constants.Ordering.Ascending, Constants.NullPosition.Last)
+                    .Range(from, from + side - 1)
+                    .Get()).Models;
+                LeggTil(batch);
+                if (batch.Count < side) break;
+            }
+        }
+        catch (Exception ex) { _log.LogError(ex, "Henting av statushendelser feilet"); }
+        return res;
+    }
+
+    private static string? ParseStatus(string tekst)
+    {
+        if (string.IsNullOrWhiteSpace(tekst) || !tekst.StartsWith("Endret status", StringComparison.OrdinalIgnoreCase)) return null;
+        var pil = tekst.LastIndexOf('→');
+        if (pil >= 0) return tekst[(pil + 1)..].Trim();
+        var idx = tekst.IndexOf(" til ", StringComparison.OrdinalIgnoreCase);
+        return idx >= 0 ? tekst[(idx + 5)..].Trim() : null;
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;

@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.KundekortService Kundekort
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.SettingsService Settings
+@inject RentkuttCRM.Services.LoggService Logg
 @inject NavigationManager Nav
 
 <PageTitle>Statistikk — Rentekutt</PageTitle>
@@ -33,6 +34,63 @@ else
             @foreach (var p in _partnere) { <option value="@p.Navn">@p.Navn</option> }
         </select>
         <span class="stat-period-info">@Rows.Count søknader i utvalget</span>
+    </div>
+
+    var syblSbl = Syklus("SBL Signert");
+    var syblUtb = Syklus("Utbetalt");
+    var syblAvs = Syklus("Avslag");
+    var sblD = SnittDel(syblSbl.SnittTimer);
+    var utbD = SnittDel(syblUtb.SnittTimer);
+    var avsD = SnittDel(syblAvs.SnittTimer);
+    <div class="section syk-card">
+        <div class="syk-head">
+            <div class="syk-title">
+                <span class="syk-ikon">◷</span>
+                <div>
+                    <h2>Syklustider</h2>
+                    <span class="syk-sub">Snitt tid fra opprettet til milepæl</span>
+                </div>
+            </div>
+            <span class="syk-periode">@PeriodeLabel</span>
+        </div>
+
+        <div class="syk-timeline">
+            <div class="syk-stage syk-start">
+                <div class="syk-marker"><span class="syk-mdot"></span></div>
+                <div class="syk-navn">Opprettet</div>
+                <div class="syk-val">0<span class="syk-enh">d</span></div>
+                <div class="syk-meta">nytt lead · påbegynt · ny søknad</div>
+            </div>
+
+            <div class="syk-link"><span class="syk-dur">+@(sblD.Verdi)@(sblD.Enhet)</span></div>
+
+            <div class="syk-stage syk-blue">
+                <div class="syk-marker"><span class="syk-mdot"></span></div>
+                <div class="syk-navn">SBL Signert</div>
+                <div class="syk-val">@sblD.Verdi<span class="syk-enh">@sblD.Enhet</span></div>
+                <div class="syk-meta">@syblSbl.Antall saker nådde milepælen</div>
+            </div>
+
+            <div class="syk-link"></div>
+
+            <div class="syk-stage syk-green">
+                <div class="syk-marker"><span class="syk-mdot"></span></div>
+                <div class="syk-navn">Utbetalt</div>
+                <div class="syk-val">@utbD.Verdi<span class="syk-enh">@utbD.Enhet</span></div>
+                <div class="syk-meta">@syblUtb.Antall saker utbetalt</div>
+            </div>
+        </div>
+
+        <div class="syk-avslag">
+            <span class="syk-avslag-tag">Frafall</span>
+            <div class="syk-avslag-body">
+                <span class="syk-avslag-navn">Avslag</span>
+                <span class="syk-avslag-val">@avsD.Verdi<span class="syk-enh">@avsD.Enhet</span></span>
+                <span class="syk-avslag-meta">snitt tid til avslag · @syblAvs.Antall saker</span>
+            </div>
+        </div>
+
+        <p class="syk-foot">Måler tiden fra saken ble opprettet til den nådde milepælen, for saker som nådde milepælen i valgt periode (styres av tidsfilteret øverst).</p>
     </div>
 
     var rows = Rows;
@@ -366,6 +424,45 @@ else
     private string _leadskilde = "";
     private string _bankFilter = "";
 
+    // ---- Syklustider (snitt tid fra opprettet til milepæl) — bruker toppfilteret (_periode) ----
+    private List<LoggService.StatusHendelse> _statusHendelser = new();
+    private Dictionary<Guid, DateTime> _opprettetMap = new();
+
+    // Startpunkt for syklus-vinduet, utledet fra toppfilteret (UTC, mot logg-tidsstempler).
+    private DateTime SyklusFra => _periode switch
+    {
+        "7" => DateTime.UtcNow.AddDays(-7),
+        "90" => DateTime.UtcNow.AddDays(-90),
+        "ytd" => new DateTime(DateTime.UtcNow.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        "all" => DateTime.MinValue,
+        _ => DateTime.UtcNow.AddDays(-30),
+    };
+
+    private record SyklusResultat(int Antall, double SnittTimer);
+
+    private SyklusResultat Syklus(string status)
+    {
+        var fra = SyklusFra;
+        var deltas = _statusHendelser
+            .Where(h => string.Equals(h.Status, status, StringComparison.OrdinalIgnoreCase) && h.Opprettet >= fra)
+            .GroupBy(h => h.KundekortId)
+            .Select(g => g.OrderBy(x => x.Opprettet).First())
+            .Where(h => _opprettetMap.ContainsKey(h.KundekortId))
+            .Select(h => (h.Opprettet - _opprettetMap[h.KundekortId]).TotalHours)
+            .Where(t => t >= 0)
+            .ToList();
+        return new SyklusResultat(deltas.Count, deltas.Count > 0 ? deltas.Average() : 0);
+    }
+
+    // Deler opp snittet i tallverdi + enhet for penere typografi.
+    private static (string Verdi, string Enhet) SnittDel(double timer)
+    {
+        if (timer <= 0) return ("—", "");
+        return timer < 24 ? ($"{timer:0.#}".Replace('.', ','), "t") : ($"{timer / 24:0.#}".Replace('.', ','), "d");
+    }
+
+    private string PeriodeLabel => _perioder.FirstOrDefault(p => p.Verdi == _periode).Navn ?? "30 dager";
+
     // Krav/mål for benchmarking av agenter (lagres i innstillinger).
     private const string KeyMalDager = "mal_dager_per_sak";
     private const string KeyMalSakerUke = "mal_saker_uke";
@@ -510,12 +607,15 @@ else
         var partnereTask = Partners.ListAsync();
         var malDagerTask = Settings.GetDecimalAsync(KeyMalDager, 14m);
         var malUkeTask = Settings.GetIntAsync(KeyMalSakerUke, 10);
-        await Task.WhenAll(allTask, partnereTask, malDagerTask, malUkeTask);
+        var hendTask = Logg.StatusHendelserSidenAsync(DateTime.UtcNow.AddDays(-1095));
+        await Task.WhenAll(allTask, partnereTask, malDagerTask, malUkeTask, hendTask);
         _all = allTask.Result;
         _partnere = partnereTask.Result;
         _partnerMap = _partnere.GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
         _malDager = malDagerTask.Result;
         _malSakerUke = malUkeTask.Result;
+        _statusHendelser = hendTask.Result;
+        _opprettetMap = _all.GroupBy(k => k.Id).ToDictionary(g => g.Key, g => g.First().CreatedAt);
         _loading = false;
     }
 
