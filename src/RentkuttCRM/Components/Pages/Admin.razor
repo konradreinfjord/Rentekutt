@@ -1225,6 +1225,21 @@ else if (_active == "Arbeidsliste")
             <span class="page-sub" style="font-size:12px; margin:0 0 6px">Når en agent trykker «Ikke svar» på kundekortet, forsvinner oppgaven i så mange timer og dukker så opp igjen.</span>
         </div>
 
+        <div class="rule-builder" style="align-items:flex-end; margin-bottom:14px; flex-wrap:wrap">
+            <div class="rb-field" style="min-width:320px; flex:1 1 320px">
+                <label>Importer vilkår fra logikk-matrise</label>
+                <select class="rb-input" @bind="_alImportId">
+                    <option value="">— velg en rutingsregel —</option>
+                    @foreach (var r in _rules.Where(r => r.Aktiv))
+                    {
+                        <option value="@r.Id">@LabelFor(r.FeltNokkel) @r.Operator @DisplayValue(r) → @string.Join(", ", r.BankerListe)</option>
+                    }
+                </select>
+            </div>
+            <button class="btn-sec rb-add" @onclick="ImporterFraRuting" disabled="@string.IsNullOrEmpty(_alImportId)">Hent til skjema</button>
+            <span class="page-sub" style="font-size:12px; margin:0 0 6px">Henter vilkårene (postnr/fylke/lånetype m.m.) inn i skjemaet — skriv arbeidsoppgaven og trykk «Legg til».</span>
+        </div>
+
         <div class="al-form">
             <div class="al-form-tit">@(_alRedigererId is null ? "Ny regel" : "Endre regel")</div>
             <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap; gap:12px">
@@ -1254,8 +1269,16 @@ else if (_active == "Arbeidsliste")
                     </select>
                 </div>
                 <div class="rb-field rb-op" style="max-width:190px">
-                    <label>Postnr</label>
+                    <label>Postnr (liste/prefiks)</label>
                     <input class="rb-input" @bind="_alUtkast.Postnr" placeholder="7288, eller 72 (prefiks)" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:110px">
+                    <label>Postnr fra</label>
+                    <input class="rb-input" @bind="_alUtkast.PostnrFra" placeholder="7000" />
+                </div>
+                <div class="rb-field rb-op" style="max-width:110px">
+                    <label>Postnr til</label>
+                    <input class="rb-input" @bind="_alUtkast.PostnrTil" placeholder="7999" />
                 </div>
                 <div class="rb-field rb-op" style="max-width:180px">
                     <label>Fylke</label>
@@ -2378,9 +2401,45 @@ else if (_active == "GDPR")
     private async Task LagreUtsattTimer() { await Arbeidsliste.LagreUtsattTimerAsync(_alUtsattTimer); _alMsg = $"Lagret: «Ikke svar» holder saken ute i {_alUtsattTimer} timer."; }
     private static readonly string[] _alLaanetyper = { "Boliglån", "Refinansiering", "Annen finansiering" };
 
+    private string _alImportId = "";
+
     private static bool HarVilkaar(ArbeidsRegel r) =>
-        new[] { r.Status, r.Bank, r.NavarendeBank, r.Postnr, r.Fylke, r.Kilde, r.AvslagGrunn, r.KundeType, r.Laanetype }
+        new[] { r.Status, r.Bank, r.NavarendeBank, r.Postnr, r.PostnrFra, r.PostnrTil, r.Fylke, r.Kilde, r.AvslagGrunn, r.KundeType, r.Laanetype }
             .Any(v => !string.IsNullOrWhiteSpace(v)) || r.BelopMin.HasValue || r.BelopMax.HasValue;
+
+    // Hent vilkårene fra en rutingsregel (logikk-matrise) inn i skjemaet.
+    private void ImporterFraRuting()
+    {
+        var r = _rules.FirstOrDefault(x => x.Id.ToString() == _alImportId);
+        if (r is null) return;
+        _alRedigererId = null;
+        var u = new ArbeidsRegel();
+        var verdi = (r.Verdi ?? "").Trim();
+        var mellom = string.Equals(r.Operator, "mellom", StringComparison.OrdinalIgnoreCase);
+        var (fra, til) = SplittIntervall(verdi);
+        switch (r.FeltNokkel)
+        {
+            case "postnummer":
+                if (mellom) { u.PostnrFra = fra; u.PostnrTil = til; } else u.Postnr = verdi;
+                break;
+            case "fylke": u.Fylke = verdi; break;
+            case "laanetype": case "lånetype": u.Laanetype = verdi; break;
+            case "kunde_type": case "kundetype": u.KundeType = verdi; break;
+            case "onsket_laanebelop": case "lånebeløp": case "laanebelop":
+                if (mellom) { if (decimal.TryParse(fra, out var bf)) u.BelopMin = bf; if (decimal.TryParse(til, out var bt)) u.BelopMax = bt; }
+                break;
+        }
+        _alUtkast = u;
+        _alMsg = HarVilkaar(u)
+            ? "Hentet vilkår fra logikk-matrise — skriv arbeidsoppgaven og trykk «Legg til»."
+            : $"Feltet «{LabelFor(r.FeltNokkel)}» har ingen tilsvarende vilkår i arbeidslista — sett vilkår manuelt.";
+    }
+
+    private static (string Fra, string Til) SplittIntervall(string verdi)
+    {
+        var deler = verdi.Split('-', 2, StringSplitOptions.TrimEntries);
+        return deler.Length == 2 ? (deler[0], deler[1]) : (verdi, "");
+    }
 
     private async Task LagreRegel()
     {
@@ -2415,7 +2474,7 @@ else if (_active == "GDPR")
     private static ArbeidsRegel Klon(ArbeidsRegel r) => new()
     {
         Id = r.Id, Oppgave = r.Oppgave, Status = r.Status, Bank = r.Bank, NavarendeBank = r.NavarendeBank,
-        Postnr = r.Postnr, Fylke = r.Fylke, Kilde = r.Kilde, AvslagGrunn = r.AvslagGrunn,
+        Postnr = r.Postnr, PostnrFra = r.PostnrFra, PostnrTil = r.PostnrTil, Fylke = r.Fylke, Kilde = r.Kilde, AvslagGrunn = r.AvslagGrunn,
         KundeType = r.KundeType, Laanetype = r.Laanetype, BelopMin = r.BelopMin, BelopMax = r.BelopMax, Aktiv = r.Aktiv,
     };
 
@@ -2427,6 +2486,8 @@ else if (_active == "GDPR")
         if (!string.IsNullOrWhiteSpace(r.Bank)) v.Add($"Sendt til: {r.Bank}");
         if (!string.IsNullOrWhiteSpace(r.NavarendeBank)) v.Add($"Nåv. bank: {r.NavarendeBank}");
         if (!string.IsNullOrWhiteSpace(r.Postnr)) v.Add($"Postnr: {r.Postnr}");
+        if (!string.IsNullOrWhiteSpace(r.PostnrFra) || !string.IsNullOrWhiteSpace(r.PostnrTil))
+            v.Add($"Postnr {(string.IsNullOrWhiteSpace(r.PostnrFra) ? "…" : r.PostnrFra)}–{(string.IsNullOrWhiteSpace(r.PostnrTil) ? "…" : r.PostnrTil)}");
         if (!string.IsNullOrWhiteSpace(r.Fylke)) v.Add($"Fylke: {r.Fylke}");
         if (!string.IsNullOrWhiteSpace(r.Kilde)) v.Add($"Kilde: {r.Kilde}");
         if (!string.IsNullOrWhiteSpace(r.KundeType)) v.Add(r.KundeType);

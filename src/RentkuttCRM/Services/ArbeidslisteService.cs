@@ -18,6 +18,8 @@ public class ArbeidsRegel
     // Nye vilkår:
     public string NavarendeBank { get; set; } = ""; // kundens nåværende bank (eksakt)
     public string Postnr { get; set; } = "";         // komma-separert; eksakt eller prefiks ("72" = alle 72xx)
+    public string PostnrFra { get; set; } = "";       // intervall fra (4-sifret)
+    public string PostnrTil { get; set; } = "";       // intervall til (4-sifret)
     public string Fylke { get; set; } = "";          // fylke (fra kundens fylke eller utledet fra kommune)
     public string Kilde { get; set; } = "";          // leadskilde (eksakt)
     public decimal? BelopMin { get; set; }           // ønsket lånebeløp fra/til
@@ -168,6 +170,13 @@ public class ArbeidslisteService
             var pnr = (k.Postnummer ?? "").Trim();
             var tokens = r.Postnr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (pnr.Length == 0 || !tokens.Any(t => pnr == t || pnr.StartsWith(t, StringComparison.Ordinal))) return false;
+        }
+        if (!string.IsNullOrWhiteSpace(r.PostnrFra) || !string.IsNullOrWhiteSpace(r.PostnrTil))
+        {
+            noeSatt = true;
+            if (!int.TryParse((k.Postnummer ?? "").Trim(), out var pn)) return false;
+            if (int.TryParse(r.PostnrFra.Trim(), out var fra) && pn < fra) return false;
+            if (int.TryParse(r.PostnrTil.Trim(), out var til) && pn > til) return false;
         }
         if (!string.IsNullOrWhiteSpace(r.Fylke))
         {
