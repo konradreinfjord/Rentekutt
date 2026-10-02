@@ -1317,6 +1317,8 @@ a { color: var(--accent); text-decoration: none; }
 .al-form { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface-2); }
 .al-form-tit { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
 .al-chip { display: inline-block; margin: 1px 4px 1px 0; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #334155; background: #eef2f7; border: 1px solid #dbe3ec; border-radius: 7px; white-space: nowrap; }
+.al-chip-ekskl { color: #a3271d; background: #fdeceb; border-color: #f4cdc9; }
+.al-ekskluder { flex-basis: 100%; display: flex; gap: 12px; flex-wrap: wrap; padding: 12px; border: 1px dashed #f4cdc9; border-radius: 10px; background: #fdf7f6; }
 tr.al-rediger { background: #f4f8ff; }
 
 /* «Ikke svar»-popup (SMS-mal + logg) */

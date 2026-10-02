@@ -24,7 +24,28 @@ public class ArbeidsRegel
     public string Kilde { get; set; } = "";          // leadskilde (eksakt)
     public decimal? BelopMin { get; set; }           // ønsket lånebeløp fra/til
     public decimal? BelopMax { get; set; }
+    // Ekskludering: hvis saken OGSÅ matcher disse vilkårene, gis IKKE oppgaven (unngår overlapp
+    // mellom regler — f.eks. «ring Akershus + Oslo» men ekskluder fylke Oslo så de ikke dobles).
+    public ArbeidsVilkaar Ekskluder { get; set; } = new();
     public bool Aktiv { get; set; } = true;
+}
+
+/// <summary>Et sett med match-vilkår (brukes til ekskludering på en arbeidsregel). Tomt = ingen.</summary>
+public class ArbeidsVilkaar
+{
+    public string Status { get; set; } = "";
+    public string Bank { get; set; } = "";
+    public string NavarendeBank { get; set; } = "";
+    public string Postnr { get; set; } = "";
+    public string PostnrFra { get; set; } = "";
+    public string PostnrTil { get; set; } = "";
+    public string Fylke { get; set; } = "";
+    public string Kilde { get; set; } = "";
+    public string AvslagGrunn { get; set; } = "";
+    public string KundeType { get; set; } = "";
+    public string Laanetype { get; set; } = "";
+    public decimal? BelopMin { get; set; }
+    public decimal? BelopMax { get; set; }
 }
 
 /// <summary>Per sak + regel: kvittert ut («avklart») eller utsatt («ikke svar») til et tidspunkt.</summary>
@@ -84,41 +105,50 @@ public class ArbeidslisteService
     private Task LagreTilstanderAsync(Dictionary<string, Dictionary<string, OppgaveTilstand>> t) =>
         _settings.SetAsync(StatusKey, JsonSerializer.Serialize(t));
 
+    /// <summary>Normalisert nøkkel for en oppgave — avklart/utsatt spores pr. oppgavetekst (ikke pr. regel),
+    /// slik at overlappende regler med SAMME oppgave deler tilstand og ikke dobles.</summary>
+    public static string NormOppgave(string? oppgave) => (oppgave ?? "").Trim().ToLowerInvariant();
+
     /// <summary>«Avklart» — oppgaven kvitteres ut permanent for denne saken.</summary>
-    public Task SettAvklartAsync(Guid kundekortId, string regelId) =>
-        SettTilstandAsync(kundekortId, regelId, new OppgaveTilstand { Tilstand = "avklart" });
+    public Task SettAvklartAsync(Guid kundekortId, string oppgave) =>
+        SettTilstandAsync(kundekortId, NormOppgave(oppgave), new OppgaveTilstand { Tilstand = "avklart" });
 
     /// <summary>«Ikke svar» — saken ut av lista i angitt antall timer.</summary>
-    public async Task SettIkkeSvarAsync(Guid kundekortId, string regelId, int? timer = null)
+    public async Task SettIkkeSvarAsync(Guid kundekortId, string oppgave, int? timer = null)
     {
         var t = timer ?? await HentUtsattTimerAsync();
-        await SettTilstandAsync(kundekortId, regelId, new OppgaveTilstand { Tilstand = "utsatt", Til = DateTime.UtcNow.AddHours(t) });
+        await SettTilstandAsync(kundekortId, NormOppgave(oppgave), new OppgaveTilstand { Tilstand = "utsatt", Til = DateTime.UtcNow.AddHours(t) });
     }
 
-    private async Task SettTilstandAsync(Guid kundekortId, string regelId, OppgaveTilstand tilstand)
+    private async Task SettTilstandAsync(Guid kundekortId, string oppgaveKey, OppgaveTilstand tilstand)
     {
         var alle = await HentTilstanderAsync();
         var key = kundekortId.ToString();
         if (!alle.TryGetValue(key, out var forKort)) { forKort = new(); alle[key] = forKort; }
-        forKort[regelId] = tilstand;
+        forKort[oppgaveKey] = tilstand;
         await LagreTilstanderAsync(alle);
     }
 
-    /// <summary>Aktive oppgaver på en sak (køen), i regelrekkefølge — hopper over avklarte og utsatte.</summary>
+    /// <summary>Aktive oppgaver på en sak (køen), i regelrekkefølge. Automatisk: overlappende regler som gir
+    /// SAMME oppgave vises bare én gang (dedup pr. oppgavetekst), og avklart/utsatt spores pr. oppgavetekst.</summary>
     public static List<AktivOppgave> AktiveOppgaver(Kundekort k, IEnumerable<ArbeidsRegel> regler,
         Dictionary<string, Dictionary<string, OppgaveTilstand>> tilstander, DateTime nowUtc)
     {
         tilstander.TryGetValue(k.Id.ToString(), out var forKort);
         var res = new List<AktivOppgave>();
+        var sett = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in regler)
         {
             if (!r.Aktiv || string.IsNullOrWhiteSpace(r.Oppgave) || !Matcher(r, k)) continue;
-            if (forKort != null && forKort.TryGetValue(r.Id, out var t))
+            var tekst = r.Oppgave.Trim();
+            var oppgaveKey = NormOppgave(tekst);
+            if (!sett.Add(oppgaveKey)) continue;   // overlappende regel med samme oppgave → hopp over (ingen dobbel)
+            if (forKort != null && forKort.TryGetValue(oppgaveKey, out var t))
             {
                 if (t.Tilstand == "avklart") continue;
                 if (t.Tilstand == "utsatt" && t.Til.HasValue && t.Til.Value > nowUtc) continue;
             }
-            res.Add(new AktivOppgave { RegelId = r.Id, Oppgave = r.Oppgave.Trim() });
+            res.Add(new AktivOppgave { RegelId = r.Id, Oppgave = tekst });
         }
         return res;
     }
@@ -132,66 +162,84 @@ public class ArbeidslisteService
 
     public static bool Matcher(ArbeidsRegel r, Kundekort k)
     {
-        var noeSatt = false;
-        if (!string.IsNullOrWhiteSpace(r.Status))
+        var inkl = new ArbeidsVilkaar
+        {
+            Status = r.Status, Bank = r.Bank, NavarendeBank = r.NavarendeBank,
+            Postnr = r.Postnr, PostnrFra = r.PostnrFra, PostnrTil = r.PostnrTil,
+            Fylke = r.Fylke, Kilde = r.Kilde, AvslagGrunn = r.AvslagGrunn,
+            KundeType = r.KundeType, Laanetype = r.Laanetype, BelopMin = r.BelopMin, BelopMax = r.BelopMax,
+        };
+        // Inkluderingsvilkår: minst ett må være satt, og alle satte må matche.
+        if (!MatcherVilkaar(inkl, k, out var noeSatt) || !noeSatt) return false;
+        // Ekskludering: hvis ekskluderingsvilkår er satt OG saken matcher dem → ingen oppgave.
+        if (r.Ekskluder is { } e && MatcherVilkaar(e, k, out var ekskSatt) && ekskSatt) return false;
+        return true;
+    }
+
+    /// <summary>True hvis saken matcher alle SATTE vilkår i v (vakuøst true når ingen er satt).
+    /// <paramref name="noeSatt"/> = om minst ett vilkår var satt.</summary>
+    public static bool MatcherVilkaar(ArbeidsVilkaar v, Kundekort k, out bool noeSatt)
+    {
+        noeSatt = false;
+        if (!string.IsNullOrWhiteSpace(v.Status))
         {
             noeSatt = true;
-            if (!string.Equals(k.Status, r.Status, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(k.Status, v.Status, StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.Bank))
+        if (!string.IsNullOrWhiteSpace(v.Bank))
         {
             noeSatt = true;
-            if (!string.Equals(k.DelegertBank?.Trim(), r.Bank.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(k.DelegertBank?.Trim(), v.Bank.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.AvslagGrunn))
+        if (!string.IsNullOrWhiteSpace(v.AvslagGrunn))
         {
             noeSatt = true;
             if (string.IsNullOrWhiteSpace(k.AvslagGrunn)
-                || k.AvslagGrunn.IndexOf(r.AvslagGrunn.Trim(), StringComparison.OrdinalIgnoreCase) < 0) return false;
+                || k.AvslagGrunn.IndexOf(v.AvslagGrunn.Trim(), StringComparison.OrdinalIgnoreCase) < 0) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.KundeType))
+        if (!string.IsNullOrWhiteSpace(v.KundeType))
         {
             noeSatt = true;
-            if (!string.Equals(k.KundeType, r.KundeType, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(k.KundeType, v.KundeType, StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.Laanetype))
+        if (!string.IsNullOrWhiteSpace(v.Laanetype))
         {
             noeSatt = true;
-            if (!string.Equals(k.Laanetype?.Trim(), r.Laanetype.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(k.Laanetype?.Trim(), v.Laanetype.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.NavarendeBank))
+        if (!string.IsNullOrWhiteSpace(v.NavarendeBank))
         {
             noeSatt = true;
-            if (!string.Equals(k.NavarendeBank?.Trim(), r.NavarendeBank.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(k.NavarendeBank?.Trim(), v.NavarendeBank.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.Postnr))
+        if (!string.IsNullOrWhiteSpace(v.Postnr))
         {
             noeSatt = true;
             var pnr = (k.Postnummer ?? "").Trim();
-            var tokens = r.Postnr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var tokens = v.Postnr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (pnr.Length == 0 || !tokens.Any(t => pnr == t || pnr.StartsWith(t, StringComparison.Ordinal))) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.PostnrFra) || !string.IsNullOrWhiteSpace(r.PostnrTil))
+        if (!string.IsNullOrWhiteSpace(v.PostnrFra) || !string.IsNullOrWhiteSpace(v.PostnrTil))
         {
             noeSatt = true;
             if (!int.TryParse((k.Postnummer ?? "").Trim(), out var pn)) return false;
-            if (int.TryParse(r.PostnrFra.Trim(), out var fra) && pn < fra) return false;
-            if (int.TryParse(r.PostnrTil.Trim(), out var til) && pn > til) return false;
+            if (int.TryParse(v.PostnrFra.Trim(), out var fra) && pn < fra) return false;
+            if (int.TryParse(v.PostnrTil.Trim(), out var til) && pn > til) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.Fylke))
+        if (!string.IsNullOrWhiteSpace(v.Fylke))
         {
             noeSatt = true;
             var fylke = !string.IsNullOrWhiteSpace(k.Fylke) ? k.Fylke!.Trim()
                       : !string.IsNullOrWhiteSpace(k.Kommune) ? NorskeKommuner.Fylke(k.Kommune!.Trim()) : "";
-            if (!string.Equals(fylke, r.Fylke.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(fylke, v.Fylke.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrWhiteSpace(r.Kilde))
+        if (!string.IsNullOrWhiteSpace(v.Kilde))
         {
             noeSatt = true;
-            if (!string.Equals(k.Kilde?.Trim(), r.Kilde.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(k.Kilde?.Trim(), v.Kilde.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         }
-        if (r.BelopMin.HasValue) { noeSatt = true; if (!(k.OnsketLaanebelop >= r.BelopMin.Value)) return false; }
-        if (r.BelopMax.HasValue) { noeSatt = true; if (!(k.OnsketLaanebelop <= r.BelopMax.Value)) return false; }
-        return noeSatt;
+        if (v.BelopMin.HasValue) { noeSatt = true; if (!(k.OnsketLaanebelop >= v.BelopMin.Value)) return false; }
+        if (v.BelopMax.HasValue) { noeSatt = true; if (!(k.OnsketLaanebelop <= v.BelopMax.Value)) return false; }
+        return true;
     }
 }

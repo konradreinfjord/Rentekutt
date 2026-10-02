@@ -1211,6 +1211,9 @@ else if (_active == "Arbeidsliste")
             Lag regler som gir saker en <strong>arbeidsoppgave</strong> når de matcher vilkårene.
             Oppgaven vises i egen kolonne på <strong>Saker</strong>, og du kan filtrere på «Har arbeidsoppgave».
             Vilkår du lar stå tomme, ignoreres — men minst ett vilkår må være satt.
+            <br /><strong>Automatisk:</strong> overlapper to regler (f.eks. på postnr/fylke) og gir <em>samme</em> arbeidsoppgave,
+            vises oppgaven kun én gang per sak — ingen doble oppgaver. Bruk «Ekskluder» nedenfor kun hvis to regler med
+            <em>ulik</em> oppgave skal unngå å overlappe.
         </p>
         <p class="page-sub" style="margin:0 0 14px; font-size:12px; color:var(--text-muted)">
             Eks.: Avslagsgrunn inneholder «likviditet» fra Soknedal → oppgave «Send kunden til Instabank».
@@ -1319,6 +1322,61 @@ else if (_active == "Arbeidsliste")
                     <label>Avslagsgrunn inneholder</label>
                     <input class="rb-input" @bind="_alUtkast.AvslagGrunn" placeholder="f.eks. likviditet" />
                 </div>
+
+                <div class="rb-field" style="flex-basis:100%">
+                    <label class="ff-check"><input type="checkbox" @bind="_visEkskluder" /> Ekskluder — ikke gi oppgaven hvis saken <strong>også</strong> matcher dette (unngår overlapp mellom regler)</label>
+                </div>
+                @if (_visEkskluder)
+                {
+                    <div class="al-ekskluder">
+                        <div class="rb-field rb-op" style="max-width:190px">
+                            <label>Ekskl. fylke</label>
+                            <select class="rb-input" @bind="_alUtkast.Ekskluder.Fylke">
+                                <option value="">—</option>
+                                @foreach (var f in NorskeKommuner.Fylker) { <option value="@f">@f</option> }
+                            </select>
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:170px">
+                            <label>Ekskl. postnr (liste/prefiks)</label>
+                            <input class="rb-input" @bind="_alUtkast.Ekskluder.Postnr" placeholder="f.eks. 0 (Oslo)" />
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:110px">
+                            <label>Ekskl. postnr fra</label>
+                            <input class="rb-input" @bind="_alUtkast.Ekskluder.PostnrFra" placeholder="—" />
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:110px">
+                            <label>Ekskl. postnr til</label>
+                            <input class="rb-input" @bind="_alUtkast.Ekskluder.PostnrTil" placeholder="—" />
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:130px">
+                            <label>Ekskl. kundetype</label>
+                            <select class="rb-input" @bind="_alUtkast.Ekskluder.KundeType">
+                                <option value="">—</option>
+                                <option value="B2C">B2C</option>
+                                <option value="B2B">B2B</option>
+                            </select>
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:170px">
+                            <label>Ekskl. lånetype</label>
+                            <select class="rb-input" @bind="_alUtkast.Ekskluder.Laanetype">
+                                <option value="">—</option>
+                                @foreach (var t in _alLaanetyper) { <option value="@t">@t</option> }
+                            </select>
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:190px">
+                            <label>Ekskl. status</label>
+                            <select class="rb-input" @bind="_alUtkast.Ekskluder.Status">
+                                <option value="">—</option>
+                                @foreach (var s in KundekortService.Statuser) { <option value="@s">@s</option> }
+                            </select>
+                        </div>
+                        <div class="rb-field rb-op" style="max-width:160px">
+                            <label>Ekskl. leadskilde</label>
+                            <input class="rb-input" @bind="_alUtkast.Ekskluder.Kilde" placeholder="f.eks. Prismatch" />
+                        </div>
+                    </div>
+                }
+
                 <button class="btn-primary rb-add" @onclick="LagreRegel">@(_alRedigererId is null ? "Legg til" : "Lagre endring")</button>
                 @if (_alRedigererId is not null)
                 {
@@ -1347,7 +1405,7 @@ else if (_active == "Arbeidsliste")
                         <td>
                             @{ var vilkaar = Vilkaar(r); }
                             @if (vilkaar.Count == 0) { <span class="muted">—</span> }
-                            else { @foreach (var v in vilkaar) { <span class="al-chip">@v</span> } }
+                            else { @foreach (var v in vilkaar) { <span class="al-chip @(v.StartsWith("ikke ") ? "al-chip-ekskl" : "")">@v</span> } }
                         </td>
                         <td style="vertical-align:top"><input type="checkbox" checked="@r.Aktiv" @onchange="e => ToggleRegel(r, (bool)e.Value!)" /></td>
                         <td style="vertical-align:top; white-space:nowrap" @onclick:stopPropagation="true">
@@ -2444,6 +2502,7 @@ else if (_active == "GDPR")
     private string? _alRedigererId;             // id på regelen som redigeres (null = ny)
     private int _alUtsattTimer = ArbeidslisteService.StandardUtsattTimer;
     private string? _alMsg;
+    private bool _visEkskluder;   // vis ekskluderingsfeltene i regelskjemaet
 
     private async Task LagreUtsattTimer() { await Arbeidsliste.LagreUtsattTimerAsync(_alUtsattTimer); _alMsg = $"Lagret: «Ikke svar» holder saken ute i {_alUtsattTimer} timer."; }
     private static readonly string[] _alLaanetyper = { "Boliglån", "Refinansiering", "Annen finansiering" };
@@ -2507,22 +2566,36 @@ else if (_active == "GDPR")
         await Arbeidsliste.LagreAsync(_alRegler);
         _alUtkast = new();
         _alRedigererId = null;
+        _visEkskluder = false;
     }
 
     private void StartRediger(ArbeidsRegel r)
     {
         _alRedigererId = r.Id;
         _alUtkast = Klon(r);
+        _visEkskluder = HarEkskluder(r.Ekskluder);
         _alMsg = null;
     }
 
-    private void AvbrytRedigering() { _alRedigererId = null; _alUtkast = new(); _alMsg = null; }
+    private void AvbrytRedigering() { _alRedigererId = null; _alUtkast = new(); _alMsg = null; _visEkskluder = false; }
+
+    private static bool HarEkskluder(ArbeidsVilkaar? e) => e is not null &&
+        (new[] { e.Status, e.Bank, e.NavarendeBank, e.Postnr, e.PostnrFra, e.PostnrTil, e.Fylke, e.Kilde, e.AvslagGrunn, e.KundeType, e.Laanetype }
+            .Any(v => !string.IsNullOrWhiteSpace(v)) || e.BelopMin.HasValue || e.BelopMax.HasValue);
 
     private static ArbeidsRegel Klon(ArbeidsRegel r) => new()
     {
         Id = r.Id, Oppgave = r.Oppgave, Status = r.Status, Bank = r.Bank, NavarendeBank = r.NavarendeBank,
         Postnr = r.Postnr, PostnrFra = r.PostnrFra, PostnrTil = r.PostnrTil, Fylke = r.Fylke, Kilde = r.Kilde, AvslagGrunn = r.AvslagGrunn,
         KundeType = r.KundeType, Laanetype = r.Laanetype, BelopMin = r.BelopMin, BelopMax = r.BelopMax, Aktiv = r.Aktiv,
+        Ekskluder = new ArbeidsVilkaar
+        {
+            Status = r.Ekskluder?.Status ?? "", Bank = r.Ekskluder?.Bank ?? "", NavarendeBank = r.Ekskluder?.NavarendeBank ?? "",
+            Postnr = r.Ekskluder?.Postnr ?? "", PostnrFra = r.Ekskluder?.PostnrFra ?? "", PostnrTil = r.Ekskluder?.PostnrTil ?? "",
+            Fylke = r.Ekskluder?.Fylke ?? "", Kilde = r.Ekskluder?.Kilde ?? "", AvslagGrunn = r.Ekskluder?.AvslagGrunn ?? "",
+            KundeType = r.Ekskluder?.KundeType ?? "", Laanetype = r.Ekskluder?.Laanetype ?? "",
+            BelopMin = r.Ekskluder?.BelopMin, BelopMax = r.Ekskluder?.BelopMax,
+        },
     };
 
     // Kompakt vilkårssammendrag (chips) i regeltabellen.
@@ -2542,6 +2615,20 @@ else if (_active == "GDPR")
         if (r.BelopMin.HasValue) v.Add($"≥ {r.BelopMin:N0} kr");
         if (r.BelopMax.HasValue) v.Add($"≤ {r.BelopMax:N0} kr");
         if (!string.IsNullOrWhiteSpace(r.AvslagGrunn)) v.Add($"Avslag: «{r.AvslagGrunn}»");
+        var e = r.Ekskluder;
+        if (e is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(e.Fylke)) v.Add($"ikke fylke: {e.Fylke}");
+            if (!string.IsNullOrWhiteSpace(e.Postnr)) v.Add($"ikke postnr: {e.Postnr}");
+            if (!string.IsNullOrWhiteSpace(e.PostnrFra) || !string.IsNullOrWhiteSpace(e.PostnrTil))
+                v.Add($"ikke postnr {(string.IsNullOrWhiteSpace(e.PostnrFra) ? "…" : e.PostnrFra)}–{(string.IsNullOrWhiteSpace(e.PostnrTil) ? "…" : e.PostnrTil)}");
+            if (!string.IsNullOrWhiteSpace(e.KundeType)) v.Add($"ikke {e.KundeType}");
+            if (!string.IsNullOrWhiteSpace(e.Laanetype)) v.Add($"ikke {e.Laanetype}");
+            if (!string.IsNullOrWhiteSpace(e.Status)) v.Add($"ikke status: {e.Status}");
+            if (!string.IsNullOrWhiteSpace(e.Bank)) v.Add($"ikke sendt til: {e.Bank}");
+            if (!string.IsNullOrWhiteSpace(e.NavarendeBank)) v.Add($"ikke nåv. bank: {e.NavarendeBank}");
+            if (!string.IsNullOrWhiteSpace(e.Kilde)) v.Add($"ikke kilde: {e.Kilde}");
+        }
         return v;
     }
 

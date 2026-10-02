@@ -1170,7 +1170,7 @@
     private async Task OppgaveAvklart(AktivOppgave o)
     {
         _arbBusy = true;
-        await Arbeidsliste.SettAvklartAsync(_k.Id, o.RegelId);
+        await Arbeidsliste.SettAvklartAsync(_k.Id, o.Oppgave);
         await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Arbeidsoppgave avklart: {o.Oppgave}", "arbeidsoppgave");
         _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
         _arbMsg = "Oppgave avklart.";
@@ -1228,7 +1228,7 @@
     private async Task FullforIkkeSvar()
     {
         if (_ikkeSvarOppg is null) return;
-        await Arbeidsliste.SettIkkeSvarAsync(_k.Id, _ikkeSvarOppg.RegelId, _utsattTimer);
+        await Arbeidsliste.SettIkkeSvarAsync(_k.Id, _ikkeSvarOppg.Oppgave, _utsattTimer);
         await Logg.LoggAsync(_k.Id, Session.UserName ?? Session.Email, $"Arbeidsoppgave utsatt (ikke svar) i {_utsattTimer} t: {_ikkeSvarOppg.Oppgave}", "arbeidsoppgave");
         _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
         _arbMsg = $"Utsatt {_utsattTimer} timer (ikke svar).";
