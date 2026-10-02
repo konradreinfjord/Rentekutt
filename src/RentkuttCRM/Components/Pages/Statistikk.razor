@@ -36,6 +36,64 @@ else
         <span class="stat-period-info">@Rows.Count søknader i utvalget</span>
     </div>
 
+    var kvitDager = KvittertBarer();
+    var kvitMaxB = kvitDager.Count > 0 ? Math.Max(1, kvitDager.Max(d => Enumerable.Range(0, 3).Max(b => d.Avklart[b] + d.IkkeSvar[b]))) : 1;
+    var aapnetDel = AapnetTilKvittertTimer();
+    var aapnetSnitt = aapnetDel.Count > 0 ? aapnetDel.Average() : 0;
+    var aapnetLengste = aapnetDel.Count > 0 ? aapnetDel.Max() : 0;
+    var aapnetKorteste = aapnetDel.Count > 0 ? aapnetDel.Min() : 0;
+    <div class="section">
+        <div class="syk-head">
+            <div class="syk-title">
+                <span class="syk-ikon">✓</span>
+                <div>
+                    <h2>Arbeidsliste — kvittert ut</h2>
+                    <span class="syk-sub">Oppgaver agentene har kvittert ut (avklart eller «ikke svar»)</span>
+                </div>
+            </div>
+            <span class="syk-periode">@PeriodeLabel</span>
+        </div>
+        <div class="db-stats">
+            <div class="db-box"><span class="db-box-num">@(ArbAvklart + ArbIkkeSvar)</span><span class="db-box-lbl">Kvittert ut totalt</span></div>
+            <div class="db-box accent-green"><span class="db-box-num">@ArbAvklart</span><span class="db-box-lbl">Avklart</span></div>
+            <div class="db-box accent-amber"><span class="db-box-num">@ArbIkkeSvar</span><span class="db-box-lbl">Ikke svar (utsatt)</span></div>
+            <div class="db-box accent-blue"><span class="db-box-num">@Varighet(aapnetSnitt)</span><span class="db-box-lbl">Snitt åpnet → kvittert</span></div>
+            <div class="db-box accent-red"><span class="db-box-num">@Varighet(aapnetLengste)</span><span class="db-box-lbl">Lengste sak (åpnet → kvittert)</span></div>
+            <div class="db-box accent-green"><span class="db-box-num">@Varighet(aapnetKorteste)</span><span class="db-box-lbl">Korteste sak (åpnet → kvittert)</span></div>
+        </div>
+
+        <div class="kvit-legend">
+            <span class="kvit-leg"><span class="kvit-sw kvit-avklart"></span>Avklart</span>
+            <span class="kvit-leg"><span class="kvit-sw kvit-ikkesvar"></span>Ikke svar</span>
+            <span class="kvit-leg" style="color:var(--text-muted)">· hver bar er delt i 3: 08–12 (øverst) / 12–14 / 14–16 (nederst)</span>
+        </div>
+        <div class="kvit-chart-wrap">
+            <div class="kvit-yaxis"><span>08–12</span><span>12–14</span><span>14–16</span></div>
+            <div class="kvit-chart">
+                @if (kvitDager.All(d => d.Total == 0))
+                {
+                    <p class="page-sub" style="margin:4px 0 0; font-size:12px">Ingen oppgaver kvittert ut i perioden.</p>
+                }
+                @foreach (var d in kvitDager)
+                {
+                    <div class="kvit-col" title="@d.Dato.ToString("dd.MM") @Ukedag(d.Dato) · 08–12: @(d.Avklart[0] + d.IkkeSvar[0]) · 12–14: @(d.Avklart[1] + d.IkkeSvar[1]) · 14–16: @(d.Avklart[2] + d.IkkeSvar[2])">
+                        <div class="kvit-slots">
+                            @for (var b = 0; b <= 2; b++)
+                            {
+                                <div class="kvit-slot">
+                                    <div class="kvit-fill kvit-avklart" style="height:@(Pct(d.Avklart[b] * 100.0 / kvitMaxB))%"></div>
+                                    <div class="kvit-fill kvit-ikkesvar" style="height:@(Pct(d.IkkeSvar[b] * 100.0 / kvitMaxB))%"></div>
+                                </div>
+                            }
+                        </div>
+                        <span class="kvit-col-dato">@d.Dato.ToString("dd.MM")</span>
+                    </div>
+                }
+            </div>
+        </div>
+        <p class="syk-foot">Hver dag er delt i 3 (08–12 øverst, 12–14, 14–16 nederst), så du ser når på dagen oppgaven ble kvittert ut. Grønt = avklart, gult = ikke svar. Styres av tidsfilteret øverst.</p>
+    </div>
+
     var syblSbl = Syklus("SBL Signert");
     var syblUtb = Syklus("Utbetalt");
     var syblAvs = Syklus("Avslag");
@@ -463,6 +521,79 @@ else
 
     private string PeriodeLabel => _perioder.FirstOrDefault(p => p.Verdi == _periode).Navn ?? "30 dager";
 
+    // ---- Arbeidsliste: oppgaver kvittert ut (fra endringsloggen, kategori «arbeidsoppgave») ----
+    private List<KundekortLogg> _arbeidsLogg = new();
+    private List<KundekortLogg> _innsynLogg = new();
+    private int ArbAvklart => _arbeidsLogg.Count(l => l.Opprettet >= SyklusFra && l.Tekst.Contains("avklart", StringComparison.OrdinalIgnoreCase));
+    private int ArbIkkeSvar => _arbeidsLogg.Count(l => l.Opprettet >= SyklusFra && l.Tekst.Contains("ikke svar", StringComparison.OrdinalIgnoreCase));
+
+    // Hver dag deles i 3 tidsbøtter (08–12, 12–14, 14–16). Per bøtte: antall avklart og ikke-svar.
+    private record DagKvittert(DateTime Dato, int[] Avklart, int[] IkkeSvar)
+    { public int Total => Avklart.Sum() + IkkeSvar.Sum(); }
+
+    // 3 bøtter som dekker hele dagen: alt før 12 → 08–12, 12–14 → 12–14, 14 og senere → 14–16.
+    private static int TidsBotte(int time) => time < 12 ? 0 : time < 14 ? 1 : 2;
+
+    // Kvittert ut pr. dag i perioden — alle dager i rekkefølge (også 0-dager) for stående barer.
+    private List<DagKvittert> KvittertBarer()
+    {
+        var perDag = new Dictionary<DateTime, (int[] A, int[] I)>();
+        foreach (var l in _arbeidsLogg.Where(l => l.Opprettet >= SyklusFra))
+        {
+            var oslo = l.Opprettet.TilOslo();
+            if (!perDag.TryGetValue(oslo.Date, out var p)) { p = (new int[3], new int[3]); perDag[oslo.Date] = p; }
+            var b = TidsBotte(oslo.Hour);
+            if (l.Tekst.Contains("ikke svar", StringComparison.OrdinalIgnoreCase)) p.I[b]++;
+            else if (l.Tekst.Contains("avklart", StringComparison.OrdinalIgnoreCase)) p.A[b]++;
+        }
+        var slutt = Tid.Naa.Date;
+        var start = SyklusFra <= DateTime.UtcNow.AddYears(-50)
+            ? (perDag.Count > 0 ? perDag.Keys.Min() : slutt)
+            : SyklusFra.TilOslo().Date;
+        if ((slutt - start).TotalDays > 180) start = slutt.AddDays(-180);   // tak for svært lange perioder
+        var res = new List<DagKvittert>();
+        for (var d = start; d <= slutt; d = d.AddDays(1))
+            res.Add(perDag.TryGetValue(d, out var p)
+                ? new DagKvittert(d, p.A, p.I)
+                : new DagKvittert(d, new int[3], new int[3]));
+        return res;
+    }
+
+    // Tid (timer) fra agenten åpnet saken (innsyn-logg) til oppgaven ble kvittert ut — én verdi per kvittering.
+    private List<double> AapnetTilKvittertTimer()
+    {
+        var opensByKort = _innsynLogg
+            .Where(l => l.Tekst.Contains("Åpnet", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(l => l.KundekortId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Opprettet).OrderBy(x => x).ToList());
+        var deltas = new List<double>();
+        foreach (var kv in _arbeidsLogg.Where(l => l.Opprettet >= SyklusFra))
+        {
+            if (!opensByKort.TryGetValue(kv.KundekortId, out var opens)) continue;
+            DateTime? siste = null;
+            foreach (var o in opens) { if (o <= kv.Opprettet) siste = o; else break; }
+            if (siste is { } s) { var h = (kv.Opprettet - s).TotalHours; if (h >= 0) deltas.Add(h); }
+        }
+        return deltas;
+    }
+
+    // CSS krever punktum som desimalskille (nb-NO gir komma) — bruk invariant for prosent-høyder.
+    private static string Pct(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Varighet(double timer)
+    {
+        if (timer <= 0) return "—";
+        if (timer < 1) return $"{timer * 60:0} min";
+        return timer < 24 ? $"{timer:0.#} t".Replace('.', ',') : $"{timer / 24:0.#} d".Replace('.', ',');
+    }
+
+    private static string Ukedag(DateTime d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Mandag", DayOfWeek.Tuesday => "Tirsdag", DayOfWeek.Wednesday => "Onsdag",
+        DayOfWeek.Thursday => "Torsdag", DayOfWeek.Friday => "Fredag", DayOfWeek.Saturday => "Lørdag",
+        DayOfWeek.Sunday => "Søndag", _ => "",
+    };
+
     // Krav/mål for benchmarking av agenter (lagres i innstillinger).
     private const string KeyMalDager = "mal_dager_per_sak";
     private const string KeyMalSakerUke = "mal_saker_uke";
@@ -608,13 +739,17 @@ else
         var malDagerTask = Settings.GetDecimalAsync(KeyMalDager, 14m);
         var malUkeTask = Settings.GetIntAsync(KeyMalSakerUke, 10);
         var hendTask = Logg.StatusHendelserSidenAsync(DateTime.UtcNow.AddDays(-1095));
-        await Task.WhenAll(allTask, partnereTask, malDagerTask, malUkeTask, hendTask);
+        var arbTask = Logg.KategoriSidenAsync("arbeidsoppgave", DateTime.UtcNow.AddDays(-1095));
+        var innsynTask = Logg.KategoriSidenAsync("innsyn", DateTime.UtcNow.AddDays(-120));
+        await Task.WhenAll(allTask, partnereTask, malDagerTask, malUkeTask, hendTask, arbTask, innsynTask);
         _all = allTask.Result;
         _partnere = partnereTask.Result;
         _partnerMap = _partnere.GroupBy(p => p.Navn).ToDictionary(g => g.Key, g => g.First());
         _malDager = malDagerTask.Result;
         _malSakerUke = malUkeTask.Result;
         _statusHendelser = hendTask.Result;
+        _arbeidsLogg = arbTask.Result;
+        _innsynLogg = innsynTask.Result;
         _opprettetMap = _all.GroupBy(k => k.Id).ToDictionary(g => g.Key, g => g.First().CreatedAt);
         _loading = false;
     }

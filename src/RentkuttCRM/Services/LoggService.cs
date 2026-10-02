@@ -119,6 +119,33 @@ public class LoggService
         return res;
     }
 
+    /// <summary>Alle logglinjer i en kategori etter et tidspunkt (paginert). Brukes til statistikk,
+    /// f.eks. arbeidsoppgaver kvittert ut (kategori «arbeidsoppgave»).</summary>
+    public async Task<List<KundekortLogg>> KategoriSidenAsync(string kategori, DateTime fraUtc)
+    {
+        if (!IsConfigured)
+            return _staging.Where(x => x.Kategori == kategori && x.Opprettet >= fraUtc).ToList();
+        var res = new List<KundekortLogg>();
+        try
+        {
+            await EnsureInitAsync();
+            const int side = 1000;
+            for (var from = 0; from <= 200000; from += side)
+            {
+                var batch = (await _client.From<KundekortLogg>()
+                    .Where(x => x.Kategori == kategori)
+                    .Filter("opprettet", Constants.Operator.GreaterThanOrEqual, fraUtc.ToUniversalTime().ToString("o"))
+                    .Order(x => x.Opprettet, Constants.Ordering.Ascending, Constants.NullPosition.Last)
+                    .Range(from, from + side - 1)
+                    .Get()).Models;
+                res.AddRange(batch);
+                if (batch.Count < side) break;
+            }
+        }
+        catch (Exception ex) { _log.LogError(ex, "Henting av logg ({Kategori}) feilet", kategori); }
+        return res;
+    }
+
     private static string? ParseStatus(string tekst)
     {
         if (string.IsNullOrWhiteSpace(tekst) || !tekst.StartsWith("Endret status", StringComparison.OrdinalIgnoreCase)) return null;
