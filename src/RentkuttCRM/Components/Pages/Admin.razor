@@ -1211,9 +1211,10 @@ else if (_active == "Arbeidsliste")
             Lag regler som gir saker en <strong>arbeidsoppgave</strong> når de matcher vilkårene.
             Oppgaven vises i egen kolonne på <strong>Saker</strong>, og du kan filtrere på «Har arbeidsoppgave».
             Vilkår du lar stå tomme, ignoreres — men minst ett vilkår må være satt.
-            <br /><strong>Automatisk:</strong> overlapper to regler (f.eks. på postnr/fylke) og gir <em>samme</em> arbeidsoppgave,
-            vises oppgaven kun én gang per sak — ingen doble oppgaver. Bruk «Ekskluder» nedenfor kun hvis to regler med
-            <em>ulik</em> oppgave skal unngå å overlappe.
+            <br /><strong>Automatisk mot overlapp:</strong> hver sak får <em>én</em> aktiv arbeidsoppgave om gangen — den
+            <strong>første regelen (ovenfra og ned)</strong> som matcher vinner. Overlapper to regler samme sak, telles og
+            vises den bare én gang (aldri doble oppgaver). Når oppgaven kvitteres ut, rykker neste matchende regel automatisk opp.
+            «Ekskluder» nedenfor er valgfritt for å finstyre.
         </p>
         <p class="page-sub" style="margin:0 0 14px; font-size:12px; color:var(--text-muted)">
             Eks.: Avslagsgrunn inneholder «likviditet» fra Soknedal → oppgave «Send kunden til Instabank».

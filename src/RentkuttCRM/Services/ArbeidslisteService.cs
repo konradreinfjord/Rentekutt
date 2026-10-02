@@ -129,28 +129,26 @@ public class ArbeidslisteService
         await LagreTilstanderAsync(alle);
     }
 
-    /// <summary>Aktive oppgaver på en sak (køen), i regelrekkefølge. Automatisk: overlappende regler som gir
-    /// SAMME oppgave vises bare én gang (dedup pr. oppgavetekst), og avklart/utsatt spores pr. oppgavetekst.</summary>
+    /// <summary>Den aktive arbeidsoppgaven på en sak — AUTOMATISK én om gangen (første regel som matcher i
+    /// rekkefølge vinner). Overlappende regler lager derfor aldri doble oppgaver; når den aktive kvitteres ut
+    /// (avklart/utsatt) rykker neste matchende regel automatisk opp. Avklart/utsatt spores pr. oppgavetekst.</summary>
     public static List<AktivOppgave> AktiveOppgaver(Kundekort k, IEnumerable<ArbeidsRegel> regler,
         Dictionary<string, Dictionary<string, OppgaveTilstand>> tilstander, DateTime nowUtc)
     {
         tilstander.TryGetValue(k.Id.ToString(), out var forKort);
-        var res = new List<AktivOppgave>();
-        var sett = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in regler)
         {
             if (!r.Aktiv || string.IsNullOrWhiteSpace(r.Oppgave) || !Matcher(r, k)) continue;
             var tekst = r.Oppgave.Trim();
-            var oppgaveKey = NormOppgave(tekst);
-            if (!sett.Add(oppgaveKey)) continue;   // overlappende regel med samme oppgave → hopp over (ingen dobbel)
-            if (forKort != null && forKort.TryGetValue(oppgaveKey, out var t))
+            if (forKort != null && forKort.TryGetValue(NormOppgave(tekst), out var t))
             {
                 if (t.Tilstand == "avklart") continue;
                 if (t.Tilstand == "utsatt" && t.Til.HasValue && t.Til.Value > nowUtc) continue;
             }
-            res.Add(new AktivOppgave { RegelId = r.Id, Oppgave = tekst });
+            // Første matchende, ikke-avklarte/ikke-utsatte regel vinner — kun én aktiv oppgave per sak.
+            return new List<AktivOppgave> { new() { RegelId = r.Id, Oppgave = tekst } };
         }
-        return res;
+        return new List<AktivOppgave>();
     }
 
     /// <summary>Arbeidsoppgavene som gjelder for en sak, ut fra de aktive reglene (uten tilstand).</summary>
