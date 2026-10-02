@@ -492,7 +492,7 @@
                 }
                 else { <span class="muted">—</span> }
             </td>
-            <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)@navnBadge</td>
+            <td>@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)@navnBadge@if (ErB2CDuplikat(k)) { <span class="dup-badge" title="@DuplikatTekst(k)">⚠ Duplikat</span> }</td>
             <td><span class="type-tag @(k.KundeType == "B2C" ? "lead" : "bank")">@k.KundeType</span></td>
             <td class="mono-cell">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</td>
             <td>@(string.IsNullOrWhiteSpace(k.Laanetype) ? "—" : k.Laanetype)</td>
@@ -574,6 +574,7 @@
 
         // Hele basen + nye saker (ingen eier + fortsatt aktiv — felles kø alle kan plukke fra).
         _alleSaker = await Svc.ListLettAsync();
+        BeregnDuplikater();
         _nyeSaker = _alleSaker
             .Where(k => string.IsNullOrWhiteSpace(k.Eier)
                         && k.Status is not (KundekortService.StatusUtbetalt or KundekortService.StatusAvslatt
@@ -609,6 +610,37 @@
             .ToList();
 
         _loading = false;
+    }
+
+    // Duplikat-deteksjon: KUN B2C-kunder som har kommet inn flere ganger (samme mobil eller e-post).
+    // B2B holdes utenfor — samme firma på flere saker er normalt, ikke et duplikat.
+    private HashSet<Guid> _dupMobil = new();
+    private HashSet<Guid> _dupEpost = new();
+    private void BeregnDuplikater()
+    {
+        var b2c = _alleSaker.Where(k => k.KundeType != "B2B").ToList();
+        _dupMobil = b2c.Where(k => MobilNokkel(k.Mobilnummer).Length == 8)
+            .GroupBy(k => MobilNokkel(k.Mobilnummer)).Where(g => g.Count() > 1)
+            .SelectMany(g => g).Select(k => k.Id).ToHashSet();
+        _dupEpost = b2c.Where(k => !string.IsNullOrWhiteSpace(k.Epost))
+            .GroupBy(k => k.Epost!.Trim().ToLowerInvariant()).Where(g => g.Count() > 1)
+            .SelectMany(g => g).Select(k => k.Id).ToHashSet();
+    }
+    private static string MobilNokkel(string? mobil)
+    {
+        var d = new string((mobil ?? "").Where(char.IsDigit).ToArray());
+        return d.Length >= 8 ? d[^8..] : "";
+    }
+    private bool ErB2CDuplikat(Kundekort k) => _dupMobil.Contains(k.Id) || _dupEpost.Contains(k.Id);
+    private string DuplikatTekst(Kundekort k)
+    {
+        var felt = (_dupMobil.Contains(k.Id), _dupEpost.Contains(k.Id)) switch
+        {
+            (true, true) => "mobil og e-post",
+            (true, false) => "mobil",
+            _ => "e-post",
+        };
+        return $"Samme kunde registrert flere ganger (samme {felt})";
     }
 
     private Dictionary<Guid, (int Antall, DateTime Sist)> _ringelogg = new();

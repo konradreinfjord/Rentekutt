@@ -73,6 +73,30 @@ public class SmsMalService
         catch (Exception ex) { _log.LogError(ex, "Oppretting av SMS-mal feilet"); return (false, "Teknisk feil ved lagring."); }
     }
 
+    public async Task<(bool ok, string? error)> UpdateAsync(Guid id, string navn, string tekst)
+    {
+        navn = (navn ?? "").Trim();
+        tekst = (tekst ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(navn) || string.IsNullOrWhiteSpace(tekst)) return (false, "Navn og tekst er påkrevd.");
+        if (!IsConfigured)
+        {
+            var s = _staging.FirstOrDefault(m => m.Id == id);
+            if (s is null) return (false, "Fant ikke malen.");
+            s.Navn = navn; s.Tekst = tekst;
+            return (true, null);
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<SmsMal>().Where(x => x.Id == id)
+                .Set(x => x.Navn, navn)
+                .Set(x => x.Tekst, tekst)
+                .Update();
+            return (true, null);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Endring av SMS-mal feilet"); return (false, "Teknisk feil ved lagring."); }
+    }
+
     public async Task DeleteAsync(Guid id)
     {
         if (!IsConfigured) { _staging.RemoveAll(m => m.Id == id); return; }

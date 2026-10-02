@@ -134,6 +134,11 @@ builder.Services.AddScoped<PartnerService>();
 builder.Services.AddHttpClient("brreg", c => c.BaseAddress = new Uri("https://data.brreg.no/"));
 builder.Services.AddScoped<BrregService>();
 
+// Bankregister (Finanstilsynets åpne virksomhetsregister) — fast liste for «Nåværende bank».
+builder.Services.AddHttpClient("finanstilsynet", c => c.BaseAddress = new Uri("https://api.finanstilsynet.no/"));
+builder.Services.AddSingleton<BankRegisterService>();
+builder.Services.AddHostedService<BankRegisterWorker>();
+
 // Produkter per bankpartner (provisjon per produkt, segment privat/bedrift).
 builder.Services.AddScoped<PartnerProduktService>();
 

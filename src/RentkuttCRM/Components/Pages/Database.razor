@@ -335,10 +335,12 @@ else
     }
     private void BeregnDuplikater()
     {
-        _duplikatMobil = _rows.Where(k => MobilNokkel(k.Mobilnummer).Length == 8)
+        // Kun B2C: samme privatperson flere ganger er et duplikat. B2B (samme firma) holdes utenfor.
+        var b2c = _rows.Where(k => k.KundeType != "B2B").ToList();
+        _duplikatMobil = b2c.Where(k => MobilNokkel(k.Mobilnummer).Length == 8)
             .GroupBy(k => MobilNokkel(k.Mobilnummer)).Where(g => g.Count() > 1)
             .SelectMany(g => g).Select(k => k.Id).ToHashSet();
-        _duplikatEpost = _rows.Where(k => !string.IsNullOrWhiteSpace(k.Epost))
+        _duplikatEpost = b2c.Where(k => !string.IsNullOrWhiteSpace(k.Epost))
             .GroupBy(k => k.Epost!.Trim().ToLowerInvariant()).Where(g => g.Count() > 1)
             .SelectMany(g => g).Select(k => k.Id).ToHashSet();
     }

@@ -1,0 +1,19 @@
+@* Tallfelt for kronebeløp. Viser tusenskille (f.eks. 4 000 000) så beløpet er lett å lese og
+   vanskelig å skrive feil. Formateres når feltet forlates (onchange). *@
+<input class="@CssClass" inputmode="numeric" value="@Display" @onchange="OnChange" placeholder="@Placeholder" />
+
+@code {
+    [Parameter] public decimal? Value { get; set; }
+    [Parameter] public EventCallback<decimal?> ValueChanged { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+
+    private string Display => Value.HasValue ? Belop.Format(Value.Value) : "";
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        var parsed = Belop.Parse(e.Value?.ToString());
+        Value = parsed;
+        await ValueChanged.InvokeAsync(parsed);
+    }
+}

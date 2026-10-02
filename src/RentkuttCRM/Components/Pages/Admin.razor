@@ -1065,11 +1065,28 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
                     }
                     @foreach (var m in _smsMaler)
                     {
-                        <tr>
-                            <td style="vertical-align:top"><strong>@m.Navn</strong></td>
-                            <td style="white-space:pre-wrap; max-width:560px; line-height:1.5">@m.Tekst</td>
-                            <td style="vertical-align:top"><button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button></td>
-                        </tr>
+                        @if (_redigerMalId == m.Id)
+                        {
+                            <tr>
+                                <td style="vertical-align:top"><input class="rb-input" @bind="_redigerNavn" style="max-width:180px" /></td>
+                                <td><textarea class="rb-input" style="min-height:110px; resize:vertical; line-height:1.5; width:100%" rows="5" @bind="_redigerTekst"></textarea></td>
+                                <td style="vertical-align:top; white-space:nowrap">
+                                    <button class="btn-primary btn-sm" @onclick="LagreMalRedigering">Lagre</button>
+                                    <button class="btn-sm" @onclick="AvbrytMalRedigering">Avbryt</button>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr>
+                                <td style="vertical-align:top"><strong>@m.Navn</strong></td>
+                                <td style="white-space:pre-wrap; max-width:560px; line-height:1.5">@m.Tekst</td>
+                                <td style="vertical-align:top; white-space:nowrap">
+                                    <button class="btn-sm" @onclick="() => StartMalRedigering(m)">Endre</button>
+                                    <button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -2324,6 +2341,8 @@ else if (_active == "GDPR")
     private List<SmsMal> _smsMaler = new();
     private string _nyMalNavn = "", _nyMalTekst = "";
     private string? _malMsg;
+    private Guid? _redigerMalId;
+    private string _redigerNavn = "", _redigerTekst = "";
     private bool _autoEnabled;
     private string _autoMal = "";
     private string? _autoMsg;
@@ -2335,9 +2354,45 @@ else if (_active == "GDPR")
         if (ok) { _nyMalNavn = ""; _nyMalTekst = ""; _smsMaler = await SmsMaler.ListAsync(); }
     }
 
+    private void StartMalRedigering(SmsMal m)
+    {
+        _redigerMalId = m.Id;
+        _redigerNavn = m.Navn;
+        _redigerTekst = m.Tekst;
+        _malMsg = null;
+    }
+
+    private void AvbrytMalRedigering()
+    {
+        _redigerMalId = null;
+        _redigerNavn = "";
+        _redigerTekst = "";
+    }
+
+    private async Task LagreMalRedigering()
+    {
+        if (_redigerMalId is not { } id) return;
+        var gammeltNavn = _smsMaler.FirstOrDefault(m => m.Id == id)?.Navn;
+        var (ok, error) = await SmsMaler.UpdateAsync(id, _redigerNavn, _redigerTekst);
+        _malMsg = ok ? "Mal oppdatert." : error;
+        if (ok)
+        {
+            var nyttNavn = _redigerNavn.Trim();
+            // Automatikken refererer malen ved navn — følg med ved navnebytte så den ikke mister koblingen.
+            if (!string.IsNullOrWhiteSpace(gammeltNavn) && gammeltNavn != nyttNavn && _autoMal == gammeltNavn)
+            {
+                _autoMal = nyttNavn;
+                await Settings.SetAsync(SmsMalService.KeyAutoMal, nyttNavn);
+            }
+            AvbrytMalRedigering();
+            _smsMaler = await SmsMaler.ListAsync();
+        }
+    }
+
     private async Task SlettMal(Guid id)
     {
         await SmsMaler.DeleteAsync(id);
+        if (_redigerMalId == id) AvbrytMalRedigering();
         _smsMaler = await SmsMaler.ListAsync();
     }
 

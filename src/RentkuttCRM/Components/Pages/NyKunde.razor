@@ -19,6 +19,7 @@
 @inject RentkuttCRM.Services.ArbeidslisteService Arbeidsliste
 @inject RentkuttCRM.Services.SupabaseUserService Brukere
 @inject RentkuttCRM.Services.BrregService Brreg
+@inject RentkuttCRM.Services.BankRegisterService BankRegister
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -728,8 +729,8 @@
 
         <h3 style="margin:14px 0 8px; font-size:13px">Selskapsøkonomi</h3>
         <div class="form-grid">
-            <div class="ff"><label>Estimert omsetning i år (kr)</label><input type="number" @bind="_k.BedriftOmsetningIAar" /></div>
-            <div class="ff"><label>Estimert omsetning neste år (kr)</label><input type="number" @bind="_k.BedriftOmsetningNesteAar" /></div>
+            <div class="ff"><label>Estimert omsetning i år (kr)</label><KroneInput @bind-Value="_k.BedriftOmsetningIAar" /></div>
+            <div class="ff"><label>Estimert omsetning neste år (kr)</label><KroneInput @bind-Value="_k.BedriftOmsetningNesteAar" /></div>
         </div>
 
         <h3 style="margin:14px 0 8px; font-size:13px">Formål og bruk</h3>
@@ -842,12 +843,29 @@
                 </div>
             }
         </div>
-        <div class="ff"><label>Ønsket lånebeløp (kr)</label><input type="number" @bind="_k.OnsketLaanebelop" /></div>
+        <div class="ff"><label>Ønsket lånebeløp (kr)</label><KroneInput @bind-Value="_k.OnsketLaanebelop" /></div>
         <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
         <div class="ff"><label>Låneformål</label><input @bind="_k.Laaneformal" /></div>
-        <div class="ff"><label>Nåværende bank</label><input @bind="_k.NavarendeBank" /></div>
+        <div class="ff"><label>Nåværende bank</label>
+            @if (_navaerendeBanker.Count > 0)
+            {
+                <select @bind="_k.NavarendeBank">
+                    <option value="">— velg bank —</option>
+                    @* Behold et eksisterende fritekst-navn som ikke er i lista, så gammel data ikke forsvinner. *@
+                    @if (!string.IsNullOrWhiteSpace(_k.NavarendeBank) && !_navaerendeBanker.Contains(_k.NavarendeBank))
+                    {
+                        <option value="@_k.NavarendeBank" selected>@_k.NavarendeBank (eksisterende)</option>
+                    }
+                    @foreach (var b in _navaerendeBanker) { <option value="@b">@b</option> }
+                </select>
+            }
+            else
+            {
+                <input @bind="_k.NavarendeBank" placeholder="Banklisten lastes …" />
+            }
+        </div>
         <div class="ff"><label>Nåværende rente (%)</label><input type="number" step="0.01" @bind="_k.NaavaerendeRente" /></div>
-        <div class="ff"><label>Boligverdi (kr) — for belåningsgrad</label><input type="number" @bind="_k.Boligverdi" /></div>
+        <div class="ff"><label>Boligverdi (kr) — for belåningsgrad</label><KroneInput @bind-Value="_k.Boligverdi" /></div>
         <div class="ff">
             <label>Behandlingsgrunnlag (GDPR)</label>
             <select @bind="_k.Behandlingsgrunnlag">
@@ -908,7 +926,7 @@
             <div class="ff wide"><label>Adresse</label><input @bind="_k.MedsokerAdresse" /></div>
             <div class="ff"><label>Postnummer</label><input @bind="_k.MedsokerPostnummer" /></div>
             <div class="ff"><label>Poststed</label><input @bind="_k.MedsokerPoststed" /></div>
-            <div class="ff"><label>Egen årsinntekt (kr)</label><input type="number" @bind="_k.MedsokerInntekt" /></div>
+            <div class="ff"><label>Egen årsinntekt (kr)</label><KroneInput @bind-Value="_k.MedsokerInntekt" /></div>
             <div class="ff"><label>Arbeidsforhold</label><input @bind="_k.MedsokerArbeidsforhold" /></div>
         </div>
     }
@@ -955,10 +973,10 @@
         <div class="ff"><label>Arbeidsgiver</label><input @bind="_k.Arbeidsgiver" /></div>
         <div class="ff"><label>Ansiennitet (mnd)</label><input type="number" @bind="_k.AnsiennitetMnd" /></div>
         <div class="ff"><label>Utdanning (nivå)</label><input @bind="_k.Utdanning" /></div>
-        <div class="ff"><label>Årsinntekt før skatt (kr)</label><input type="number" @bind="_k.AarsinntektBrutto" /></div>
-        <div class="ff"><label>Andre inntekter (kr)</label><input type="number" @bind="_k.AndreInntekter" /></div>
+        <div class="ff"><label>Årsinntekt før skatt (kr)</label><KroneInput @bind-Value="_k.AarsinntektBrutto" /></div>
+        <div class="ff"><label>Andre inntekter (kr)</label><KroneInput @bind-Value="_k.AndreInntekter" /></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.HarAndreInntekter" /> Har andre inntekter</label></div>
-        <div class="ff"><label>Ektefelle/samboers årsinntekt (kr)</label><input type="number" @bind="_k.EktefelleInntekt" /></div>
+        <div class="ff"><label>Ektefelle/samboers årsinntekt (kr)</label><KroneInput @bind-Value="_k.EktefelleInntekt" /></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.HarEktefelleSamboerInntekt" /> Har ektefelle/samboer-inntekt</label></div>
     </div>
 </div>
@@ -967,8 +985,8 @@
 <div class="form-card">
     <h2>E · Utgifter og forpliktelser</h2>
     <div class="form-grid">
-        <div class="ff"><label>Husleie / boligkostnad per mnd (kr)</label><input type="number" @bind="_k.BoligkostnadMnd" /></div>
-        <div class="ff"><label>Barnebidrag betalt per mnd (kr)</label><input type="number" @bind="_k.BarnebidragBetaltMnd" /></div>
+        <div class="ff"><label>Husleie / boligkostnad per mnd (kr)</label><KroneInput @bind-Value="_k.BoligkostnadMnd" /></div>
+        <div class="ff"><label>Barnebidrag betalt per mnd (kr)</label><KroneInput @bind-Value="_k.BarnebidragBetaltMnd" /></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.BetalerBarnebidrag" /> Betaler barnebidrag</label></div>
     </div>
 </div>
@@ -977,12 +995,12 @@
 <div class="form-card">
     <h2>F · Gjeld <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(verifiseres mot Gjeldsregisteret)</span></h2>
     <div class="form-grid">
-        <div class="ff"><label>Boliggjeld / restgjeld boliglån (kr)</label><input type="number" @bind="_k.Boliggjeld" /></div>
-        <div class="ff"><label>Studielån (kr)</label><input type="number" @bind="_k.Studielaan" /></div>
-        <div class="ff"><label>Billån / kjøretøygjeld (kr)</label><input type="number" @bind="_k.Billaan" /></div>
-        <div class="ff"><label>Forbrukslån/kredittkort/inkasso (kr)</label><input type="number" @bind="_k.Forbruksgjeld" /></div>
-        <div class="ff"><label>Samlet gjeld (kr)</label><input type="number" @bind="_k.SamletGjeld" /></div>
-        <div class="ff"><label>Beløp som skal refinansieres (kr)</label><input type="number" @bind="_k.RefinansieresBelop" /></div>
+        <div class="ff"><label>Boliggjeld / restgjeld boliglån (kr)</label><KroneInput @bind-Value="_k.Boliggjeld" /></div>
+        <div class="ff"><label>Studielån (kr)</label><KroneInput @bind-Value="_k.Studielaan" /></div>
+        <div class="ff"><label>Billån / kjøretøygjeld (kr)</label><KroneInput @bind-Value="_k.Billaan" /></div>
+        <div class="ff"><label>Forbrukslån/kredittkort/inkasso (kr)</label><KroneInput @bind-Value="_k.Forbruksgjeld" /></div>
+        <div class="ff"><label>Samlet gjeld (kr)</label><KroneInput @bind-Value="_k.SamletGjeld" /></div>
+        <div class="ff"><label>Beløp som skal refinansieres (kr)</label><KroneInput @bind-Value="_k.RefinansieresBelop" /></div>
     </div>
 </div>
 
@@ -990,9 +1008,9 @@
 <div class="form-card">
     <h2>Boliglån <span class="muted" style="text-transform:none; font-weight:400; font-size:12px">(fra søknaden)</span></h2>
     <div class="form-grid">
-        <div class="ff"><label>Anslått verdi (kr)</label><input type="number" @bind="_k.Boligverdi" /></div>
+        <div class="ff"><label>Anslått verdi (kr)</label><KroneInput @bind-Value="_k.Boligverdi" /></div>
         <div class="ff"><label>Belåningsgrad (LTV %)</label><input type="number" step="0.01" @bind="_k.Belaaningsgrad" /></div>
-        <div class="ff"><label>Nåværende lånebeløp (kr)</label><input type="number" @bind="_k.NaavaerendeLaanebelop" /></div>
+        <div class="ff"><label>Nåværende lånebeløp (kr)</label><KroneInput @bind-Value="_k.NaavaerendeLaanebelop" /></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.AktivInkasso" /> Aktiv inkassosak</label></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.HarUsikretGjeld" /> Har usikret gjeld / kredittkort</label></div>
     </div>
@@ -1016,13 +1034,13 @@
     <div class="form-grid">
         <div class="ff"><label>Andelsnummer</label><input @bind="_k.EiendomAndelsnummer" /></div>
         <div class="ff"><label>Borettslagets orgnr</label><input @bind="_k.EiendomBorettslagOrgnr" placeholder="9 siffer" /></div>
-        <div class="ff"><label>Fellesgjeld (kr)</label><input type="number" @bind="_k.EiendomFellesgjeld" /></div>
-        <div class="ff"><label>Felleskostnad per mnd (kr)</label><input type="number" @bind="_k.EiendomFelleskostnad" /></div>
+        <div class="ff"><label>Fellesgjeld (kr)</label><KroneInput @bind-Value="_k.EiendomFellesgjeld" /></div>
+        <div class="ff"><label>Felleskostnad per mnd (kr)</label><KroneInput @bind-Value="_k.EiendomFelleskostnad" /></div>
     </div>
 
     <h3 style="margin:14px 0 8px; font-size:13px">Verdi og forsikring</h3>
     <div class="form-grid">
-        <div class="ff"><label>Estimert eiendomsverdi (kr)</label><input type="number" @bind="_k.EiendomEstimertVerdi" /></div>
+        <div class="ff"><label>Estimert eiendomsverdi (kr)</label><KroneInput @bind-Value="_k.EiendomEstimertVerdi" /></div>
         <div class="ff"><label>E-takst referanse</label><input @bind="_k.EiendomEtakstReferanse" /></div>
         <div class="ff"><label>Forsikringsselskap</label><input @bind="_k.EiendomForsikringsselskap" /></div>
         <div class="ff" style="justify-content:flex-end"><label class="ff-check"><input type="checkbox" @bind="_k.EiendomForsikret" /> Eiendommen er forsikret</label></div>
@@ -1389,11 +1407,13 @@
         var bankerTask = Partners.ListAsync();
         var produktTask = Produkter.ListAsync();
         var kortTask = Guid.TryParse(Id, out var caseId) ? Svc.GetAsync(caseId) : Task.FromResult<Kundekort?>(null);
+        var navBankTask = BankRegister.HentBankerAsync();
 
-        await Task.WhenAll(berTask, smsTask, bankerTask, produktTask, kortTask);
+        await Task.WhenAll(berTask, smsTask, bankerTask, produktTask, kortTask, navBankTask);
         _berParams = berTask.Result;
         _smsMaler = smsTask.Result;
         _banker = bankerTask.Result;
+        _navaerendeBanker = navBankTask.Result;
         _produkter = produktTask.Result;
         _regler = await Ruting.ListAsync();
         _fagforeninger = await Fagforeninger.HentAsync();
@@ -1591,6 +1611,7 @@
 
     // ---- Send til bank ----
     private List<Partner> _banker = new();
+    private List<string> _navaerendeBanker = new();   // Finanstilsynet: fast liste for «Nåværende bank»
     private List<PartnerProdukt> _produkter = new();
     private List<BankSending> _sendinger = new();
 
