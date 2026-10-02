@@ -1,10 +1,12 @@
 namespace RentkuttCRM.Services;
 
 /// <summary>
-/// Forsinket auto-send: sender lead til bank(er) automatisk ~30 minutter etter registrering,
-/// dersom leadet fortsatt står i «Påbegynt søknad» ELLER «Ny søknad» (dvs. ikke tatt videre av
-/// en agent / sendt / lukket). Forsinkelsen gir kunden tid til å fullføre søknaden (mer data);
-/// fullfører den (→ «Ny søknad») sendes den likevel, nå med full data. Betingelser:
+/// Auto-send: sender lead til bank(er) automatisk dersom leadet fortsatt står i «Påbegynt søknad»
+/// ELLER «Ny søknad» (dvs. ikke tatt videre av en agent / sendt / lukket).
+///   • «Påbegynt søknad» (uferdig) sendes først ~30 min etter registrering — forsinkelsen gir
+///     kunden tid til å fullføre søknaden (mer data).
+///   • «Ny søknad» (komplett/fullført) hopper over forsinkelsen og sendes ved neste syklus (maks ~5 min).
+/// Betingelser:
 ///   (1) leadet matcher logikk-matrisen for banken, OG
 ///   (2) banken har bryteren (auto_paabegynt) PÅ.
 /// Sendingen legges i den vanlige sendekøen (BankSendWorker), som håndterer throttling,
@@ -89,10 +91,13 @@ public class AutoPaabegyntWorker : BackgroundService
         var nedreEffektiv = aktivertFra.Value > nedreGrense ? aktivertFra.Value : nedreGrense;
 
         var kundekort = scope.ServiceProvider.GetRequiredService<KundekortService>();
+        // «Ny søknad» = komplett/fullført → ingen 30-min forsinkelse (sendes ved neste syklus, maks ~5 min).
+        // «Påbegynt søknad» = uferdig → vent minMinutter så kunden får sjansen til å fullføre først.
+        // Begge er fortsatt underlagt aktiveringssperra og maks-alderen (nedreEffektiv).
         var kandidater = (await kundekort.ListLettAsync()).Where(k =>
             ErKandidatStatus(k.Status) &&
-            k.CreatedAt <= oevreGrense &&
-            k.CreatedAt >= nedreEffektiv).ToList();
+            k.CreatedAt >= nedreEffektiv &&
+            (k.Status == KundekortService.StatusNySoknad || k.CreatedAt <= oevreGrense)).ToList();
         if (kandidater.Count == 0) return;
 
         var regler = await scope.ServiceProvider.GetRequiredService<RutingsregelService>().ListAsync();
@@ -121,6 +126,13 @@ public class AutoPaabegyntWorker : BackgroundService
             var eksisterende = (await ko.ForKundeAsync(k.Id))
                 .Select(s => s.Bank).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+            // Komplett søknad (Ny søknad) sendes uten forsinkelse; uferdig (Påbegynt) etter 30 min.
+            var komplett = k.Status == KundekortService.StatusNySoknad;
+            var sendtAv = komplett ? "System (auto – komplett søknad)" : "System (auto 30 min)";
+            var detalj = komplett
+                ? "Lagt i sendekø automatisk (komplett søknad – ingen forsinkelse)."
+                : "Lagt i sendekø automatisk (uferdig søknad etter 30 min).";
+
             var kølagt = new List<string>();
             foreach (var bankNavn in matchende)
             {
@@ -145,24 +157,26 @@ public class AutoPaabegyntWorker : BackgroundService
                     Bank = bankNavn,
                     Produkt = produkt,
                     ProduktKode = kode,
-                    SendtAv = "System (auto 30 min)",
+                    SendtAv = sendtAv,
                     Status = SendStatus.IKo,
-                    Detalj = "Lagt i sendekø automatisk (uferdig søknad etter 30 min).",
+                    Detalj = detalj,
                 };
                 var (_, feil) = await ko.LoggAsync(s);
                 if (feil is not null) { _log.LogWarning("Auto-påbegynt: kunne ikke kølegge {Bank} for {Id}: {Feil}", bankNavn, k.Id, feil); continue; }
 
-                await logg.LoggAsync(k.Id, "System (auto 30 min)",
-                    $"Auto-sendt til sendekø 30 min etter registrering ({k.Status}): {bankNavn}{(produkt is null ? "" : $" · {produkt}")}",
+                await logg.LoggAsync(k.Id, sendtAv,
+                    $"Auto-sendt til sendekø ({k.Status}{(komplett ? ", komplett – ingen forsinkelse" : ", 30 min etter registrering")}): {bankNavn}{(produkt is null ? "" : $" · {produkt}")}",
                     kategori: "avgjørelse",
-                    begrunnelse: "Automatisk ruting etter forsinkelse (logikk-matrise + bank-bryter)");
+                    begrunnelse: komplett
+                        ? "Automatisk ruting av komplett søknad (logikk-matrise + bank-bryter)"
+                        : "Automatisk ruting etter forsinkelse (logikk-matrise + bank-bryter)");
                 kølagt.Add(bankNavn);
             }
 
             // Kølagt til minst én bank ⇒ flytt ut av «Påbegynt søknad» så leadet ikke plukkes på nytt.
             if (kølagt.Count > 0)
             {
-                await kundekort.SetStatusAsync(k.Id, KundekortService.StatusSendtIProsess, "System (auto 30 min)");
+                await kundekort.SetStatusAsync(k.Id, KundekortService.StatusSendtIProsess, sendtAv);
                 _log.LogInformation("Auto-påbegynt: {Id} auto-sendt til {Banker}.", k.Id, string.Join(", ", kølagt));
             }
         }

@@ -34,7 +34,72 @@ else
                 <div><div class="mcard-num">@_ferdigstilt</div><div class="mcard-lbl">Søknader ferdigstilt</div><div class="mcard-new-line">I dag +@_ferdigIDag · Uke +@_ferdigUke · Måned +@_ferdigMaaned · År +@_ferdigAar</div><div class="mcard-sub">@_ferdigstiltPct % av alle · @_utbetalt utbetalt</div></div>
             </div>
         </div>
+    </div>
 
+    @* Leads siste 30 dager — rett under Nøkkeltall *@
+    <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head">
+            <div><h2>Leads siste 30 dager</h2><span class="sub">Søknader per dag · antall og <span style="color:#2f8a3e;font-weight:600">andel med eierskap</span> under hver bar · hold over for status og lånetype</span></div>
+            <span class="panel-count">@_dager.Sum(d => d.Total) leads</span>
+        </div>
+        <div class="daybar-chart daybar-slim daybar-solid">
+            @foreach (var dag in _dager)
+            {
+                <div class="daybar-col">
+                    @if (dag.Total > 0)
+                    {
+                        <div class="daybar-tip">
+                            <div class="tip-title">@dag.Label · @dag.Total leads · @dag.MedEier med eierskap</div>
+                            <div class="tip-sec">
+                                <div class="tip-h">Status</div>
+                                @foreach (var st in _statuser)
+                                {
+                                    var c = dag.PerStatus.GetValueOrDefault(st, 0);
+                                    @if (c > 0)
+                                    {
+                                        <div class="tip-row"><span class="d" style="background:@StatusFarge(st)"></span><span class="tip-n">@st</span><span class="tip-v">@c</span></div>
+                                    }
+                                }
+                            </div>
+                            <div class="tip-sec">
+                                <div class="tip-h">Lånetype</div>
+                                @foreach (var (type, antall) in dag.PerLaanetype.OrderByDescending(x => x.Value))
+                                {
+                                    <div class="tip-row"><span class="d" style="background:@LaanetypeFarge(type)"></span><span class="tip-n">@type</span><span class="tip-v">@antall</span></div>
+                                }
+                            </div>
+                            <div class="tip-sec">
+                                <div class="tip-h">Leadskilde</div>
+                                @foreach (var (kilde, antall) in dag.PerKilde.OrderByDescending(x => x.Value))
+                                {
+                                    <div class="tip-row"><span class="d" style="background:@KildeFarge(kilde)"></span><span class="tip-n">@kilde</span><span class="tip-v">@antall</span></div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <div class="daybar-stack">
+                        @if (dag.Total > 0)
+                        {
+                            <div class="daybar-seg" style="height:@(((double)dag.Total / _maxDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="daybar-labels">
+            @foreach (var dag in _dager)
+            {
+                <span class="dl" title="@dag.MedEier av @dag.Total med eierskap">
+                    <span class="dl-date">@dag.Label</span>
+                    <span class="dl-num @(dag.Total == 0 ? "nil" : "")">@dag.Total</span>
+                    <span class="dl-eier @(dag.Total == 0 ? "nil" : "")">@(dag.Total > 0 ? (int)Math.Round(dag.MedEier * 100.0 / dag.Total) + " %" : "–")</span>
+                </span>
+            }
+        </div>
+    </div>
+
+    @* Pipeline — eget panel, lukket som standard *@
+    <div class="panel" style="margin-bottom:16px">
         <div class="dist-cards">
             @{
                 var _kildeSum = _kildeAlle.Sum(x => x.Antall);
@@ -43,16 +108,17 @@ else
             @{
                 var _pipeAnt = _pipelineMedAntall + _pipelineUtenAntall;
                 var _pipeTotal = _pipeline + _pipelineEstimert;
+                var _oppgPct = _pipeTotal > 0 ? (double)(_pipeline / _pipeTotal) * 100 : 0;
+                var _estPct = 100 - _oppgPct;
             }
             <div class="dcard dcard-wide">
-                <div class="dcard-head">
+                <button type="button" class="dcard-head dcard-toggle" @onclick="() => _pipeApen = !_pipeApen" aria-expanded="@_pipeApen">
                     <span class="mcard-ic" style="--a:#0e7490"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
                     <div><div class="dcard-title">Pipeline</div><div class="dcard-sub">Estimert total @Mnok(_pipeTotal) · @_pipeAnt saker</div></div>
-                </div>
-                @{
-                    var _oppgPct = _pipeTotal > 0 ? (double)(_pipeline / _pipeTotal) * 100 : 0;
-                    var _estPct = 100 - _oppgPct;
-                }
+                    <span class="dcard-caret @(_pipeApen ? "open" : "")">▸</span>
+                </button>
+                @if (_pipeApen)
+                {
                 <div class="pl-splitbar">
                     <span style="width:@_oppgPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%; background:#0e7490"></span>
                     <span style="width:@_estPct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%; background:#1f5fc4"></span>
@@ -132,77 +198,19 @@ else
                         }
                     </div>
                 </div>
+                }
             </div>
-        </div>
-    </div>
-
-    @* Leads siste 30 dager — hovedtrend øverst *@
-    <div class="panel" style="margin-bottom:16px">
-        <div class="panel-head">
-            <div><h2>Leads siste 30 dager</h2><span class="sub">Søknader per dag · antall og <span style="color:#2f8a3e;font-weight:600">andel med eierskap</span> under hver bar · hold over for status og lånetype</span></div>
-            <span class="panel-count">@_dager.Sum(d => d.Total) leads</span>
-        </div>
-        <div class="daybar-chart daybar-slim daybar-solid">
-            @foreach (var dag in _dager)
-            {
-                <div class="daybar-col">
-                    @if (dag.Total > 0)
-                    {
-                        <div class="daybar-tip">
-                            <div class="tip-title">@dag.Label · @dag.Total leads · @dag.MedEier med eierskap</div>
-                            <div class="tip-sec">
-                                <div class="tip-h">Status</div>
-                                @foreach (var st in _statuser)
-                                {
-                                    var c = dag.PerStatus.GetValueOrDefault(st, 0);
-                                    @if (c > 0)
-                                    {
-                                        <div class="tip-row"><span class="d" style="background:@StatusFarge(st)"></span><span class="tip-n">@st</span><span class="tip-v">@c</span></div>
-                                    }
-                                }
-                            </div>
-                            <div class="tip-sec">
-                                <div class="tip-h">Lånetype</div>
-                                @foreach (var (type, antall) in dag.PerLaanetype.OrderByDescending(x => x.Value))
-                                {
-                                    <div class="tip-row"><span class="d" style="background:@LaanetypeFarge(type)"></span><span class="tip-n">@type</span><span class="tip-v">@antall</span></div>
-                                }
-                            </div>
-                            <div class="tip-sec">
-                                <div class="tip-h">Leadskilde</div>
-                                @foreach (var (kilde, antall) in dag.PerKilde.OrderByDescending(x => x.Value))
-                                {
-                                    <div class="tip-row"><span class="d" style="background:@KildeFarge(kilde)"></span><span class="tip-n">@kilde</span><span class="tip-v">@antall</span></div>
-                                }
-                            </div>
-                        </div>
-                    }
-                    <div class="daybar-stack">
-                        @if (dag.Total > 0)
-                        {
-                            <div class="daybar-seg" style="height:@(((double)dag.Total / _maxDag * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-        <div class="daybar-labels">
-            @foreach (var dag in _dager)
-            {
-                <span class="dl" title="@dag.MedEier av @dag.Total med eierskap">
-                    <span class="dl-date">@dag.Label</span>
-                    <span class="dl-num @(dag.Total == 0 ? "nil" : "")">@dag.Total</span>
-                    <span class="dl-eier @(dag.Total == 0 ? "nil" : "")">@(dag.Total > 0 ? (int)Math.Round(dag.MedEier * 100.0 / dag.Total) + " %" : "–")</span>
-                </span>
-            }
         </div>
     </div>
 
     @* Trakt — hvor leadsene står i løpet (siste 30 dager) *@
     <div class="panel" style="margin-bottom:16px">
-        <div class="panel-head">
+        <button type="button" class="panel-head panel-toggle" @onclick="() => _traktApen = !_traktApen" aria-expanded="@_traktApen">
             <div><h2>Trakt — siste 30 dager <span class="fn-total">(@_funnelTot totalt)</span></h2><span class="sub">Hvor leadsene står i løpet, fra inngang til utbetaling</span></div>
-        </div>
+            <span class="dcard-caret @(_traktApen ? "open" : "")">▸</span>
+        </button>
+        @if (_traktApen)
+        {
         <div class="funnel">
             @foreach (var steg in _funnel)
             {
@@ -243,6 +251,7 @@ else
                 </div>
             }
         </div>
+        }
     </div>
 }
 
@@ -277,6 +286,8 @@ else
     private int _mine;
     private decimal _pipeline, _pipelineSnitt, _pipelineEstimert;
     private int _pipelineUtenAntall, _pipelineMedAntall;
+    private bool _pipeApen;   // Pipeline-widget lukket som standard
+    private bool _traktApen;  // Trakt-widget lukket som standard
     private decimal _oppgittB2C, _oppgittB2B, _estB2C, _estB2B;
     private record PipeRad(string Navn, int OppgittAntall, decimal OppgittSum, decimal Snitt, int UtenAntall, decimal EstSum);
     private List<PipeRad> _pipeLaanRader = new();

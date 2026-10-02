@@ -330,6 +330,13 @@ a { color: var(--accent); text-decoration: none; }
 .dist-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .dcard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
 .dcard-head { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+/* Sammenleggbare widget-topper (Pipeline, Trakt) — hele toppen er en knapp */
+.dcard-toggle, .panel-toggle { width: 100%; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.panel-toggle { align-items: center; }
+.dcard-toggle:hover .dcard-title, .dcard-toggle:hover .dcard-caret,
+.panel-toggle:hover h2, .panel-toggle:hover .dcard-caret { color: var(--accent, #1f5fc4); }
+.dcard-caret { margin-left: auto; font-size: 12px; color: var(--text-muted); transition: transform .15s ease; flex: 0 0 auto; }
+.dcard-caret.open { transform: rotate(90deg); }
 .dcard-title { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
 .dcard-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 .distbar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }

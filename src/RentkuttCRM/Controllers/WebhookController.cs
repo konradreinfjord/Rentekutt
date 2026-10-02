@@ -100,6 +100,13 @@ public class WebhookController : ControllerBase
                 var k = MapFlexible(flat);
                 k.Kilde = KildeLabel(hook.Name);
 
+                // Bedriftslån har egen landingsside, men sendes på samme token som rentekutt.no.
+                // Gi disse leadene egen kilde-merkelapp så de kan skilles ut i Saker/Database/Marked.
+                var erBedriftslan = string.Equals(Get(flat, "source"), "business-loan", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Get(flat, "tjeneste_kode"), "bedriftslan", StringComparison.OrdinalIgnoreCase)
+                    || (Get(flat, "skjema")?.Contains("bedriftslan", StringComparison.OrdinalIgnoreCase) ?? false);
+                if (erBedriftslan) k.Kilde = "Rentekutt Bedriftslån";
+
                 // Refinansiering av gjeld: sett lånetype ut fra konfigurerbar mapping (Logikk-matrise).
                 // refinansieres_laanetype (Begge/Forbrukslån/Kredittkort) → lånetype. Boliglån har ikke feltet.
                 var refiRaw = Get(flat, "refinansieres_laanetype_kode", "refinansieres_laanetype");
@@ -495,7 +502,8 @@ public class WebhookController : ControllerBase
         // Navn: for B2B er firmanavnet det primære (vises øverst), og personnavnet blir kontaktperson.
         // Fremtidige prismatch-payloads sender både company_name (firma) og fullt_navn (person) + orgnr.
         var personNavn = Get(f, "fullt_navn", "navn", "name", "fullname", "kundenavn");
-        var firmaNavn = Get(f, "company_name", "companyname", "firmanavn", "selskapsnavn", "bedriftsnavn");
+        // Bedriftslån-skjemaet sender firmanavnet som bedrift.navn → flatteneren gir bare-nøkkelen «navn».
+        var firmaNavn = Get(f, "company_name", "companyname", "firmanavn", "selskapsnavn", "bedriftsnavn", "navn");
         var fulltNavn = type == "B2B" ? (firmaNavn ?? personNavn) : personNavn;
         // Kontaktperson kun for B2B, og kun når vi faktisk har et firmanavn å skille personen fra.
         var kontaktperson = type == "B2B" && !string.IsNullOrWhiteSpace(firmaNavn) ? personNavn : null;
@@ -509,6 +517,21 @@ public class WebhookController : ControllerBase
                           || !string.IsNullOrWhiteSpace(medsokerFnr)
                           || !string.IsNullOrWhiteSpace(Get(f, "medsoeker_fullt_navn"));
 
+        // Bedriftslån (B2B): forventet omsetning → «omsetning i år» (Instabank EstimatedTurnOverThisYear).
+        // Fjorårets omsetning og organisasjonsform har ingen egne felt → bevares i notat så de ikke mistes.
+        var bedriftOmsIAar = type == "B2B" ? GetDec(f, "forventet_belop", "forventet_omsetning") : null;
+        string? bedriftNotat = null;
+        if (type == "B2B")
+        {
+            var orgform = Get(f, "organisasjonsform", "selskapsform");
+            var omsForegBelop = GetDec(f, "foregaaende_aar_belop", "foregaaende_omsetning");
+            var omsForegAar = GetInt(f, "foregaaende_aar");
+            var deler = new List<string>();
+            if (!string.IsNullOrWhiteSpace(orgform)) deler.Add($"Organisasjonsform: {orgform}");
+            if (omsForegBelop is > 0) deler.Add($"Omsetning foregående år{(omsForegAar is { } fy ? $" ({fy})" : "")}: {omsForegBelop:N0} kr");
+            if (deler.Count > 0) bedriftNotat = string.Join(" · ", deler);
+        }
+
         return new Kundekort
         {
             KundeType = type,
@@ -517,6 +540,8 @@ public class WebhookController : ControllerBase
             Foedselsnummer = fnr,
             FulltNavn = fulltNavn,
             KontaktpersonNavn = kontaktperson,
+            BedriftOmsetningIAar = bedriftOmsIAar,
+            Notater = bedriftNotat,
             Mobilnummer = mobil,
             Epost = Get(f, "epost", "email", "mail", "e_post"),
             Adresse = Get(f, "adresse", "address", "gateadresse"),
