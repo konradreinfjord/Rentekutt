@@ -123,6 +123,7 @@ builder.Services.AddScoped<NextcomService>();
 builder.Services.AddScoped<ZissonService>();
 builder.Services.AddScoped<DialerService>();
 builder.Services.AddScoped<DialerCallService>();   // aktiv-anrop-tilstand for global ringebar
+builder.Services.AddHostedService<ZissonCdrWorker>();   // fyller utfall/taletid på dialer-anrop fra Zisson CDR
 
 // Hendelseslogg.
 builder.Services.AddScoped<EventService>();

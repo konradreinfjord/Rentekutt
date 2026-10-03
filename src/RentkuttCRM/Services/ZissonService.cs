@@ -508,6 +508,54 @@ public class ZissonService
         return string.Join(" · ", deler);
     }
 
+    /// <summary>Ett CDR-ben (peer session) fra Zisson external-statdb — én part i en samtale.</summary>
+    public record CdrBen(string? ConversationId, string? PstnNumber, bool IsExternalPeer,
+        string? PeerType, int TaletidSek, string? JoinReason, string? LeaveReason, string? LoginId);
+
+    /// <summary>Henter alle CDR-ben (ConversationPeerSessions) i et tidsvindu. Brukes av ZissonCdrWorker
+    /// for å fylle utfall/taletid på dialer-anrop. Feiler aldri hardt — tom liste ved feil.</summary>
+    public async Task<List<CdrBen>> HentCdrBenAsync(DateTime fraUtc, DateTime tilUtc)
+    {
+        var res = new List<CdrBen>();
+        var http = await KlientAsync();
+        if (http is null) return res;
+        try
+        {
+            var q = $"/external-api/v1/external-statdb/ConversationPeerSessions?from={Uri.EscapeDataString(fraUtc.ToUniversalTime().ToString("o"))}&to={Uri.EscapeDataString(tilUtc.ToUniversalTime().ToString("o"))}";
+            using var resp = await http.GetAsync(q);
+            if (!resp.IsSuccessStatusCode) { _log.LogWarning("Zisson CDR-henting: HTTP {Status}", (int)resp.StatusCode); return res; }
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return res;
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                res.Add(new CdrBen(
+                    LesStreng(e, "conversationId"),
+                    LesStreng(e, "pstnNumber"),
+                    string.Equals(LesStreng(e, "isExternalPeer"), "true", StringComparison.OrdinalIgnoreCase),
+                    LesStreng(e, "peerType"),
+                    LesTaletidSek(e),
+                    LesStreng(e, "joinReason"),
+                    LesStreng(e, "leaveReason"),
+                    LesStreng(e, "loginId")));
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Zisson CDR-henting feilet"); }
+        return res;
+    }
+
+    // Taletid kan komme som sekunder (tall) eller «hh:mm:ss». 0 = samtalen ble ikke etablert.
+    private static int LesTaletidSek(JsonElement e)
+    {
+        foreach (var navn in new[] { "totalTalkTime", "talkTime", "talk_time" })
+        {
+            var v = LesStreng(e, navn);
+            if (string.IsNullOrWhiteSpace(v)) continue;
+            if (int.TryParse(v, out var sek)) return sek;
+            if (TimeSpan.TryParse(v, out var ts)) return (int)ts.TotalSeconds;
+        }
+        return 0;
+    }
+
     /// <summary>Feilsøking: søk i CDR-ben (peer sessions) siste 2 t på et telefonnummer ELLER en
     /// conversationId. Viser om kunde-benet ble opprettet (nummer, join/leave-årsak, taletid) og
     /// totalt antall ben i vinduet (så man ser om samtaler i det hele tatt registreres).</summary>

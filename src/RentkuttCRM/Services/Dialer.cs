@@ -110,6 +110,43 @@ public class DialerService
                    .ToDictionary(g => g.Key, g => (g.Count(), g.Max(a => a.StartetAt)));
     }
 
+    /// <summary>Uavklarte anrop (status «uavklart») registrert etter et tidspunkt — for CDR-oppfølging.</summary>
+    public async Task<List<DialerAnrop>> UavklarteSidenAsync(DateTime fraUtc)
+    {
+        if (!IsConfigured) return _staging.Where(a => a.Status == StatusUavklart && a.StartetAt >= fraUtc).ToList();
+        try
+        {
+            await EnsureInitAsync();
+            return (await _client.From<DialerAnrop>()
+                .Where(x => x.Status == StatusUavklart)
+                .Filter("startet_at", Supabase.Postgrest.Constants.Operator.GreaterThanOrEqual, fraUtc.ToUniversalTime().ToString("o"))
+                .Get()).Models;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av uavklarte anrop feilet"); return new(); }
+    }
+
+    /// <summary>Fyller inn utfall/taletid på et anrop (fra Zisson CDR) og markerer det ferdig.</summary>
+    public async Task SettResultatAsync(Guid id, string status, string? utfall, int? taletidSek, DateTime? ferdigAt)
+    {
+        if (!IsConfigured)
+        {
+            var a = _staging.FirstOrDefault(x => x.Id == id);
+            if (a is not null) { a.Status = status; a.Utfall = utfall; a.TaletidSek = taletidSek; a.FerdigAt = ferdigAt; }
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            await _client.From<DialerAnrop>().Where(x => x.Id == id)
+                .Set(x => x.Status, status)
+                .Set(x => x.Utfall!, utfall)
+                .Set(x => x.TaletidSek, taletidSek)
+                .Set(x => x.FerdigAt, ferdigAt)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Oppdatering av anropsresultat feilet"); }
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;
