@@ -33,7 +33,7 @@ else
                         <div class="nk-gh"></div>
                         <div class="nk-gh">Nye</div>
                         <div class="nk-gh" title="Snitt dager fra sak påbegynnes til den er avklart">Syklus</div>
-                        <div class="nk-gh" title="Snitt antall saker per dag som en agent (ikke admin/Konrad) har gjort noe med">Snitt/dag</div>
+                        <div class="nk-gh" title="Snitt antall saker per dag der en agent (ikke admin/Konrad) har gjort en statusendring eller ringt">Snitt/dag</div>
                         @for (var i = 0; i < 4; i++)
                         {
                             <div class="nk-gk">@PeriodeNavn[i]</div>
@@ -340,6 +340,11 @@ else
            && !aktor.StartsWith("System", StringComparison.OrdinalIgnoreCase)
            && !_adminAktorer.Contains(aktor);
 
+    // Teller kun som aktivitet: statusendring eller ringeaktivitet.
+    private static bool ErStatusEllerRing(KundekortLogg h)
+        => h.Kategori == "anrop"
+           || (h.Kategori == "endring" && (h.Tekst?.StartsWith("Endret status", StringComparison.OrdinalIgnoreCase) ?? false));
+
     // Periodefilter per boks (default «Hele tiden»). Egendefinert bruker fra/til.
     private string _leadsP = "all", _bankP = "all";
     private DateTime? _leadsFra, _leadsTil, _bankFra, _bankTil;
@@ -440,9 +445,10 @@ else
             var avkl = _rows.Where(k => FerdigeStatuser.Contains(k.Status) && k.UpdatedAt > k.CreatedAt
                                         && k.UpdatedAt.TilOslo().Date >= s).ToList();
             _pSyklus[i] = avkl.Count > 0 ? avkl.Average(k => (k.UpdatedAt - k.CreatedAt).TotalDays) : 0;
-            // Snitt/dag = snitt antall saker en agent (ikke admin/Konrad/system) har gjort noe med per dag.
+            // Snitt/dag = snitt antall saker per dag der en agent (ikke admin/Konrad/system) har gjort
+            // en statusendring eller ringeaktivitet.
             var perDag = _agentHandlinger
-                .Where(h => ErAgentHandling(h.Aktor) && h.Opprettet.TilOslo().Date >= s)
+                .Where(h => ErAgentHandling(h.Aktor) && ErStatusEllerRing(h) && h.Opprettet.TilOslo().Date >= s)
                 .GroupBy(h => h.Opprettet.TilOslo().Date)
                 .Sum(g => g.Select(h => h.KundekortId).Distinct().Count());
             _pSnittDag[i] = perDag / (double)Math.Max(1, dagerGaatt[i]);
