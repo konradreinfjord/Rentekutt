@@ -444,7 +444,9 @@
             {
                 var sending = SisteSendingFor(bank);
                 var erIb = InstabankService.ErInstabankNavn(bank);
-                var auto = _banker.FirstOrDefault(b => b.Navn == bank)?.AutoSend ?? false;
+                // «Auto»-merket speiler auto-påbegynt-bryteren — det er DEN som faktisk auto-sender
+                // (AutoPaabegyntWorker), ikke AutoSend. Ellers lyver kortet om at noe sendes automatisk.
+                var auto = _banker.FirstOrDefault(b => b.Navn == bank)?.AutoPaabegynt ?? false;
                 var idx = BankStegIdx(sending);
                 <div style="border:1px solid var(--border-strong); border-radius:10px; padding:12px 14px; margin-bottom:12px; background:var(--surface)">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px">
@@ -468,7 +470,21 @@
 
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
                         <span class="page-sub" style="margin:0; font-size:11px">
-                            @(sending is null ? "Matcher — ikke sendt ennå" : $"{sending.SendtAt.TilOslo():dd.MM.yy HH:mm} · sendt {SendtMaate(sending)}")
+                            @if (sending is not null)
+                            {
+                                <text>@sending.SendtAt.TilOslo().ToString("dd.MM.yy HH:mm") · sendt @SendtMaate(sending)</text>
+                            }
+                            else if (erIb)
+                            {
+                                var grunn = AutoSendBlokkering(bank);
+                                @(grunn is null
+                                    ? "Matcher — auto-sendes ved neste kjøring (maks ~5 min)"
+                                    : $"Matcher, men auto-send blokkert: {grunn}")
+                            }
+                            else
+                            {
+                                <text>Matcher — ikke sendt ennå</text>
+                            }
                         </span>
                         <div style="flex-shrink:0">
                             @if (sending is null)
@@ -1711,6 +1727,28 @@
 
     private static string SendtMaate(BankSending s) =>
         InstabankService.ErInstabankNavn(s.Bank) ? "via API" : "manuelt";
+
+    // Hvorfor en matchende Instabank-bank ikke er auto-sendt ennå. Speiler gatene i
+    // AutoPaabegyntWorker, så rådgiveren ser årsaken rett på kortet. null = ingen åpenbar blokkering.
+    private string? AutoSendBlokkering(string bank)
+    {
+        if (!InstabankService.ErInstabankNavn(bank)) return null;   // kun Instabank auto-sendes
+        var partner = _banker.FirstOrDefault(b => b.Navn == bank);
+        if (partner is null || !partner.AutoPaabegynt)
+            return "«auto-påbegynt» er AV for Instabank (Admin → bank). Må sendes manuelt, eller slå på bryteren.";
+        if (_k.Status is not (KundekortService.StatusPaabegynt or KundekortService.StatusNySoknad))
+            return $"status er «{_k.Status}» — auto-send gjelder kun «Påbegynt søknad» og «Ny søknad».";
+        if (!_harSamtykke)
+            return "mangler samtykke (Gjeldsregister + kredittsjekk) — kreves før Instabank.";
+        var segment = PartnerProdukt.SegmentFor(_k.KundeType);
+        var harProdukt = _produkter.Any(p => p.PartnerId == partner.Id && p.Aktiv
+            && string.Equals(p.Segment, segment, StringComparison.OrdinalIgnoreCase));
+        if (!harProdukt)
+            return $"Instabank har ingen aktivt produkt for segmentet «{segment}».";
+        if (_k.Status == KundekortService.StatusPaabegynt && _k.CreatedAt.ToUniversalTime() > DateTime.UtcNow.AddMinutes(-30))
+            return "venter på 30-min-forsinkelsen (uferdig søknad) — sendes automatisk når den har stått i 30 min.";
+        return null;
+    }
 
     // Send til en matchende bank fra statuskortet (auto-velger produkt for Instabank).
     private async Task SendTilMatchetBank(string bank)

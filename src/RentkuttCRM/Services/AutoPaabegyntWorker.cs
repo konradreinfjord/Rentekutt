@@ -117,8 +117,10 @@ public class AutoPaabegyntWorker : BackgroundService
             if (k is null || !ErKandidatStatus(k.Status)) continue;
 
             // Banker leadet matcher i logikk-matrisen, avgrenset til de med bryteren PÅ.
+            // Instabank matches «fuzzy» (som ellers i systemet), så en navnevariant i regelen
+            // («Instabank ASA» vs «Instabank») ikke stilltiende blokkerer auto-send.
             var matchende = RutingEval.MatchendeBanker(regler, k)
-                .Where(navn => autoBanker.Any(b => string.Equals(b.Navn, navn, StringComparison.OrdinalIgnoreCase)))
+                .Where(navn => autoBanker.Any(b => ErSammeBank(b.Navn, navn)))
                 .ToList();
             if (matchende.Count == 0) continue;
 
@@ -138,7 +140,7 @@ public class AutoPaabegyntWorker : BackgroundService
             {
                 if (eksisterende.Contains(bankNavn)) continue;
 
-                var partner = autoBanker.First(b => string.Equals(b.Navn, bankNavn, StringComparison.OrdinalIgnoreCase));
+                var partner = autoBanker.First(b => ErSammeBank(b.Navn, bankNavn));
                 var (klar, produkt, kode, hopp) = ForberedSending(partner, k, produkter, instabank, refiCfg);
                 if (!klar) { if (hopp is not null) _log.LogInformation("Auto-påbegynt: hopper over {Bank} for {Id}: {Grunn}", bankNavn, k.Id, hopp); continue; }
 
@@ -225,6 +227,12 @@ public class AutoPaabegyntWorker : BackgroundService
     // (fullført, men ikke tatt videre av agent / sendt / lukket).
     private static bool ErKandidatStatus(string? status)
         => status == KundekortService.StatusPaabegynt || status == KundekortService.StatusNySoknad;
+
+    // Samme bank: eksakt navn, eller begge er Instabank (uansett navnevariant) — unngår at en
+    // navneforskjell mellom rutingsregel og partner stopper auto-send til Instabank.
+    private static bool ErSammeBank(string? a, string? b)
+        => string.Equals(a, b, StringComparison.OrdinalIgnoreCase)
+           || (InstabankService.ErInstabankNavn(a) && InstabankService.ErInstabankNavn(b));
 
     private static async Task<DateTime?> LesAktivertFraAsync(SettingsService settings)
     {
