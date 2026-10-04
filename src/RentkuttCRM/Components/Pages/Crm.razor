@@ -3,6 +3,8 @@
 @inject RentkuttCRM.Services.KundekortService Svc
 @inject RentkuttCRM.Services.BankSendingService BankSending
 @inject RentkuttCRM.Services.DialerService Dialer
+@inject RentkuttCRM.Services.LoggService Logg
+@inject RentkuttCRM.Services.SupabaseUserService Brukere
 @inject NavigationManager Nav
 
 <PageTitle>Dashbord — Rentekutt</PageTitle>
@@ -31,7 +33,7 @@ else
                         <div class="nk-gh"></div>
                         <div class="nk-gh">Nye</div>
                         <div class="nk-gh" title="Snitt dager fra sak påbegynnes til den er avklart">Syklus</div>
-                        <div class="nk-gh" title="Snitt saker påbegynt + ringt + oppdatert per dag">Snitt/dag</div>
+                        <div class="nk-gh" title="Snitt antall saker per dag som en agent (ikke admin/Konrad) har gjort noe med">Snitt/dag</div>
                         @for (var i = 0; i < 4; i++)
                         {
                             <div class="nk-gk">@PeriodeNavn[i]</div>
@@ -329,6 +331,14 @@ else
     private List<Kundekort> _rows = new();
     private List<BankSending> _sendingerRaw = new();
     private Dictionary<Guid, (int Antall, DateTime Sist)> _ringRaw = new();
+    private List<KundekortLogg> _agentHandlinger = new();   // handlinger (ikke innsyn) i år
+    private HashSet<string> _adminAktorer = new(StringComparer.OrdinalIgnoreCase);  // admin/Konrad ekskluderes
+
+    // Reell agent-handling: ikke system, ikke admin/Konrad.
+    private bool ErAgentHandling(string? aktor)
+        => !string.IsNullOrWhiteSpace(aktor)
+           && !aktor.StartsWith("System", StringComparison.OrdinalIgnoreCase)
+           && !_adminAktorer.Contains(aktor);
 
     // Periodefilter per boks (default «Hele tiden»). Egendefinert bruker fra/til.
     private string _leadsP = "all", _bankP = "all";
@@ -430,10 +440,12 @@ else
             var avkl = _rows.Where(k => FerdigeStatuser.Contains(k.Status) && k.UpdatedAt > k.CreatedAt
                                         && k.UpdatedAt.TilOslo().Date >= s).ToList();
             _pSyklus[i] = avkl.Count > 0 ? avkl.Average(k => (k.UpdatedAt - k.CreatedAt).TotalDays) : 0;
-            var opp = _rows.Count(k => k.CreatedAt.TilOslo().Date >= s);
-            var oppd = _rows.Count(k => k.UpdatedAt.TilOslo().Date >= s && k.UpdatedAt > k.CreatedAt);
-            var rng = _ringRaw.Count(kv => kv.Value.Sist.TilOslo().Date >= s);
-            _pSnittDag[i] = (opp + oppd + rng) / (double)Math.Max(1, dagerGaatt[i]);
+            // Snitt/dag = snitt antall saker en agent (ikke admin/Konrad/system) har gjort noe med per dag.
+            var perDag = _agentHandlinger
+                .Where(h => ErAgentHandling(h.Aktor) && h.Opprettet.TilOslo().Date >= s)
+                .GroupBy(h => h.Opprettet.TilOslo().Date)
+                .Sum(g => g.Select(h => h.KundekortId).Distinct().Count());
+            _pSnittDag[i] = perDag / (double)Math.Max(1, dagerGaatt[i]);
         }
     }
 
@@ -577,9 +589,16 @@ else
         _rows = await Svc.ListLettAsync();
         var sendingerTask = BankSending.SisteePerKortOgBankAsync();
         var ringTask = Dialer.HentSammendragAsync();
-        await Task.WhenAll(sendingerTask, ringTask);
+        var handlingerTask = Logg.HandlingerSidenAsync(new DateTime(DateTime.UtcNow.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var brukereTask = Brukere.ListUsersAsync();
+        await Task.WhenAll(sendingerTask, ringTask, handlingerTask, brukereTask);
         _sendingerRaw = sendingerTask.Result;
         _ringRaw = ringTask.Result;
+        _agentHandlinger = handlingerTask.Result;
+        _adminAktorer = brukereTask.Result.Where(u => u.Role == "Administrator")
+            .SelectMany(u => new[] { u.FullName, u.Email })
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         BeregnTotaltTabell();
         RecomputeLeads();
         RecomputeBank();

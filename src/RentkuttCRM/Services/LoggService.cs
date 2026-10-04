@@ -146,6 +146,32 @@ public class LoggService
         return res;
     }
 
+    /// <summary>Alle handlinger (logglinjer) etter et tidspunkt UNNTATT innsyn/lesing — brukes til
+    /// å måle reell agent-aktivitet (hvem gjorde noe med en sak, når). Paginert.</summary>
+    public async Task<List<KundekortLogg>> HandlingerSidenAsync(DateTime fraUtc)
+    {
+        if (!IsConfigured)
+            return _staging.Where(x => x.Opprettet >= fraUtc && x.Kategori != "innsyn").ToList();
+        var res = new List<KundekortLogg>();
+        try
+        {
+            await EnsureInitAsync();
+            const int side = 1000;
+            for (var from = 0; from <= 500000; from += side)
+            {
+                var batch = (await _client.From<KundekortLogg>()
+                    .Filter("opprettet", Constants.Operator.GreaterThanOrEqual, fraUtc.ToUniversalTime().ToString("o"))
+                    .Order(x => x.Opprettet, Constants.Ordering.Ascending, Constants.NullPosition.Last)
+                    .Range(from, from + side - 1)
+                    .Get()).Models;
+                res.AddRange(batch.Where(x => x.Kategori != "innsyn"));
+                if (batch.Count < side) break;
+            }
+        }
+        catch (Exception ex) { _log.LogError(ex, "Henting av handlinger feilet"); }
+        return res;
+    }
+
     private static string? ParseStatus(string tekst)
     {
         if (string.IsNullOrWhiteSpace(tekst) || !tekst.StartsWith("Endret status", StringComparison.OrdinalIgnoreCase)) return null;
