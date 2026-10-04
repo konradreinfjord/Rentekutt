@@ -1,6 +1,8 @@
 @page "/crm"
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.BankSendingService BankSending
+@inject RentkuttCRM.Services.DialerService Dialer
 @inject NavigationManager Nav
 
 <PageTitle>Dashbord — Rentekutt</PageTitle>
@@ -23,15 +25,83 @@ else
         <div class="mcards">
             <div class="mcard" style="--a:#1f5fc4">
                 <span class="mcard-ic"><svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
-                <div><div class="mcard-num">@_rows.Count</div><div class="mcard-lbl">Totalt søknader</div><div class="mcard-new-line">I dag +@_nyeIDag · Uke +@_nyeDenneUke · Måned +@_nyeDenneMaaned · År +@_nyeDetteAar</div><div class="mcard-sub">@_b2c privat · @_b2b bedrift</div></div>
+                <div style="min-width:0; flex:1">
+                    <div class="mcard-lbl" style="margin-bottom:7px">Totalt søknader · @_rows.Count</div>
+                    <div class="nk-grid">
+                        <div class="nk-gh"></div>
+                        <div class="nk-gh">Nye</div>
+                        <div class="nk-gh" title="Snitt dager fra sak påbegynnes til den er avklart">Syklus</div>
+                        <div class="nk-gh" title="Snitt saker påbegynt + ringt + oppdatert per dag">Snitt/dag</div>
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            <div class="nk-gk">@PeriodeNavn[i]</div>
+                            <div class="nk-gv"><b>+@_pNye[i]</b></div>
+                            <div class="nk-gv">@Dager(_pSyklus[i])</div>
+                            <div class="nk-gv"><b>@Snitt1(_pSnittDag[i])</b></div>
+                        }
+                    </div>
+                    <div class="mcard-sub" style="margin-top:7px">@_b2c privat · @_b2b bedrift</div>
+                </div>
             </div>
             <div class="mcard" style="--a:#c2740a">
-                <span class="mcard-ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-                <div><div class="mcard-num">@_eierskapPct<span class="u">%</span></div><div class="mcard-lbl">Med eierskap</div><div class="mcard-new-line">I dag +@_eierTattIDag · Uke +@_eierTattUke · Måned +@_eierTattMaaned · År +@_eierTattAar</div><div class="mcard-sub">@_medEierskap av @_rows.Count har rådgiver</div></div>
+                <span class="mcard-ic"><svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></span>
+                <div style="min-width:0; flex:1">
+                    <div class="nk-head">
+                        <span class="mcard-lbl" style="margin:0">Leads · @_leadTotal totalt</span>
+                        <select class="nk-period" @bind="_leadsP" @bind:after="RecomputeLeads">
+                            <option value="all">All time</option>
+                            <option value="uke">Denne uke</option>
+                            <option value="maaned">Denne måned</option>
+                            <option value="90">Siste 90 dager</option>
+                            <option value="aar">I år</option>
+                            <option value="custom">Egendefinert…</option>
+                        </select>
+                    </div>
+                    @if (_leadsP == "custom")
+                    {
+                        <div class="nk-custom"><input type="date" @bind="_leadsFra" @bind:after="RecomputeLeads" /><span>–</span><input type="date" @bind="_leadsTil" @bind:after="RecomputeLeads" /></div>
+                    }
+                    <div class="nk-line"><span class="nk-k"><span class="nk-dot" style="background:#9aa0a8"></span>Ubehandlet</span><span class="nk-v"><b>@_leadUbeh</b> <span class="nk-pct">@Pct(_leadUbeh, _leadTotal)</span></span></div>
+                    <div class="nk-line"><span class="nk-k"><span class="nk-dot" style="background:#1f5fc4"></span>Pågår</span><span class="nk-v"><b>@_leadPaagaar</b> <span class="nk-pct">@Pct(_leadPaagaar, _leadTotal)</span></span></div>
+                    <div class="nk-line"><span class="nk-k"><span class="nk-dot" style="background:#266f32"></span>Ferdigstilt</span><span class="nk-v"><b>@_leadFerdig</b> <span class="nk-pct">@Pct(_leadFerdig, _leadTotal)</span></span></div>
+                </div>
             </div>
-            <div class="mcard" style="--a:#266f32">
-                <span class="mcard-ic"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
-                <div><div class="mcard-num">@_ferdigstilt</div><div class="mcard-lbl">Søknader ferdigstilt</div><div class="mcard-new-line">I dag +@_ferdigIDag · Uke +@_ferdigUke · Måned +@_ferdigMaaned · År +@_ferdigAar</div><div class="mcard-sub">@_ferdigstiltPct % av alle · @_utbetalt utbetalt</div></div>
+        </div>
+
+        <div class="mcard" style="--a:#1f6e33">
+            <span class="mcard-ic"><svg viewBox="0 0 24 24"><line x1="3" y1="21" x2="21" y2="21"/><path d="M5 6l7-3 7 3"/><line x1="4" y1="10" x2="4" y2="21"/><line x1="20" y1="10" x2="20" y2="21"/><line x1="12" y1="10" x2="12" y2="21"/></svg></span>
+            <div style="min-width:0; flex:1">
+                <div class="nk-head" style="margin-bottom:9px">
+                    <span class="mcard-lbl" style="margin:0">Bankresultater</span>
+                    <select class="nk-period" @bind="_bankP" @bind:after="RecomputeBank">
+                        <option value="all">All time</option>
+                        <option value="uke">Denne uke</option>
+                        <option value="maaned">Denne måned</option>
+                        <option value="90">Siste 90 dager</option>
+                        <option value="aar">I år</option>
+                        <option value="custom">Egendefinert…</option>
+                    </select>
+                </div>
+                @if (_bankP == "custom")
+                {
+                    <div class="nk-custom" style="margin-bottom:8px"><input type="date" @bind="_bankFra" @bind:after="RecomputeBank" /><span>–</span><input type="date" @bind="_bankTil" @bind:after="RecomputeBank" /></div>
+                }
+                <div class="nk-banks">
+                    <div class="nk-bankcol">
+                        <div class="nk-bankh">Instabank</div>
+                        <div class="nk-line"><span class="nk-k">Sendt</span><span class="nk-v"><b>@_ibSendt</b></span></div>
+                        <div class="nk-line"><span class="nk-k">Innvilget</span><span class="nk-v"><b>@_ibInnvilget</b> <span class="nk-pct">@Pct(_ibInnvilget, _ibSendt)</span></span></div>
+                        <div class="nk-line"><span class="nk-k">Utbetalt</span><span class="nk-v"><b>@_ibUtbetalt</b> <span class="nk-pct">@Pct(_ibUtbetalt, _ibSendt)</span></span></div>
+                        <div class="nk-line"><span class="nk-k">Avslått</span><span class="nk-v"><b>@_ibAvslatt</b> <span class="nk-pct">@Pct(_ibAvslatt, _ibSendt)</span></span></div>
+                    </div>
+                    <div class="nk-bankcol">
+                        <div class="nk-bankh">Soknedal</div>
+                        <div class="nk-line"><span class="nk-k">Sendt</span><span class="nk-v"><b>@_sokSendt</b></span></div>
+                        <div class="nk-line"><span class="nk-k">SBL signert totalt</span><span class="nk-v"><b>@_sokSignert</b> <span class="nk-pct">@Pct(_sokSignert, _sokSendt)</span></span></div>
+                        <div class="nk-line"><span class="nk-k">Utbetalt</span><span class="nk-v"><b>@_sokUtbetalt</b> <span class="nk-pct">@Pct(_sokUtbetalt, _sokSendt)</span></span></div>
+                        <div class="nk-line"><span class="nk-k">Avslått</span><span class="nk-v"><b>@_sokAvslatt</b> <span class="nk-pct">@Pct(_sokAvslatt, _sokSendt)</span></span></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -257,6 +327,119 @@ else
 
 @code {
     private List<Kundekort> _rows = new();
+    private List<BankSending> _sendingerRaw = new();
+    private Dictionary<Guid, (int Antall, DateTime Sist)> _ringRaw = new();
+
+    // Periodefilter per boks (default «Hele tiden»). Egendefinert bruker fra/til.
+    private string _leadsP = "all", _bankP = "all";
+    private DateTime? _leadsFra, _leadsTil, _bankFra, _bankTil;
+
+    // Lead-status (boks 2): ubehandlet / pågår / ferdigstilt.
+    private int _leadTotal, _leadUbeh, _leadPaagaar, _leadFerdig;
+    // Bank-resultater (boks 3): Instabank (fra per-bank-utfall) og Soknedal (fra kundekortstatus).
+    private int _ibSendt, _ibInnvilget, _ibUtbetalt, _ibAvslatt;
+    private int _sokSendt, _sokSignert, _sokUtbetalt, _sokAvslatt;
+    // Totalt søknader-boks: per periode (I dag/Uke/Måned/År): nye, syklustid og snitt saker/dag.
+    private static readonly string[] PeriodeNavn = { "I dag", "Uke", "Måned", "År" };
+    private readonly int[] _pNye = new int[4];
+    private readonly double[] _pSyklus = new double[4];
+    private readonly double[] _pSnittDag = new double[4];
+
+    private static readonly string[] FerdigeStatuser = { "Utbetalt", "Avslag", "Avsluttet", "Kansellert" };
+    private static readonly string[] FerskeStatuser =
+        { "Ny søknad", "Nytt lead", "Påbegynt søknad", "Oppfølging" };
+
+    // Periodevalg → fra/til (Oslo-dato, inklusive). null = ingen grense (hele tiden).
+    private (DateTime? Fra, DateTime? Til) PeriodeRange(string p, DateTime? cFra, DateTime? cTil)
+    {
+        var iDag = DateTime.UtcNow.TilOslo().Date;
+        return p switch
+        {
+            "uke" => (iDag.AddDays(-(((int)iDag.DayOfWeek + 6) % 7)), null),
+            "maaned" => (new DateTime(iDag.Year, iDag.Month, 1), null),
+            "90" => (iDag.AddDays(-90), null),
+            "aar" => (new DateTime(iDag.Year, 1, 1), null),
+            "custom" => (cFra?.Date, cTil?.Date),
+            _ => (null, null),
+        };
+    }
+    private static bool IPeriode(DateTime utc, DateTime? fra, DateTime? til)
+    { var d = utc.TilOslo().Date; return (fra is null || d >= fra) && (til is null || d <= til); }
+
+    // Lead-status for valgt periode (boks 2). Filtrerer leads på opprettet-dato.
+    private void RecomputeLeads()
+    {
+        var (fra, til) = PeriodeRange(_leadsP, _leadsFra, _leadsTil);
+        var rows = _rows.Where(k => IPeriode(k.CreatedAt, fra, til)).ToList();
+        _leadTotal = rows.Count;
+        var sendtKort = _sendingerRaw.Where(s => s.KundekortId is not null
+            && s.Status is SendStatus.Sendt or SendStatus.Manuelt or SendStatus.IKo)
+            .Select(s => s.KundekortId!.Value).ToHashSet();
+        var ringKort = _ringRaw.Keys.ToHashSet();
+        _leadUbeh = _leadPaagaar = _leadFerdig = 0;
+        foreach (var k in rows)
+        {
+            if (FerdigeStatuser.Contains(k.Status)) _leadFerdig++;
+            else if (sendtKort.Contains(k.Id) || ringKort.Contains(k.Id) || !FerskeStatuser.Contains(k.Status)) _leadPaagaar++;
+            else _leadUbeh++;
+        }
+    }
+
+    // Bank-resultater for valgt periode (boks 3). Filtrerer sendinger på sendt-dato.
+    private void RecomputeBank()
+    {
+        var (fra, til) = PeriodeRange(_bankP, _bankFra, _bankTil);
+        bool ErSendt(BankSending s) => s.Status is SendStatus.Sendt or SendStatus.Manuelt;
+        var sendinger = _sendingerRaw.Where(s => IPeriode(s.SendtAt, fra, til)).ToList();
+
+        var ib = sendinger.Where(s => InstabankService.ErInstabankNavn(s.Bank) && ErSendt(s)).ToList();
+        _ibSendt = ib.Count;
+        _ibInnvilget = ib.Count(s => s.Utfall == SendUtfall.Innvilget);
+        _ibUtbetalt = ib.Count(s => s.Utfall == SendUtfall.Utbetalt);
+        _ibAvslatt = ib.Count(s => s.Utfall == SendUtfall.Avslatt);
+
+        var statusFor = _rows.GroupBy(k => k.Id).ToDictionary(g => g.Key, g => g.First().Status);
+        var sok = sendinger.Where(s => (s.Bank ?? "").Contains("soknedal", StringComparison.OrdinalIgnoreCase) && ErSendt(s)).ToList();
+        _sokSendt = sok.Count;
+        _sokSignert = _sokUtbetalt = _sokAvslatt = 0;
+        foreach (var s in sok)
+        {
+            var st = s.KundekortId is { } id && statusFor.TryGetValue(id, out var v) ? v : "";
+            if (st == KundekortService.StatusUtbetalt) { _sokUtbetalt++; _sokSignert++; }   // utbetalt ⇒ har signert
+            else if (st == KundekortService.StatusSignert) _sokSignert++;
+            else if (st is "Avslag" or "Avsluttet") _sokAvslatt++;
+        }
+    }
+
+    // Totalt søknader-boks: per periode (uavhengig av boks-filteret).
+    private void BeregnTotaltTabell()
+    {
+        var iDag = DateTime.UtcNow.TilOslo().Date;
+        var starts = new[]
+        {
+            iDag,
+            iDag.AddDays(-(((int)iDag.DayOfWeek + 6) % 7)),
+            new DateTime(iDag.Year, iDag.Month, 1),
+            new DateTime(iDag.Year, 1, 1),
+        };
+        var dagerGaatt = new[] { 1, (iDag - starts[1]).Days + 1, iDag.Day, iDag.DayOfYear };
+        for (var i = 0; i < 4; i++)
+        {
+            var s = starts[i];
+            _pNye[i] = _rows.Count(k => k.CreatedAt.TilOslo().Date >= s);
+            var avkl = _rows.Where(k => FerdigeStatuser.Contains(k.Status) && k.UpdatedAt > k.CreatedAt
+                                        && k.UpdatedAt.TilOslo().Date >= s).ToList();
+            _pSyklus[i] = avkl.Count > 0 ? avkl.Average(k => (k.UpdatedAt - k.CreatedAt).TotalDays) : 0;
+            var opp = _rows.Count(k => k.CreatedAt.TilOslo().Date >= s);
+            var oppd = _rows.Count(k => k.UpdatedAt.TilOslo().Date >= s && k.UpdatedAt > k.CreatedAt);
+            var rng = _ringRaw.Count(kv => kv.Value.Sist.TilOslo().Date >= s);
+            _pSnittDag[i] = (opp + oppd + rng) / (double)Math.Max(1, dagerGaatt[i]);
+        }
+    }
+
+    private static string Pct(int n, int tot) => tot > 0 ? $"{Math.Round(100.0 * n / tot)} %" : "0 %";
+    private static string Dager(double d) => d > 0 ? d.ToString("0.#") + " d" : "—";
+    private static string Snitt1(double v) => v.ToString("0.#");
     private Dictionary<string, int> _statusCount30 = new();
     private List<(string Kilde, int Antall)> _kildeIDag = new();
     private List<(string Type, int Antall)> _laanetype30 = new();
@@ -392,6 +575,14 @@ else
     {
         if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
         _rows = await Svc.ListLettAsync();
+        var sendingerTask = BankSending.SisteePerKortOgBankAsync();
+        var ringTask = Dialer.HentSammendragAsync();
+        await Task.WhenAll(sendingerTask, ringTask);
+        _sendingerRaw = sendingerTask.Result;
+        _ringRaw = ringTask.Result;
+        BeregnTotaltTabell();
+        RecomputeLeads();
+        RecomputeBank();
 
         var na = DateTime.UtcNow;
         // «Dette døgn» = inneværende kalenderdøgn i norsk tid (ikke rullerende 24 timer).

@@ -177,6 +177,29 @@ public class BankSendingService
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SendtAt).First());
     }
 
+    /// <summary>Siste sending per (kundekort, bank) — for per-bank-statistikk (dashbord).</summary>
+    public async Task<List<BankSending>> SisteePerKortOgBankAsync(int limit = 10000)
+    {
+        List<BankSending> models;
+        if (!IsConfigured) models = _staging.ToList();
+        else
+        {
+            try
+            {
+                await EnsureInitAsync();
+                models = (await _client.From<BankSending>()
+                    .Order(x => x.SendtAt, Constants.Ordering.Descending, Constants.NullPosition.Last)
+                    .Limit(limit).Get()).Models;
+            }
+            catch (Exception ex) { _log.LogError(ex, "Henting av sendinger per kort/bank feilet"); return new(); }
+        }
+        return models
+            .Where(s => s.KundekortId is not null)
+            .GroupBy(s => (s.KundekortId!.Value, (s.Bank ?? "").Trim().ToLowerInvariant()))
+            .Select(g => g.OrderByDescending(x => x.SendtAt).First())
+            .ToList();
+    }
+
     public async Task<List<BankSending>> SisteAsync(int limit = 25)
     {
         if (!IsConfigured) return _staging.Take(limit).ToList();

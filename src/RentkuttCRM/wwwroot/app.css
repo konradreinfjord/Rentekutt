@@ -317,6 +317,33 @@ a { color: var(--accent); text-decoration: none; }
 .mcard { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 17px 18px 15px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: flex; flex-direction: column; gap: 12px; }
 .mcard.click { cursor: pointer; transition: box-shadow .14s, transform .14s, border-color .14s; }
 .mcard.click:hover { box-shadow: 0 10px 26px rgba(16,24,40,.09); transform: translateY(-2px); border-color: var(--border-strong); }
+
+/* Nøkkeltall: lead-status + bankresultater (antall + %) */
+.nk-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 12.5px; }
+.nk-k { display: inline-flex; align-items: center; color: var(--text-2); min-width: 0; }
+.nk-v { white-space: nowrap; }
+.nk-v b { font-size: 13.5px; }
+.nk-pct { color: var(--text-muted); font-size: 11.5px; margin-left: 2px; }
+.nk-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; flex: 0 0 auto; }
+.nk-banks { display: flex; flex-wrap: wrap; gap: 10px 26px; }
+.nk-bankcol { flex: 1 1 180px; min-width: 150px; }
+.nk-bankh { font-size: 11px; font-weight: 700; color: var(--text-1, #1f2937); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.nk-split { display: flex; gap: 18px; align-items: flex-start; }
+.nk-split-left { flex: 0 0 auto; min-width: 88px; }
+.nk-split-right { flex: 1 1 auto; min-width: 0; }
+.nk-total { font-size: 22px; font-weight: 800; line-height: 1.05; letter-spacing: -.01em; }
+/* Slankt periodefilter i boks-header */
+.nk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.nk-period { flex: 0 0 auto; font-size: 10.5px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; padding: 1px 4px; max-width: 120px; cursor: pointer; }
+.nk-custom { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+.nk-custom input { font-size: 10.5px; padding: 1px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-1); }
+.nk-custom span { color: var(--text-muted); }
+.nk-grid { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 4px 12px; font-size: 12px; align-items: center; }
+.nk-gh { font-size: 9.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .02em; text-align: right; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+.nk-gh:first-child { text-align: left; }
+.nk-gk { color: var(--text-2); white-space: nowrap; }
+.nk-gv { text-align: right; white-space: nowrap; }
+.nk-gv b { font-size: 13px; }
 .mcard-ic { width: 38px; height: 38px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; color: var(--a, var(--ink)); background: color-mix(in srgb, var(--a, #64748b) 12%, transparent); }
 .mcard-ic svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .mcard-num { font-family: var(--mono); font-size: 27px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; line-height: 1; }

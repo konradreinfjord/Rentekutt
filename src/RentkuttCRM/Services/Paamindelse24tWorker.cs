@@ -41,14 +41,10 @@ public class Paamindelse24tWorker : BackgroundService
                 var settings = scope.ServiceProvider.GetRequiredService<SettingsService>();
                 intervallMin = Math.Max(5, await settings.GetIntAsync(KeyIntervallMin, StandardIntervallMin));
 
-                if (await settings.GetBoolAsync(KeyEnabled, false))
-                {
-                    var link = scope.ServiceProvider.GetRequiredService<LinkMobilityService>();
-                    if (link.ErKonfigurert)
-                        await KjorSyklusAsync(scope, settings, ct);
-                    else
-                        _log.LogWarning("24t-SMS: LinkMobility ikke konfigurert — hopper over.");
-                }
+                var link = scope.ServiceProvider.GetRequiredService<LinkMobilityService>();
+                if (link.ErKonfigurert)
+                    await KjorSyklusAsync(scope, settings, ct);
+                // Ikke konfigurert = stille hopp (staging/dev sender aldri SMS).
             }
             catch (Exception ex) { _log.LogError(ex, "24t-SMS-syklus feilet"); }
 
@@ -57,48 +53,68 @@ public class Paamindelse24tWorker : BackgroundService
         }
     }
 
+    // Sendevindu: alle SMS-løp sender kun innenfor dette (norsk tid). Vises også i widgeten.
+    public const int VinduFraTime = 8;
+    public const int VinduTilTime = 21;
+    public static bool InnenforSendevindu(DateTime naaUtc)
+    {
+        var o = naaUtc.TilOslo();
+        return o.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && o.Hour >= VinduFraTime && o.Hour < VinduTilTime;
+    }
+
     private async Task KjorSyklusAsync(IServiceScope scope, SettingsService settings, CancellationToken ct)
     {
+        var loepListe = (await scope.ServiceProvider.GetRequiredService<SmsLoepService>().HentAsync())
+            .Where(l => l.Aktiv && !string.IsNullOrWhiteSpace(l.MalNavn)).ToList();
+        if (loepListe.Count == 0) return;
+
+        // Send kun innenfor sendevinduet (08–21 på hverdager). Utenfor → vent til neste syklus.
+        if (!InnenforSendevindu(DateTime.UtcNow)) return;
+
         var sms = scope.ServiceProvider.GetRequiredService<SmsMalService>();
         var kundekort = scope.ServiceProvider.GetRequiredService<KundekortService>();
         var utsending = scope.ServiceProvider.GetRequiredService<SmsUtsendingService>();
 
-        var malNavn = await settings.GetAsync(KeyMal);
-        if (string.IsNullOrWhiteSpace(malNavn)) { _log.LogInformation("24t-SMS: ingen mal valgt — hopper over."); return; }
-        var mal = (await sms.ListAsync()).FirstOrDefault(m => m.Navn == malNavn);
-        if (mal is null) { _log.LogWarning("24t-SMS: fant ikke mal «{Mal}».", malNavn); return; }
-
-        var minTimer = Math.Max(1, await settings.GetIntAsync(KeyMinTimer, StandardMinTimer));
-        var maksTimer = Math.Max(minTimer + 1, await settings.GetIntAsync(KeyMaksTimer, StandardMaksTimer));
-
+        var maler = await sms.ListAsync();
+        var alleKort = await kundekort.ListLettAsync();
         var naa = DateTime.UtcNow;
-        var oevreGrense = naa.AddHours(-minTimer);   // eldre enn dette (minst så gammel)
-        var nedreGrense = naa.AddHours(-maksTimer);  // men ikke eldre enn dette
-
-        var kandidater = (await kundekort.ListLettAsync()).Where(k =>
-            k.Status == KundekortService.StatusPaabegynt &&
-            !string.IsNullOrWhiteSpace(k.Mobilnummer) &&
-            k.CreatedAt <= oevreGrense &&
-            k.CreatedAt >= nedreGrense).ToList();
-
         int sendt = 0, feilet = 0;
-        foreach (var k in kandidater)
+
+        foreach (var loep in loepListe)
         {
             if (ct.IsCancellationRequested) break;
-            if (await utsending.HarSendtOkAsync(k.Id, SmsUtsendingService.TypePaamindelse24t)) continue;
+            var mal = maler.FirstOrDefault(m => m.Navn == loep.MalNavn);
+            if (mal is null) { _log.LogWarning("SMS-løp «{Navn}»: fant ikke mal «{Mal}».", loep.Navn, loep.MalNavn); continue; }
 
-            var (ok, detalj) = await sms.SendTilKundeAsync(k.Mobilnummer, mal.Tekst, k.FulltNavn);
-            await utsending.LoggAsync(k.Id, SmsUtsendingService.TypePaamindelse24t, k.Mobilnummer, ok, detalj);
-            if (ok) sendt++;
-            else { feilet++; _log.LogWarning("24t-SMS feilet for {Id}: {Detalj}", k.Id, detalj); }
+            var sendEtter = Math.Max(1, loep.SendEtterTimer);
+            var ikkeEldre = Math.Max(sendEtter + 1, loep.IkkeEldreTimer);
+            var oevre = naa.AddHours(-sendEtter);    // minst så gammel
+            var nedre = naa.AddHours(-ikkeEldre);    // men ikke eldre enn dette
+            var type = "sms_loep:" + loep.Id;        // dedup: én gang per sak per løp
 
-            try { await Task.Delay(300, ct); } catch { break; } // ikke bombardér SMS-API-et
+            var kandidater = alleKort.Where(k =>
+                k.Status == loep.TriggerStatus &&
+                !string.IsNullOrWhiteSpace(k.Mobilnummer) &&
+                k.CreatedAt <= oevre && k.CreatedAt >= nedre).ToList();
+
+            foreach (var k in kandidater)
+            {
+                if (ct.IsCancellationRequested) break;
+                if (await utsending.HarSendtOkAsync(k.Id, type)) continue;
+
+                var (ok, detalj) = await sms.SendTilKundeAsync(k.Mobilnummer, mal.Tekst, k.FulltNavn);
+                await utsending.LoggAsync(k.Id, type, k.Mobilnummer, ok, detalj);
+                if (ok) sendt++;
+                else { feilet++; _log.LogWarning("SMS-løp «{Navn}» feilet for {Id}: {Detalj}", loep.Navn, k.Id, detalj); }
+
+                try { await Task.Delay(300, ct); } catch { break; }
+            }
         }
 
-        if (sendt > 0) _log.LogInformation("24t-SMS: sendte {Sendt} påminnelser.", sendt);
+        if (sendt > 0) _log.LogInformation("SMS-løp: sendte {Sendt} meldinger.", sendt);
         if (feilet > 0)
-            await AlarmAsync("sms-24t-feilet", "24-timers SMS feilet",
-                $"{feilet} av {sendt + feilet} påminnelses-SMS-er feilet i siste syklus. Se LinkMobility-status.");
+            await AlarmAsync("sms-loep-feilet", "SMS-løp feilet",
+                $"{feilet} av {sendt + feilet} SMS-er feilet i siste syklus. Se LinkMobility-status.");
     }
 
     // Alarmering i eget scope — skal aldri kunne velte workeren.

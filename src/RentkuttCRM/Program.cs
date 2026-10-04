@@ -109,6 +109,7 @@ builder.Services.AddSingleton<KlaviyoService>();
 
 // Sporing av automatiske SMS-utsendinger (dedup + logg for Kommunikasjon-fanen).
 builder.Services.AddScoped<SmsUtsendingService>();
+builder.Services.AddScoped<SmsLoepService>();   // konfigurerbare SMS-løp (triggere + tidspunkt)
 
 // Innstillinger (key/value).
 builder.Services.AddScoped<SettingsService>();
