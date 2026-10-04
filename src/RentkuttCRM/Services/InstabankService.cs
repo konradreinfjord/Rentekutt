@@ -237,18 +237,14 @@ public class InstabankService
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende — mangler: " + string.Join(", ", mangler));
 
-        // Beløpsgrense per produkt: forbrukslån (151) opp til ForbrukslaanMaks, boliglån (180) opp til
-        // BoliglaanMaks. Beløp over avvises av Instabank med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT (uleselig
-        // 500-feil). Vi fanger det før sending og gir rådgiveren en tydelig melding — samme barriere for
-        // manuell og automatisk sending.
+        // Beløpsgrense per produkt: forbrukslån (151) opp til ForbrukslaanMaks (500 000), boliglån (180)
+        // opp til BoliglaanMaks. Beløp over avvises av Instabank med E_CREDIT_LIMIT_IS_ABOVE_AGR_LIMIT.
+        // I stedet for å stoppe sendingen kapper vi beløpet til maksgrensen og sender det — søker kunden
+        // mer enn grensen, sendes grensen (f.eks. forbrukslån over 500 000 sendes som 500 000).
         var maks = MaksBelopFor(produkt);
-        if (maks > 0 && (k.OnsketLaanebelop ?? 0) > maks)
-        {
-            var pnavn = ProduktNavn(produkt).ToLowerInvariant();
-            var tips = produkt == ProduktForbrukslaan ? " Så høye beløp er boliglån." : "";
-            return new(false, null, null, null,
-                $"Beløpet {k.OnsketLaanebelop:N0} kr overstiger maksbeløpet for {pnavn} hos Instabank ({maks:N0} kr).{tips}");
-        }
+        var oensketBelop = k.OnsketLaanebelop ?? 0;
+        var sendBelop = maks > 0 && oensketBelop > maks ? maks : oensketBelop;
+        var belopKappet = sendBelop < oensketBelop;
 
         // Valider fødselsnummeret lokalt (modulus-11) før vi kaller Instabank — unngår
         // 500-feil «Invalid socialSecurityNumber» og beskytter bank-API-et mot ugyldige data.
@@ -288,8 +284,8 @@ public class InstabankService
         {
             ["Product"] = new { Code = produkt },
             ["Calculation"] = k.OnsketLopetidMnd is int lm && lm > 0
-                ? new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop, ["DurationInMonths"] = lm }
-                : new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop },
+                ? new Dictionary<string, object?> { ["Amount"] = sendBelop, ["DurationInMonths"] = lm }
+                : new Dictionary<string, object?> { ["Amount"] = sendBelop },
             ["Applicant"] = applicant,
             ["IsPreOffer"] = preOffer,
             ["Reference"] = k.Id.ToString(),
@@ -345,7 +341,10 @@ public class InstabankService
         }
 
         var r = await PostAsync("create", new { Application = application, DoSetAccepted = false });
-        return r.Ok ? r : r with { Detalj = $"{r.Detalj} [sendt: beløp={k.OnsketLaanebelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]" };
+        var kappet = belopKappet ? $" · beløp kappet fra {oensketBelop:N0} til maks {sendBelop:N0} kr ({ProduktNavn(produkt).ToLowerInvariant()})" : "";
+        return r.Ok
+            ? r with { Detalj = $"{r.Detalj}{kappet}" }
+            : r with { Detalj = $"{r.Detalj} [sendt: beløp={sendBelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]{kappet}" };
     }
 
     // Bedriftslån (produkt 2001). Krever Company (orgnr + mobil), Applicant (signer-fnr) og Agent-e-post.

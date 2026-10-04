@@ -1735,7 +1735,7 @@
         if (!InstabankService.ErInstabankNavn(bank)) return null;   // kun Instabank auto-sendes
         var partner = _banker.FirstOrDefault(b => b.Navn == bank);
         if (partner is null || !partner.AutoPaabegynt)
-            return "«auto-påbegynt» er AV for Instabank (Admin → bank). Må sendes manuelt, eller slå på bryteren.";
+            return "«Auto-send etter 30 min» er AV for Instabank — slå den PÅ i Admin → API og Data → Bank API (tabellen «Auto-send etter 30 min»), eller send manuelt med knappen under.";
         if (_k.Status is not (KundekortService.StatusPaabegynt or KundekortService.StatusNySoknad))
             return $"status er «{_k.Status}» — auto-send gjelder kun «Påbegynt søknad» og «Ny søknad».";
         if (!_harSamtykke)

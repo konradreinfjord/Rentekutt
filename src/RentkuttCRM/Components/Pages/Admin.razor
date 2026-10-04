@@ -555,39 +555,6 @@ else if (_active == "API og Data")
                 </tbody>
             </table>
 
-            <h3 class="stat-subhead">Banker</h3>
-            <table class="data-table">
-                <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Auto-send etter 30 min</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
-                <tbody>
-                    @if (_banks.Count == 0)
-                    {
-                        <tr><td colspan="6" class="empty-row">Ingen bankpartnere ennå.</td></tr>
-                    }
-                    @foreach (var b in _banks)
-                    {
-                        var sisteSendt = SisteSendtBank(b.Navn);
-                        <tr>
-                            <td><span class="lampe @(DataSiste3Dogn(sisteSendt) ? "on" : "off")"></span></td>
-                            <td>@b.Navn</td><td>Bank API</td>
-                            <td>
-                                <div class="seg onoff">
-                                    <button class="@(!b.AutoPaabegynt ? "active av" : "")" @onclick="() => SettAutoPaabegynt(b, false)">AV</button>
-                                    <button class="@(b.AutoPaabegynt ? "active" : "")" @onclick="() => SettAutoPaabegynt(b, true)">PÅ</button>
-                                </div>
-                            </td>
-                            <td>@(sisteSendt is { } t ? $"Sist sendt {t.TilOslo():dd.MM HH:mm}" : "Ingen sendinger")</td>
-                            @SisteOppdatertCelle(sisteSendt)
-                        </tr>
-                    }
-                </tbody>
-            </table>
-            <p class="page-sub" style="margin:10px 0 0; font-size:12px">
-                <strong>Auto-send etter 30 min:</strong> er den <strong>PÅ</strong>, sendes en matchende søknad automatisk
-                til banken 30 minutter etter registrering — enten den fortsatt er «Påbegynt søknad» (uferdig) eller er
-                fullført til «Ny søknad». Forsinkelsen gir kunden tid til å fullføre (mer data); fullfører den, sendes den
-                med full data. Krever treff i logikk-matrisen. Kun nye leads etter at bryteren ble slått på; gamle sendes aldri.
-                Standard: <strong>PÅ for Soknedal</strong>, av for øvrige.
-            </p>
         </div>
     }
     else if (_apiTab == "Supabase")
@@ -800,7 +767,41 @@ Authorization: Bearer &lt;token&gt;</pre>
     }
     else if (_apiTab == "Bank API")
     {
-        <p class="page-sub" style="margin:0 0 16px">Hver bankintegrasjon er hardkodet med sin egen widget. Automatisk sending styres under <strong>Logikk-matrise</strong>.</p>
+        <p class="page-sub" style="margin:0 0 16px">Hver bankintegrasjon er hardkodet med sin egen widget. Hvilke banker som matcher en søknad styres under <strong>Logikk-matrise</strong>.</p>
+
+        <h3 class="ww-h" style="margin-top:0">Auto-send etter 30 min (per bank)</h3>
+        <table class="data-table" style="margin-bottom:8px">
+            <thead><tr><th>Helse</th><th>Bank</th><th>Type</th><th>Auto-send etter 30 min</th><th>Siste status</th><th>Siste oppdatert</th></tr></thead>
+            <tbody>
+                @if (_banks.Count == 0)
+                {
+                    <tr><td colspan="6" class="empty-row">Ingen bankpartnere ennå.</td></tr>
+                }
+                @foreach (var b in _banks)
+                {
+                    var sisteSendt = SisteSendtBank(b.Navn);
+                    <tr>
+                        <td><span class="lampe @(DataSiste3Dogn(sisteSendt) ? "on" : "off")"></span></td>
+                        <td>@b.Navn</td><td>Bank API</td>
+                        <td>
+                            <div class="seg onoff">
+                                <button class="@(!b.AutoPaabegynt ? "active av" : "")" @onclick="() => SettAutoPaabegynt(b, false)">AV</button>
+                                <button class="@(b.AutoPaabegynt ? "active" : "")" @onclick="() => SettAutoPaabegynt(b, true)">PÅ</button>
+                            </div>
+                        </td>
+                        <td>@(sisteSendt is { } t ? $"Sist sendt {t.TilOslo():dd.MM HH:mm}" : "Ingen sendinger")</td>
+                        @SisteOppdatertCelle(sisteSendt)
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <p class="page-sub" style="margin:0 0 20px; font-size:12px">
+            <strong>Auto-send etter 30 min:</strong> er den <strong>PÅ</strong>, sendes en matchende søknad automatisk
+            til banken 30 minutter etter registrering — enten den fortsatt er «Påbegynt søknad» (uferdig) eller er
+            fullført til «Ny søknad». Forsinkelsen gir kunden tid til å fullføre (mer data); fullfører den, sendes den
+            med full data. Krever treff i logikk-matrisen. Kun nye leads etter at bryteren ble slått på; gamle sendes aldri.
+            Standard: <strong>PÅ for Soknedal</strong>, av for øvrige.
+        </p>
 
         @* ---- Instabank Agent API-widget ---- *@
         <div class="bank-widget @(_ibKonfigurert && _ibEnabled ? "aktiv" : "")">
@@ -1536,6 +1537,19 @@ else if (_active == "Hendelseslogg")
 }
 else if (_active == "Logikk-matrise")
 {
+    <div class="section">
+        <div class="lm-merknad">
+            <span class="lm-merknad-badge">Instabank</span>
+            <div>
+                <strong>Forbrukslån over 500 000 kr sendes som 500 000 kr.</strong>
+                500 000 er Instabanks avtalegrense for forbrukslån (produkt 151). Søker kunden et høyere beløp,
+                blokkeres ikke lenger sendingen — beløpet <strong>kappes automatisk til grensen</strong> og saken sendes.
+                Bank-sendingens detalj viser da «beløp kappet fra … til maks 500 000 kr».
+                Grensen kan overstyres med <code>Instabank__ForbrukslaanMaks</code>; boliglån har egen grense.
+            </div>
+        </div>
+    </div>
+
     <div class="section">
         <h2>Refinansiering → lånetype og Instabank-produkt</h2>
         <p class="page-sub" style="margin:-4px 0 14px; max-width:820px">

@@ -215,10 +215,8 @@ public class AutoPaabegyntWorker : BackgroundService
             navn = forBank.FirstOrDefault(p => p.Kode == ok)?.Navn ?? InstabankService.ProduktNavn(ok);
         }
 
-        // Beløpsbarriere: overstiger ønsket beløp maksgrensen for produktet, ikke send auto.
-        var maks = instabank.MaksBelopFor(kode);
-        if (maks > 0 && (k.OnsketLaanebelop ?? 0) > maks)
-            return (false, null, null, $"beløp {k.OnsketLaanebelop:N0} over maks {maks:N0} for {navn}");
+        // Beløp over maksgrensen stopper IKKE lenger auto-send — InstabankService kapper beløpet til
+        // maks (f.eks. forbrukslån over 500 000 sendes som 500 000). Se merknad i Logikk-matrise.
 
         return (true, navn, kode, null);
     }
