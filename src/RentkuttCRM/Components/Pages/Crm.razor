@@ -405,24 +405,36 @@ else
     {
         var (fra, til) = PeriodeRange(_bankP, _bankFra, _bankTil);
         bool ErSendt(BankSending s) => s.Status is SendStatus.Sendt or SendStatus.Manuelt;
-        var sendinger = _sendingerRaw.Where(s => IPeriode(s.SendtAt, fra, til)).ToList();
+        bool ErSoknedal(string? navn) => (navn ?? "").Contains("soknedal", StringComparison.OrdinalIgnoreCase);
 
-        var ib = sendinger.Where(s => InstabankService.ErInstabankNavn(s.Bank) && ErSendt(s)).ToList();
+        // Instabank: per sending, filtrert på sendt-dato.
+        var ib = _sendingerRaw.Where(s => InstabankService.ErInstabankNavn(s.Bank) && ErSendt(s) && IPeriode(s.SendtAt, fra, til)).ToList();
         _ibSendt = ib.Count;
         _ibInnvilget = ib.Count(s => s.Utfall == SendUtfall.Innvilget);
         _ibUtbetalt = ib.Count(s => s.Utfall == SendUtfall.Utbetalt);
         _ibAvslatt = ib.Count(s => s.Utfall == SendUtfall.Avslatt);
 
-        var statusFor = _rows.GroupBy(k => k.Id).ToDictionary(g => g.Key, g => g.First().Status);
-        var sok = sendinger.Where(s => (s.Bank ?? "").Contains("soknedal", StringComparison.OrdinalIgnoreCase) && ErSendt(s)).ToList();
-        _sokSendt = sok.Count;
+        // Soknedal: utfallet meldes som KUNDEKORT-STATUS via webhook (ofte uten egen sending-rad).
+        // Tell derfor saker som er sendt til ELLER delegert til Soknedal, og les utfallet fra statusen.
+        // Datofilter: sendt-dato hvis sending finnes, ellers kundekortets siste endring (updated_at).
+        var soknSendtDato = _sendingerRaw
+            .Where(s => ErSoknedal(s.Bank) && ErSendt(s) && s.KundekortId is not null)
+            .GroupBy(s => s.KundekortId!.Value)
+            .ToDictionary(g => g.Key, g => g.Max(x => x.SendtAt));
         _sokSignert = _sokUtbetalt = _sokAvslatt = 0;
-        foreach (var s in sok)
+        var soknKort = _rows.Where(k =>
         {
-            var st = s.KundekortId is { } id && statusFor.TryGetValue(id, out var v) ? v : "";
-            if (st == KundekortService.StatusUtbetalt) { _sokUtbetalt++; _sokSignert++; }   // utbetalt ⇒ har signert
-            else if (st == KundekortService.StatusSignert) _sokSignert++;
-            else if (st is "Avslag" or "Avsluttet") _sokAvslatt++;
+            var erSoknedal = soknSendtDato.ContainsKey(k.Id) || ErSoknedal(k.DelegertBank);
+            if (!erSoknedal) return false;
+            var dato = soknSendtDato.TryGetValue(k.Id, out var d) ? d : k.UpdatedAt;
+            return IPeriode(dato, fra, til);
+        }).ToList();
+        _sokSendt = soknKort.Count;
+        foreach (var k in soknKort)
+        {
+            if (k.Status == KundekortService.StatusUtbetalt) { _sokUtbetalt++; _sokSignert++; }   // utbetalt ⇒ har signert
+            else if (k.Status == KundekortService.StatusSignert) _sokSignert++;
+            else if (k.Status is "Avslag" or "Avsluttet") _sokAvslatt++;
         }
     }
 
