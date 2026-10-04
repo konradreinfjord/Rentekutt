@@ -14,11 +14,11 @@ public class KundekortService
     /// <summary>Statuser en saksbehandler kan sette manuelt i markeds-dropdownen. Øvrige er system-satt
     /// (webhook/API/bakgrunnsjobber) og kan bare endres ved å åpne kundekortet.</summary>
     public static readonly string[] StatuserManuelle =
-        { "Sendt til bank", "Utbetalt", "Avslag", "Kansellert" };
+        { "Sendt til bank", "Innvilget", "Utbetalt", "Avslag", "Kansellert" };
 
     /// <summary>Statuser som ikke skal kunne velges manuelt i kundekort-dropdownen (system-satt).</summary>
     public static readonly string[] SkjulteManuelleStatuser =
-        { "Pågår - Agent", "Sendt til bank - Timeout", "Innvilget" };
+        { "Pågår - Agent", "Sendt til bank - Timeout" };
 
     /// <summary>Nytt, ueid lead (f.eks. fra Prismatch) som ikke er plukket/behandlet ennå.</summary>
     public const string StatusNyttLead = "Nytt lead";
