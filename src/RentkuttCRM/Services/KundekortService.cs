@@ -9,7 +9,7 @@ public class KundekortService
     // Full statusliste (kundekortet kan sette alle; markeds-dropdownen viser kun StatuserManuelle).
     public static readonly string[] Statuser =
         { "Påbegynt søknad", "Nytt lead", "Ny søknad", "Oppfølging", "Pågår - Agent", "Sendt til bank",
-          "Sendt til bank - Timeout", "SBL Signert", "Utbetalt", "Avslag", "Kansellert", "Teknisk feil" };
+          "Sendt til bank - Timeout", "SBL Signert", "Innvilget", "Utbetalt", "Avslag", "Kansellert", "Teknisk feil" };
 
     /// <summary>Statuser en saksbehandler kan sette manuelt i markeds-dropdownen. Øvrige er system-satt
     /// (webhook/API/bakgrunnsjobber) og kan bare endres ved å åpne kundekortet.</summary>
@@ -18,7 +18,7 @@ public class KundekortService
 
     /// <summary>Statuser som ikke skal kunne velges manuelt i kundekort-dropdownen (system-satt).</summary>
     public static readonly string[] SkjulteManuelleStatuser =
-        { "Pågår - Agent", "Sendt til bank - Timeout" };
+        { "Pågår - Agent", "Sendt til bank - Timeout", "Innvilget" };
 
     /// <summary>Nytt, ueid lead (f.eks. fra Prismatch) som ikke er plukket/behandlet ennå.</summary>
     public const string StatusNyttLead = "Nytt lead";
@@ -33,11 +33,13 @@ public class KundekortService
     /// <summary>Statuser som IKKE overstyres av «Oppfølging» selv om saken får en oppfølgingsdato
     /// (ferdige/positive slutt-tilstander).</summary>
     public static readonly string[] StatuserBeholdesVedOppfolging =
-        { StatusSignert, StatusUtbetalt, StatusAvslatt, StatusAvsluttet, StatusKansellert };
+        { StatusSignert, StatusInnvilget, StatusUtbetalt, StatusAvslatt, StatusAvsluttet, StatusKansellert };
     public const string StatusSendtIProsess = "Sendt til bank";
     public const string StatusSendtBankTimeout = "Sendt til bank - Timeout";
     /// <summary>Lånedokument (SBL) signert av kunden — bekreftet av bank (f.eks. Soknedal via webhook).</summary>
     public const string StatusSignert = "SBL Signert";
+    /// <summary>Banken (Instabank) har innvilget lånet (Approved i API) — venter på utbetaling.</summary>
+    public const string StatusInnvilget = "Innvilget";
     public const string StatusUtbetalt = "Utbetalt";
     public const string StatusAvslatt = "Avslag";
     /// <summary>Saken er avsluttet av banken uten utbetaling (f.eks. Soknedal via webhook).</summary>
@@ -885,8 +887,8 @@ public class KundekortService
             .ToList();
         if (utfall.Count == 0) return null;
         if (utfall.Any(u => u == SendUtfall.Utbetalt)) return StatusUtbetalt;
-        // «Innvilget» er slått sammen med «Sendt til bank» (egen status fjernet).
-        if (utfall.Any(u => u == SendUtfall.Innvilget || u == SendUtfall.Venter)) return StatusSendtIProsess;
+        if (utfall.Any(u => u == SendUtfall.Innvilget)) return StatusInnvilget;   // innvilget, venter på utbetaling
+        if (utfall.Any(u => u == SendUtfall.Venter)) return StatusSendtIProsess;
         if (utfall.All(u => u == SendUtfall.Kansellert)) return StatusKansellert;
         if (utfall.Any(u => u == SendUtfall.Avslatt)) return StatusAvslatt;
         if (utfall.Any(u => u == SendUtfall.TekniskFeil)) return StatusTekniskFeil;
