@@ -137,6 +137,39 @@ public class SmsMalService
         return tekst.Replace("{navn}", fornavn, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Flettefelt tilgjengelig i maler: {navn} {signeringslenke} {belop} {lanetype} {bank}.</summary>
+    public static string Flett(string tekst, Kundekort? k, string? signeringslenke)
+    {
+        if (string.IsNullOrWhiteSpace(tekst)) return tekst ?? "";
+        var fornavn = string.IsNullOrWhiteSpace(k?.FulltNavn) ? "" : k!.FulltNavn!.Split(' ')[0];
+        var belop = k?.OnsketLaanebelop is { } b && b > 0 ? Belop.Format(b) : "";
+        var s = tekst;
+        s = s.Replace("{navn}", fornavn, StringComparison.OrdinalIgnoreCase);
+        s = s.Replace("{signeringslenke}", signeringslenke ?? "", StringComparison.OrdinalIgnoreCase);
+        s = s.Replace("{belop}", belop, StringComparison.OrdinalIgnoreCase);
+        s = s.Replace("{lanetype}", k?.Laanetype ?? "", StringComparison.OrdinalIgnoreCase);
+        s = s.Replace("{bank}", k?.DelegertBank ?? "", StringComparison.OrdinalIgnoreCase);
+        return s;
+    }
+
+    /// <summary>Samme flettefelt som event-egenskaper til Klaviyo.</summary>
+    public static Dictionary<string, object?> FletteEgenskaper(Kundekort? k, string? signeringslenke) => new()
+    {
+        ["Signeringslenke"] = signeringslenke,
+        ["Lånebeløp"] = k?.OnsketLaanebelop,
+        ["Lånetype"] = k?.Laanetype,
+        ["Bank"] = k?.DelegertBank,
+    };
+
+    /// <summary>Send en ferdig flettet melding (ingen ekstra personalisering).</summary>
+    public async Task<(bool ok, string detalj)> SendRaaAsync(string? mobil, string melding)
+    {
+        if (string.IsNullOrWhiteSpace(mobil)) return (false, "Kunden mangler mobilnummer.");
+        if (string.IsNullOrWhiteSpace(melding)) return (false, "Meldingen er tom.");
+        var (ok, _, detalj) = await _sms.SendSmsAsync(mobil, melding);
+        return (ok, detalj);
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;

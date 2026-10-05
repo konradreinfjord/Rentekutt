@@ -125,12 +125,15 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
                     @foreach (var m in _maler) { <option value="@m.Navn">@m.Navn</option> }
                 </select>
             </div>
+            <div class="rb-field" style="max-width:190px"><label>Klaviyo-event (valgfritt)</label><input class="rb-input" @bind="_fKlaviyo" placeholder="F.eks. Innvilget" /></div>
             <button class="btn-primary rb-add" @onclick="LagreLoep">@(_fRedigerId is null ? "Legg til løp" : "Lagre endring")</button>
             @if (_fRedigerId is not null) { <button class="btn-sec rb-add" @onclick="AvbrytRediger">Avbryt</button> }
         </div>
         <p class="page-sub" style="margin:8px 0 0; font-size:12px">
             «Send etter» måles fra saken ble registrert. «Ikke eldre enn» hindrer masseutsending til gamle leads når et løp skrus på.
             Eksempel: to løp på «Påbegynt søknad» — ett som sender etter 1 time og ett etter 24 timer, begge kun hvis saken fortsatt er påbegynt.
+            Instabank-eksempel: løp på status <strong>«Innvilget»</strong> med Klaviyo-event «Innvilget» → kunden får SMS med signeringslenke + event sendes til Klaviyo.
+            <br />Flettefelt i malen: <code>{navn}</code> <code>{signeringslenke}</code> <code>{belop}</code> <code>{lanetype}</code> <code>{bank}</code> (samme felt følger med som egenskaper på Klaviyo-eventen).
         </p>
         @if (!string.IsNullOrEmpty(_smsMsg)) { <p class="page-sub" style="margin:6px 0 0; font-size:12px">@_smsMsg</p> }
 
@@ -184,6 +187,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     // Skjema (nytt/endre løp)
     private string? _fRedigerId;
     private string _fNavn = "", _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt, _fMal = "";
+    private string _fKlaviyo = "";
     private int _fSendEtter = 24, _fIkkeEldre = 72;
     private string _testMobil = "";
     private string _testSmsTekst = "";
@@ -262,6 +266,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             {
                 Navn = _fNavn, Aktiv = true, TriggerStatus = _fStatus,
                 SendEtterTimer = _fSendEtter, IkkeEldreTimer = _fIkkeEldre, MalNavn = _fMal,
+                KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim(),
             });
         }
         else
@@ -271,6 +276,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             {
                 l.Navn = _fNavn; l.TriggerStatus = _fStatus;
                 l.SendEtterTimer = _fSendEtter; l.IkkeEldreTimer = _fIkkeEldre; l.MalNavn = _fMal;
+                l.KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim();
             }
         }
         await Loep.LagreAsync(_loep);
@@ -282,13 +288,14 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     {
         _fRedigerId = l.Id; _fNavn = l.Navn; _fStatus = l.TriggerStatus;
         _fSendEtter = l.SendEtterTimer; _fIkkeEldre = l.IkkeEldreTimer; _fMal = l.MalNavn;
+        _fKlaviyo = l.KlaviyoEvent ?? "";
         _smsMsg = null;
     }
 
     private void AvbrytRediger()
     {
         _fRedigerId = null; _fNavn = ""; _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt;
-        _fMal = ""; _fSendEtter = 24; _fIkkeEldre = 72;
+        _fMal = ""; _fSendEtter = 24; _fIkkeEldre = 72; _fKlaviyo = "";
     }
 
     private async Task SlettLoep(RentkuttCRM.Services.SmsLoep l)

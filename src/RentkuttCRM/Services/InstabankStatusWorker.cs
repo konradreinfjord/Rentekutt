@@ -65,6 +65,14 @@ public class InstabankStatusWorker : BackgroundService
                         var r = await instabank.HentStatusAsync(siste.EksternRef!);
                         if (r.Ok)
                         {
+                            // Fang/oppdater signeringslenken (kan komme/endres ved innvilgelse) så den
+                            // er fersk for SMS-/Klaviyo-fletting.
+                            if (!string.IsNullOrWhiteSpace(r.SigningUrl) && r.SigningUrl != siste.SigningUrl)
+                            {
+                                await sendinger.SetSigningUrlAsync(siste.Id, r.SigningUrl);
+                                siste.SigningUrl = r.SigningUrl;
+                            }
+
                             var utfall = MapUtfall(r.Status);
                             if (utfall is not null && utfall != siste.Utfall)
                             {

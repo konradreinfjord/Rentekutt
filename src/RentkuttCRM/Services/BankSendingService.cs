@@ -133,6 +133,15 @@ public class BankSendingService
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av banksending feilet"); }
     }
 
+    /// <summary>Oppdater signeringslenken på en sending (fanges/oppdateres ved statussynk fra Instabank).</summary>
+    public async Task SetSigningUrlAsync(Guid id, string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        if (!IsConfigured) { var k = _staging.FirstOrDefault(x => x.Id == id); if (k is not null) k.SigningUrl = url; return; }
+        try { await EnsureInitAsync(); await _client.From<BankSending>().Where(x => x.Id == id).Set(x => x.SigningUrl!, url).Update(); }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av signeringslenke feilet"); }
+    }
+
     /// <summary>Sett per-bank utfall (bankens beslutning) på én sending.</summary>
     public async Task SetUtfallAsync(Guid id, string utfall)
     {

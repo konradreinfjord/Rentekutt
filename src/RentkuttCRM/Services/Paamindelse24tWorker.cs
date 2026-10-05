@@ -74,9 +74,17 @@ public class Paamindelse24tWorker : BackgroundService
         var sms = scope.ServiceProvider.GetRequiredService<SmsMalService>();
         var kundekort = scope.ServiceProvider.GetRequiredService<KundekortService>();
         var utsending = scope.ServiceProvider.GetRequiredService<SmsUtsendingService>();
+        var bankSending = scope.ServiceProvider.GetRequiredService<BankSendingService>();
+        var klaviyo = scope.ServiceProvider.GetRequiredService<KlaviyoService>();
 
         var maler = await sms.ListAsync();
         var alleKort = await kundekort.ListLettAsync();
+        // Signeringslenke per KUNDE: hentes fra kundens egen Instabank-sending (nøklet på kundekort-id),
+        // ikke «siste sending uansett bank» — slik at lenken garantert tilhører riktig kunde.
+        var signPerKort = (await bankSending.SisteePerKortOgBankAsync())
+            .Where(s => InstabankService.ErInstabankNavn(s.Bank) && s.KundekortId is not null && !string.IsNullOrWhiteSpace(s.SigningUrl))
+            .GroupBy(s => s.KundekortId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SendtAt).First().SigningUrl!);
         var naa = DateTime.UtcNow;
         int sendt = 0, feilet = 0;
 
@@ -91,6 +99,7 @@ public class Paamindelse24tWorker : BackgroundService
             var oevre = naa.AddHours(-sendEtter);    // minst så gammel
             var nedre = naa.AddHours(-ikkeEldre);    // men ikke eldre enn dette
             var type = "sms_loep:" + loep.Id;        // dedup: én gang per sak per løp
+            var malKreverLenke = mal.Tekst.Contains("{signeringslenke}", StringComparison.OrdinalIgnoreCase);
 
             var kandidater = alleKort.Where(k =>
                 k.Status == loep.TriggerStatus &&
@@ -102,10 +111,25 @@ public class Paamindelse24tWorker : BackgroundService
                 if (ct.IsCancellationRequested) break;
                 if (await utsending.HarSendtOkAsync(k.Id, type)) continue;
 
-                var (ok, detalj) = await sms.SendTilKundeAsync(k.Mobilnummer, mal.Tekst, k.FulltNavn);
+                // Signeringslenke for NØYAKTIG denne kunden (kundekort-id-nøklet). Null hvis ingen finnes.
+                var signeringslenke = signPerKort.TryGetValue(k.Id, out var u) ? u : null;
+                // Sikkerhet: krever malen lenke, men kunden mangler en? Ikke send (unngå tom/feil lenke) —
+                // prøves igjen neste syklus når lenken er fanget fra Instabank.
+                if (malKreverLenke && string.IsNullOrWhiteSpace(signeringslenke))
+                {
+                    _log.LogInformation("SMS-løp «{Navn}»: {Id} mangler signeringslenke ennå — hopper over.", loep.Navn, k.Id);
+                    continue;
+                }
+
+                var melding = SmsMalService.Flett(mal.Tekst, k, signeringslenke);
+                var (ok, detalj) = await sms.SendRaaAsync(k.Mobilnummer, melding);
                 await utsending.LoggAsync(k.Id, type, k.Mobilnummer, ok, detalj);
                 if (ok) sendt++;
                 else { feilet++; _log.LogWarning("SMS-løp «{Navn}» feilet for {Id}: {Detalj}", loep.Navn, k.Id, detalj); }
+
+                // Valgfri Klaviyo-event med samme flettefelt som event-egenskaper.
+                if (ok && !string.IsNullOrWhiteSpace(loep.KlaviyoEvent))
+                    klaviyo.Fyr(k, loep.KlaviyoEvent!, SmsMalService.FletteEgenskaper(k, signeringslenke));
 
                 try { await Task.Delay(300, ct); } catch { break; }
             }

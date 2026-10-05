@@ -17,6 +17,9 @@ public class SmsLoep
     /// <summary>Ikke send til saker eldre enn dette (hindrer masseutsending når løpet skrus på).</summary>
     public int IkkeEldreTimer { get; set; } = 72;
     public string MalNavn { get; set; } = "";
+    /// <summary>Valgfritt: send også denne Klaviyo-hendelsen (med flettefelt som event-egenskaper)
+    /// når løpet fyrer. Tomt = ingen Klaviyo-event.</summary>
+    public string? KlaviyoEvent { get; set; }
 }
 
 /// <summary>Lagrer/henter SMS-løp (JSON i innstillinger). Seeder fra det gamle 24t-oppsettet
