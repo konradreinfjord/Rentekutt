@@ -26,9 +26,13 @@ public class ZissonService
     private readonly SettingsService _settings;
     private readonly ILogger<ZissonService> _log;
 
-    private string? _jwt;
-    private DateTime _jwtUtløper = DateTime.MinValue;
-    private readonly SemaphoreSlim _tokenLås = new(1, 1);
+    // Token-tilstand er STATISK (delt på tvers av alle scopes). Zisson roterer refresh-tokenet ved
+    // hver fornying, så flere samtidige ZissonService-instanser (ringebar-circuit + bakgrunnsjobber
+    // som CDR-/statussynk) må dele ÉN JWT og ÉN fornyingslås — ellers overskriver de hverandres
+    // roterte refresh-token og auth feiler «av og på».
+    private static string? _jwt;
+    private static DateTime _jwtUtløper = DateTime.MinValue;
+    private static readonly SemaphoreSlim _tokenLås = new(1, 1);
 
     public ZissonService(IConfiguration config, IHttpClientFactory httpFactory, SettingsService settings, ILogger<ZissonService> log)
     {
@@ -327,15 +331,34 @@ public class ZissonService
         return $"Feil fra Zisson (HTTP {status}){kort}";
     }
 
-    // Løser en agent-verdi til guid: er den allerede en guid returneres den som den er;
-    // ellers tolkes den som bruker-id/brukernavn (f.eks. «3657») og slås opp mot Zisson-brukerlista
-    // (entities/users + id-mapping). Faller tilbake til råverdien hvis oppslag ikke gir treff.
+    // Cache: login-id/brukernavn → guid. Delt (statisk) så oversettingen er stabil «av og på»-fritt
+    // etter første vellykkede agent-oppslag, selv om endepunktet er flakende.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _agentGuidCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private static void CacheAgenter(IEnumerable<ZAgent> agenter)
+    {
+        foreach (var a in agenter)
+        {
+            if (string.IsNullOrWhiteSpace(a.Guid) || !Guid.TryParse(a.Guid, out _)) continue;
+            if (!string.IsNullOrWhiteSpace(a.LoginId)) _agentGuidCache[a.LoginId!] = a.Guid;
+            if (!string.IsNullOrWhiteSpace(a.Username)) _agentGuidCache[a.Username!] = a.Guid;
+        }
+    }
+
+    /// <summary>Offentlig: løs en agent-verdi (login-id/brukernavn) til guid. Returnerer råverdien
+    /// hvis den ikke kan løses. Brukes av dialeren til å auto-heale lagret kobling.</summary>
+    public Task<string> ResolvAgentGuidAsync(string agent) => LøsAgentGuidAsync(agent);
+
+    // Løser en agent-verdi til guid: allerede guid → returneres; ellers cache; ellers oppslag mot
+    // Zisson-brukerlista (entities/users + id-mapping). Faller tilbake til råverdien ved bom.
     private async Task<string> LøsAgentGuidAsync(string agent)
     {
         if (Guid.TryParse(agent, out _)) return agent;
+        if (_agentGuidCache.TryGetValue(agent, out var cached)) return cached;
         try
         {
             var agenter = await HentAgenterAlleAsync();
+            CacheAgenter(agenter);
             var treff = agenter.FirstOrDefault(a => string.Equals(a.LoginId, agent, StringComparison.OrdinalIgnoreCase))
                      ?? agenter.FirstOrDefault(a => string.Equals(a.Username, agent, StringComparison.OrdinalIgnoreCase))
                      ?? agenter.FirstOrDefault(a => string.Equals(a.Navn, agent, StringComparison.OrdinalIgnoreCase));

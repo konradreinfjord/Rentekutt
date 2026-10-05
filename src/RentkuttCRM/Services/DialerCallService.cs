@@ -58,6 +58,18 @@ public class DialerCallService : IDisposable
         if (string.IsNullOrWhiteSpace(agent))
             return new(false, -1, "Du er ikke koblet til en Zisson-agent (Admin → Dialer → Agent-kobling).", null);
 
+        // Auto-heal: er koblingen lagret som login-id/brukernavn (ikke guid), løs den til guid og lagre
+        // den — da slipper ringing å gjøre et flakende oppslag ved hvert klikk heretter.
+        if (!Guid.TryParse(agent, out _))
+        {
+            var guid = await _zisson.ResolvAgentGuidAsync(agent);
+            if (Guid.TryParse(guid, out _))
+            {
+                await _users.SetZissonAgentAsync(_session.UserId, guid);
+                agent = guid;
+            }
+        }
+
         var r = await _zisson.ClickToCallAsync(agent, nummer);
         if (!r.Ok)
         {
