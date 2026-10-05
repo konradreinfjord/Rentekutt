@@ -62,6 +62,18 @@ public class Paamindelse24tWorker : BackgroundService
         return o.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && o.Hour >= VinduFraTime && o.Hour < VinduTilTime;
     }
 
+    // Bank-filter på et løp: tom = alle banker. Ellers må saken være sendt til / delegert til banken
+    // (Instabank matches uansett navnevariant).
+    private static bool BankFilterOk(Kundekort k, string? loepBank, Dictionary<Guid, HashSet<string>> bankPerKort)
+    {
+        if (string.IsNullOrWhiteSpace(loepBank)) return true;
+        bool Match(string? a) => !string.IsNullOrWhiteSpace(a) &&
+            (string.Equals(a, loepBank, StringComparison.OrdinalIgnoreCase)
+             || (InstabankService.ErInstabankNavn(a) && InstabankService.ErInstabankNavn(loepBank)));
+        if (Match(k.DelegertBank)) return true;
+        return bankPerKort.TryGetValue(k.Id, out var set) && set.Any(Match);
+    }
+
     private async Task KjorSyklusAsync(IServiceScope scope, SettingsService settings, CancellationToken ct)
     {
         var loepListe = (await scope.ServiceProvider.GetRequiredService<SmsLoepService>().HentAsync())
@@ -79,12 +91,20 @@ public class Paamindelse24tWorker : BackgroundService
 
         var maler = await sms.ListAsync();
         var alleKort = await kundekort.ListLettAsync();
-        // Signeringslenke per KUNDE: hentes fra kundens egen Instabank-sending (nøklet på kundekort-id),
+        var perKortOgBank = await bankSending.SisteePerKortOgBankAsync();
+        // Signeringslenke per KUNDE: fra kundens egen Instabank-sending (nøklet på kundekort-id),
         // ikke «siste sending uansett bank» — slik at lenken garantert tilhører riktig kunde.
-        var signPerKort = (await bankSending.SisteePerKortOgBankAsync())
+        var signPerKort = perKortOgBank
             .Where(s => InstabankService.ErInstabankNavn(s.Bank) && s.KundekortId is not null && !string.IsNullOrWhiteSpace(s.SigningUrl))
             .GroupBy(s => s.KundekortId!.Value)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SendtAt).First().SigningUrl!);
+        // Banker hver sak er sendt til (status sendt/manuelt) — for bank-filter på løp.
+        var bankPerKort = new Dictionary<Guid, HashSet<string>>();
+        foreach (var s in perKortOgBank)
+        {
+            if (s.KundekortId is not { } id || (s.Status is not (SendStatus.Sendt or SendStatus.Manuelt)) || string.IsNullOrWhiteSpace(s.Bank)) continue;
+            (bankPerKort.TryGetValue(id, out var set) ? set : bankPerKort[id] = new(StringComparer.OrdinalIgnoreCase)).Add(s.Bank!.Trim());
+        }
         var naa = DateTime.UtcNow;
         int sendt = 0, feilet = 0;
 
@@ -104,7 +124,8 @@ public class Paamindelse24tWorker : BackgroundService
             var kandidater = alleKort.Where(k =>
                 k.Status == loep.TriggerStatus &&
                 !string.IsNullOrWhiteSpace(k.Mobilnummer) &&
-                k.CreatedAt <= oevre && k.CreatedAt >= nedre).ToList();
+                k.CreatedAt <= oevre && k.CreatedAt >= nedre &&
+                BankFilterOk(k, loep.Bank, bankPerKort)).ToList();
 
             foreach (var k in kandidater)
             {

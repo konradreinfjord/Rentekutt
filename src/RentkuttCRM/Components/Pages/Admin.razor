@@ -1056,52 +1056,7 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
 
         <div class="section">
             <h2>SMS-maler til kunder</h2>
-            <p class="page-sub" style="margin:-4px 0 14px">Maler som kan sendes til kunder fra kundekortet. Bruk <code>{navn}</code> for kundens fornavn.</p>
-            <table class="data-table" style="margin-bottom:14px">
-                <thead><tr><th>Navn</th><th>Tekst</th><th></th></tr></thead>
-                <tbody>
-                    @if (_smsMaler.Count == 0)
-                    {
-                        <tr><td colspan="3" class="empty-row">Ingen maler ennå — opprett en under.</td></tr>
-                    }
-                    @foreach (var m in _smsMaler)
-                    {
-                        @if (_redigerMalId == m.Id)
-                        {
-                            <tr>
-                                <td style="vertical-align:top"><input class="rb-input" @bind="_redigerNavn" style="max-width:180px" /></td>
-                                <td><textarea class="rb-input" style="min-height:110px; resize:vertical; line-height:1.5; width:100%" rows="5" @bind="_redigerTekst"></textarea></td>
-                                <td style="vertical-align:top; white-space:nowrap">
-                                    <button class="btn-primary btn-sm" @onclick="LagreMalRedigering">Lagre</button>
-                                    <button class="btn-sm" @onclick="AvbrytMalRedigering">Avbryt</button>
-                                </td>
-                            </tr>
-                        }
-                        else
-                        {
-                            <tr>
-                                <td style="vertical-align:top"><strong>@m.Navn</strong></td>
-                                <td style="white-space:pre-wrap; max-width:560px; line-height:1.5">@m.Tekst</td>
-                                <td style="vertical-align:top; white-space:nowrap">
-                                    <button class="btn-sm" @onclick="() => StartMalRedigering(m)">Endre</button>
-                                    <button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button>
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-            <div class="rule-builder" style="align-items:flex-start">
-                <div class="rb-field" style="max-width:200px"><label>Malnavn</label><input class="rb-input" @bind="_nyMalNavn" placeholder="F.eks. Velkomst" /></div>
-                <div class="rb-field" style="flex:1; min-width:280px">
-                    <label>Meldingstekst</label>
-                    <textarea class="rb-input" style="min-height:120px; resize:vertical; line-height:1.5" rows="5" @bind="_nyMalTekst"
-                              placeholder="Hei {navn},&#10;&#10;Vi har mottatt søknaden din …&#10;&#10;Mvh Rentekutt"></textarea>
-                    <span class="page-sub" style="font-size:11px; margin-top:4px">Trykk Enter for linjeskift/avsnitt. <code>{navn}</code> = kundens fornavn.</span>
-                </div>
-                <button class="btn-primary rb-add" @onclick="LeggTilMal">Legg til mal</button>
-            </div>
-            @if (!string.IsNullOrEmpty(_malMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_malMsg</p> }
+            <p class="page-sub" style="margin:-4px 0 0">SMS-maler administreres nå under <strong>Admin → Kommunikasjon</strong> (sammen med SMS-løp).</p>
         </div>
 
         <div class="section">
@@ -2351,64 +2306,11 @@ else if (_active == "GDPR")
         _smsMsg = "Rategrense lagret.";
     }
 
-    // ---- SMS-maler + automatikk ----
-    private List<SmsMal> _smsMaler = new();
-    private string _nyMalNavn = "", _nyMalTekst = "";
-    private string? _malMsg;
-    private Guid? _redigerMalId;
-    private string _redigerNavn = "", _redigerTekst = "";
+    // ---- SMS-maler (administreres i Kommunikasjon-fanen) + automatikk ----
+    private List<SmsMal> _smsMaler = new();   // kun for automatikk-dropdownen her
     private bool _autoEnabled;
     private string _autoMal = "";
     private string? _autoMsg;
-
-    private async Task LeggTilMal()
-    {
-        var (ok, error) = await SmsMaler.AddAsync(_nyMalNavn, _nyMalTekst);
-        _malMsg = ok ? "Mal lagt til." : error;
-        if (ok) { _nyMalNavn = ""; _nyMalTekst = ""; _smsMaler = await SmsMaler.ListAsync(); }
-    }
-
-    private void StartMalRedigering(SmsMal m)
-    {
-        _redigerMalId = m.Id;
-        _redigerNavn = m.Navn;
-        _redigerTekst = m.Tekst;
-        _malMsg = null;
-    }
-
-    private void AvbrytMalRedigering()
-    {
-        _redigerMalId = null;
-        _redigerNavn = "";
-        _redigerTekst = "";
-    }
-
-    private async Task LagreMalRedigering()
-    {
-        if (_redigerMalId is not { } id) return;
-        var gammeltNavn = _smsMaler.FirstOrDefault(m => m.Id == id)?.Navn;
-        var (ok, error) = await SmsMaler.UpdateAsync(id, _redigerNavn, _redigerTekst);
-        _malMsg = ok ? "Mal oppdatert." : error;
-        if (ok)
-        {
-            var nyttNavn = _redigerNavn.Trim();
-            // Automatikken refererer malen ved navn — følg med ved navnebytte så den ikke mister koblingen.
-            if (!string.IsNullOrWhiteSpace(gammeltNavn) && gammeltNavn != nyttNavn && _autoMal == gammeltNavn)
-            {
-                _autoMal = nyttNavn;
-                await Settings.SetAsync(SmsMalService.KeyAutoMal, nyttNavn);
-            }
-            AvbrytMalRedigering();
-            _smsMaler = await SmsMaler.ListAsync();
-        }
-    }
-
-    private async Task SlettMal(Guid id)
-    {
-        await SmsMaler.DeleteAsync(id);
-        if (_redigerMalId == id) AvbrytMalRedigering();
-        _smsMaler = await SmsMaler.ListAsync();
-    }
 
     private async Task LagreAutomatikk()
     {

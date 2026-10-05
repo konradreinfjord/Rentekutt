@@ -17,6 +17,9 @@ public class SmsLoep
     /// <summary>Ikke send til saker eldre enn dette (hindrer masseutsending når løpet skrus på).</summary>
     public int IkkeEldreTimer { get; set; } = 72;
     public string MalNavn { get; set; } = "";
+    /// <summary>Valgfritt bank-filter: send kun for saker sendt til / delegert til denne banken
+    /// (f.eks. «Instabank»). Tomt = alle banker.</summary>
+    public string? Bank { get; set; }
     /// <summary>Valgfritt: send også denne Klaviyo-hendelsen (med flettefelt som event-egenskaper)
     /// når løpet fyrer. Tomt = ingen Klaviyo-event.</summary>
     public string? KlaviyoEvent { get; set; }

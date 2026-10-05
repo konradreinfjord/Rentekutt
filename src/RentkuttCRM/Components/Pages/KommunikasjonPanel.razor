@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.SettingsService Settings
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.SmsLoepService Loep
+@inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.SmsUtsendingService SmsLogg
 @inject RentkuttCRM.Services.KlaviyoService Klaviyo
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
@@ -64,6 +65,60 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         </p>
     </div>
 
+    @* ============ SMS-MALER ============ *@
+    <div class="section">
+        <h2 style="margin:0 0 4px">SMS-maler</h2>
+        <p class="page-sub" style="margin:0 0 10px">Maler som kan sendes til kunder (fra kundekortet og i SMS-løp).</p>
+        <div class="kv-list" style="margin-bottom:14px; background:#f4f7fb; border:1px solid var(--border); border-radius:8px; padding:10px 13px">
+            <span class="k">Flettefelt</span>
+            <span class="v"><code>{navn}</code> <code>{signeringslenke}</code> <code>{belop}</code> <code>{lanetype}</code> <code>{bank}</code> — settes inn automatisk per kunde ved utsending.</span>
+        </div>
+        <div class="table-scroll">
+        <table class="data-table" style="margin-bottom:14px">
+            <thead><tr><th>Navn</th><th>Tekst</th><th></th></tr></thead>
+            <tbody>
+                @if (_maler.Count == 0) { <tr><td colspan="3" class="empty-row">Ingen maler ennå — opprett en under.</td></tr> }
+                @foreach (var m in _maler)
+                {
+                    @if (_redigerMalId == m.Id)
+                    {
+                        <tr>
+                            <td style="vertical-align:top"><input class="rb-input" @bind="_redigerNavn" style="max-width:180px" /></td>
+                            <td><textarea class="rb-input" style="min-height:110px; resize:vertical; line-height:1.5; width:100%" rows="5" @bind="_redigerTekst"></textarea></td>
+                            <td style="vertical-align:top; white-space:nowrap">
+                                <button class="btn-primary btn-sm" @onclick="LagreMalRedigering">Lagre</button>
+                                <button class="btn-sm" @onclick="AvbrytMalRedigering">Avbryt</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td style="vertical-align:top"><strong>@m.Navn</strong></td>
+                            <td style="white-space:pre-wrap; max-width:560px; line-height:1.5">@m.Tekst</td>
+                            <td style="vertical-align:top; white-space:nowrap">
+                                <button class="btn-sm" @onclick="() => StartMalRedigering(m)">Endre</button>
+                                <button class="btn-sm" @onclick="() => SlettMal(m.Id)">Slett</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+        <div class="rule-builder" style="align-items:flex-start">
+            <div class="rb-field" style="max-width:200px"><label>Malnavn</label><input class="rb-input" @bind="_nyMalNavn" placeholder="F.eks. Velkomst" /></div>
+            <div class="rb-field" style="flex:1; min-width:280px">
+                <label>Meldingstekst</label>
+                <textarea class="rb-input" style="min-height:120px; resize:vertical; line-height:1.5" rows="5" @bind="_nyMalTekst"
+                          placeholder="Hei {navn},&#10;&#10;Søknaden din er innvilget. Fullfør signeringen her: {signeringslenke}&#10;&#10;Mvh Rentekutt"></textarea>
+                <span class="page-sub" style="font-size:11px; margin-top:4px">Trykk Enter for linjeskift. Flettefelt: <code>{navn}</code> <code>{signeringslenke}</code> <code>{belop}</code> <code>{lanetype}</code> <code>{bank}</code>.</span>
+            </div>
+            <button class="btn-primary rb-add" @onclick="LeggTilMal">Legg til mal</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_malMsg)) { <p class="page-sub" style="margin:8px 0 0; font-size:12px">@_malMsg</p> }
+    </div>
+
     @* ============ SMS-LØP (konfigurerbare) ============ *@
     <div class="section">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
@@ -90,17 +145,19 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         <h3 class="ww-h">Løp</h3>
         <div class="table-scroll">
         <table class="data-table" style="margin-bottom:14px">
-            <thead><tr><th>Navn</th><th>Når saken står i</th><th>Send etter</th><th>Ikke eldre enn</th><th>Mal</th><th>Aktiv</th><th></th></tr></thead>
+            <thead><tr><th>Navn</th><th>Når saken står i</th><th>Bank</th><th>Send etter</th><th>Ikke eldre enn</th><th>Mal</th><th>Klaviyo</th><th>Aktiv</th><th></th></tr></thead>
             <tbody>
-                @if (_loep.Count == 0) { <tr><td colspan="7" class="empty-row">Ingen SMS-løp ennå — opprett ett under.</td></tr> }
+                @if (_loep.Count == 0) { <tr><td colspan="9" class="empty-row">Ingen SMS-løp ennå — opprett ett under.</td></tr> }
                 @foreach (var l in _loep)
                 {
                     <tr>
                         <td><strong>@l.Navn</strong></td>
                         <td>@l.TriggerStatus</td>
+                        <td>@(string.IsNullOrWhiteSpace(l.Bank) ? "Alle" : l.Bank)</td>
                         <td>@l.SendEtterTimer t</td>
                         <td>@l.IkkeEldreTimer t</td>
                         <td>@(string.IsNullOrWhiteSpace(l.MalNavn) ? "—" : l.MalNavn)</td>
+                        <td>@(string.IsNullOrWhiteSpace(l.KlaviyoEvent) ? "—" : l.KlaviyoEvent)</td>
                         <td><input type="checkbox" checked="@l.Aktiv" @onchange="e => ToggleAktiv(l, e)" /></td>
                         <td style="white-space:nowrap"><button class="btn-sm" @onclick="() => StartRediger(l)">Endre</button> <button class="btn-sm" @onclick="() => SlettLoep(l)">Slett</button></td>
                     </tr>
@@ -115,6 +172,12 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             <div class="rb-field" style="max-width:185px"><label>Når saken står i status</label>
                 <select class="rb-input" @bind="_fStatus">
                     @foreach (var s in RentkuttCRM.Services.KundekortService.Statuser) { <option value="@s">@s</option> }
+                </select>
+            </div>
+            <div class="rb-field" style="max-width:170px"><label>Bank (valgfritt)</label>
+                <select class="rb-input" @bind="_fBank">
+                    <option value="">Alle banker</option>
+                    @foreach (var p in _partnere) { <option value="@p.Navn">@p.Navn</option> }
                 </select>
             </div>
             <div class="rb-field rb-op" style="max-width:120px"><label>Send etter (t)</label><input class="rb-input" type="number" min="1" @bind="_fSendEtter" /></div>
@@ -187,8 +250,14 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     // Skjema (nytt/endre løp)
     private string? _fRedigerId;
     private string _fNavn = "", _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt, _fMal = "";
-    private string _fKlaviyo = "";
+    private string _fKlaviyo = "", _fBank = "";
     private int _fSendEtter = 24, _fIkkeEldre = 72;
+    private List<RentkuttCRM.Services.Partner> _partnere = new();
+    // SMS-maler
+    private string _nyMalNavn = "", _nyMalTekst = "";
+    private string? _malMsg;
+    private Guid? _redigerMalId;
+    private string _redigerNavn = "", _redigerTekst = "";
     private string _testMobil = "";
     private string _testSmsTekst = "";
     private bool _testSender;
@@ -205,6 +274,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _klaviyoEnabled = await Settings.GetBoolAsync(RentkuttCRM.Services.KlaviyoService.KeyEnabled, false);
         _intervall = await Settings.GetIntAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyIntervallMin, RentkuttCRM.Services.Paamindelse24tWorker.StandardIntervallMin);
         _loep = await Loep.HentAsync();
+        _partnere = await Partners.ListAsync();
         _sisteSms = await SmsLogg.SisteAsync(30);
         _laster = false;
     }
@@ -245,6 +315,39 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _testSender = false;
     }
 
+    // --- SMS-maler (flyttet hit fra LinkMobility-fanen) ---
+    private async Task LeggTilMal()
+    {
+        var (ok, error) = await SmsMaler.AddAsync(_nyMalNavn, _nyMalTekst);
+        _malMsg = ok ? "Mal lagt til." : error;
+        if (ok) { _nyMalNavn = ""; _nyMalTekst = ""; _maler = await SmsMaler.ListAsync(); }
+    }
+
+    private void StartMalRedigering(RentkuttCRM.Services.SmsMal m)
+    {
+        _redigerMalId = m.Id; _redigerNavn = m.Navn; _redigerTekst = m.Tekst; _malMsg = null;
+    }
+
+    private void AvbrytMalRedigering()
+    {
+        _redigerMalId = null; _redigerNavn = ""; _redigerTekst = "";
+    }
+
+    private async Task LagreMalRedigering()
+    {
+        if (_redigerMalId is not { } id) return;
+        var (ok, error) = await SmsMaler.UpdateAsync(id, _redigerNavn, _redigerTekst);
+        _malMsg = ok ? "Mal oppdatert." : error;
+        if (ok) { AvbrytMalRedigering(); _maler = await SmsMaler.ListAsync(); }
+    }
+
+    private async Task SlettMal(Guid id)
+    {
+        await SmsMaler.DeleteAsync(id);
+        if (_redigerMalId == id) AvbrytMalRedigering();
+        _maler = await SmsMaler.ListAsync();
+    }
+
     private async Task LagreIntervall()
     {
         if (_intervall < 5) _intervall = 5;
@@ -266,6 +369,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             {
                 Navn = _fNavn, Aktiv = true, TriggerStatus = _fStatus,
                 SendEtterTimer = _fSendEtter, IkkeEldreTimer = _fIkkeEldre, MalNavn = _fMal,
+                Bank = string.IsNullOrWhiteSpace(_fBank) ? null : _fBank,
                 KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim(),
             });
         }
@@ -276,6 +380,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             {
                 l.Navn = _fNavn; l.TriggerStatus = _fStatus;
                 l.SendEtterTimer = _fSendEtter; l.IkkeEldreTimer = _fIkkeEldre; l.MalNavn = _fMal;
+                l.Bank = string.IsNullOrWhiteSpace(_fBank) ? null : _fBank;
                 l.KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim();
             }
         }
@@ -288,14 +393,14 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     {
         _fRedigerId = l.Id; _fNavn = l.Navn; _fStatus = l.TriggerStatus;
         _fSendEtter = l.SendEtterTimer; _fIkkeEldre = l.IkkeEldreTimer; _fMal = l.MalNavn;
-        _fKlaviyo = l.KlaviyoEvent ?? "";
+        _fKlaviyo = l.KlaviyoEvent ?? ""; _fBank = l.Bank ?? "";
         _smsMsg = null;
     }
 
     private void AvbrytRediger()
     {
         _fRedigerId = null; _fNavn = ""; _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt;
-        _fMal = ""; _fSendEtter = 24; _fIkkeEldre = 72; _fKlaviyo = "";
+        _fMal = ""; _fSendEtter = 24; _fIkkeEldre = 72; _fKlaviyo = ""; _fBank = "";
     }
 
     private async Task SlettLoep(RentkuttCRM.Services.SmsLoep l)
