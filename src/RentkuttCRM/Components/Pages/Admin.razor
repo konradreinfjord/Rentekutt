@@ -2887,8 +2887,28 @@ else if (_active == "GDPR")
             _zAgenter = await Zisson.HentAgenterAlleAsync();
             _zNumre = await Zisson.HentVisningsnumreAsync();
             _zTestNummer ??= _userRows.FirstOrDefault(u => u.Id == Session.UserId)?.Mobilnummer;
+            await MigrerAgentKoblingerTilGuid();
         }
         finally { _dialerLaster = false; StateHasChanged(); }
+    }
+
+    // Eldre koblinger kan være lagret som login-id/brukernavn (f.eks. «59768»), som er ustabilt å løse
+    // ved ringing. Når agentlista er tilgjengelig, migreres slike koblinger automatisk til agentens guid.
+    private async Task MigrerAgentKoblingerTilGuid()
+    {
+        if (_zAgenter.Count == 0 || _userRows is null) return;
+        var endret = false;
+        foreach (var u in _userRows)
+        {
+            if (string.IsNullOrWhiteSpace(u.ZissonAgentGuid) || Guid.TryParse(u.ZissonAgentGuid, out _)) continue;
+            var a = _zAgenter.FirstOrDefault(x => AgentErValgt(u, x));
+            if (a is not null && Guid.TryParse(a.Guid, out _))
+            {
+                await Users.SetZissonAgentAsync(u.Id, a.Guid);
+                endret = true;
+            }
+        }
+        if (endret) _userRows = await Users.ListUsersAsync();
     }
 
     private async Task SaveCustomerGuid()
@@ -2944,8 +2964,9 @@ else if (_active == "GDPR")
 
     private string? _agentMsg;
 
-    // Dropdown: verdien vi lagrer (bruker-kode/brukernavn, ellers guid), visning og valgt-sjekk.
-    private static string AgentVerdi(ZissonService.ZAgent a) => a.LoginId ?? a.Username ?? a.Guid;
+    // Dropdown: vi lagrer GUID-en (finnes alltid fra entities/users og trenger ingen oppslag ved
+    // ringing). Login-id/brukernavn er upålitelig å løse (krever id-mapping-endepunktet).
+    private static string AgentVerdi(ZissonService.ZAgent a) => a.Guid;
     private static string? AgentKode(ZissonService.ZAgent a) => a.LoginId ?? a.Username;
     private static bool AgentErValgt(UserRow u, ZissonService.ZAgent a)
     {
