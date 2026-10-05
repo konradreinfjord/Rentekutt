@@ -378,6 +378,18 @@ public class ZissonService
     public record ZAgent(string Guid, string Navn, string? Username, string? Mobil, string? LoginId = null);
     public record ZNummer(string Nummer, string? Navn);
 
+    // Leser en numerisk bruker-/login-id fra vanlige feltnavn (tall eller streng).
+    private static string? LesLoginId(JsonElement e)
+    {
+        foreach (var navn in new[] { "id", "userId", "loginId", "userLoginId", "externalId" })
+        {
+            if (!e.TryGetProperty(navn, out var v)) continue;
+            if (v.ValueKind == JsonValueKind.Number) return v.GetRawText();
+            if (v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString())) return v.GetString();
+        }
+        return null;
+    }
+
     /// <summary>Agenter fra entities/users (guid, navn, brukernavn, mobil).</summary>
     public async Task<List<ZAgent>> HentAgenterAsync()
     {
@@ -397,8 +409,11 @@ public class ZissonService
                 var etternavn = e.TryGetProperty("lastName", out var l) ? l.GetString() : "";
                 var user = e.TryGetProperty("username", out var u) ? u.GetString() : null;
                 var mobil = e.TryGetProperty("mobileNumber", out var mo) ? mo.GetString() : null;
+                // Login-id (numerisk bruker-id) finnes ofte også her — les den så oversetting login-id→guid
+                // ikke er avhengig av det ustabile id-mapping-endepunktet.
+                var loginId = LesLoginId(e);
                 var navn = $"{fornavn} {etternavn}".Trim();
-                liste.Add(new(guid!, string.IsNullOrWhiteSpace(navn) ? (user ?? guid!) : navn, user, mobil));
+                liste.Add(new(guid!, string.IsNullOrWhiteSpace(navn) ? (user ?? loginId ?? guid!) : navn, user, mobil, loginId));
             }
             return liste.OrderBy(a => a.Navn, StringComparer.CurrentCultureIgnoreCase).ToList();
         }
@@ -420,7 +435,7 @@ public class ZissonService
             {
                 var guid = e.TryGetProperty("guid", out var g) ? g.GetString() : null;
                 if (string.IsNullOrWhiteSpace(guid)) continue;
-                var loginId = e.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.Number ? i.GetInt32().ToString() : null;
+                var loginId = LesLoginId(e);
                 var user = e.TryGetProperty("username", out var u) ? u.GetString() : null;
                 var fornavn = e.TryGetProperty("firstName", out var f) ? f.GetString() : "";
                 var etternavn = e.TryGetProperty("lastName", out var l) ? l.GetString() : "";
