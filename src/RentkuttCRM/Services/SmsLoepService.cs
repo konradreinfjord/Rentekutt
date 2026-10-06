@@ -51,6 +51,7 @@ public class SmsLoepService
             {
                 new()
                 {
+                    Id = "seed-24t",   // STABIL id — ellers endres dedup-nøkkelen hver henting → SMS sendes på nytt hver syklus
                     Navn = "24-timers påminnelse",
                     Aktiv = await _settings.GetBoolAsync(Paamindelse24tWorker.KeyEnabled, false),
                     TriggerStatus = KundekortService.StatusPaabegynt,

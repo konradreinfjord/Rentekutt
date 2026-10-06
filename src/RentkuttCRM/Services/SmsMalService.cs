@@ -30,6 +30,7 @@ public class SmsMalService
     private readonly Supabase.Client _client;
     private readonly LinkMobilityService _sms;
     private readonly SettingsService _settings;
+    private readonly SmsUtsendingService _utsending;
     private readonly ILogger<SmsMalService> _log;
     public bool IsConfigured { get; }
 
@@ -37,11 +38,12 @@ public class SmsMalService
     private bool _initialized;
 
     public SmsMalService(Supabase.Client client, LinkMobilityService sms, SettingsService settings,
-        IConfiguration cfg, ILogger<SmsMalService> log)
+        SmsUtsendingService utsending, IConfiguration cfg, ILogger<SmsMalService> log)
     {
         _client = client;
         _sms = sms;
         _settings = settings;
+        _utsending = utsending;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"]) && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
     }
@@ -119,13 +121,26 @@ public class SmsMalService
     {
         try
         {
+            // Hovedbryter: automatisk SMS er AV som standard ⇒ SMS sendes kun manuelt.
+            if (!await _settings.GetBoolAsync(Paamindelse24tWorker.KeyAutomatikkPaa, false)) return;
+
             var enabled = (await _settings.GetAsync(KeyAutoEnabled)) == "true";
             if (!enabled) return;
             var malNavn = await _settings.GetAsync(KeyAutoMal);
             if (string.IsNullOrWhiteSpace(malNavn)) return;
             var mal = (await ListAsync()).FirstOrDefault(m => m.Navn == malNavn);
             if (mal is null || string.IsNullOrWhiteSpace(k.Mobilnummer)) return;
-            await SendTilKundeAsync(k.Mobilnummer, mal.Tekst, k.FulltNavn);
+
+            // Konfigurerbar ukesgrense: maks automatiske SMS per kunde per uke (teller alle automatiske SMS).
+            var maksPerUke = Math.Max(1, await _settings.GetIntAsync(Paamindelse24tWorker.KeyMaksPerUke, Paamindelse24tWorker.StandardMaksPerUke));
+            if (await _utsending.AntallSisteDagerAsync(k.Id, 7) >= maksPerUke)
+            {
+                _log.LogWarning("Automatisk SMS (ny søknad): {Id} har nådd ukesgrensen ({Maks}) — hopper over.", k.Id, maksPerUke);
+                return;
+            }
+
+            var (ok, detalj) = await SendTilKundeAsync(k.Mobilnummer, mal.Tekst, k.FulltNavn);
+            await _utsending.LoggAsync(k.Id, "ny_soknad", k.Mobilnummer, ok, detalj);
             _log.LogInformation("Automatisk SMS sendt til ny søknad (mal {Mal})", malNavn);
         }
         catch (Exception ex) { _log.LogWarning(ex, "Automatisk SMS feilet"); }

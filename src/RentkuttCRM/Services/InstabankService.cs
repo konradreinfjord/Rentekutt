@@ -113,7 +113,8 @@ public class InstabankService
         return http;
     }
 
-    public record Resultat(bool Ok, string? ExternalReference, string? SigningUrl, string? Status, string Detalj, string? Reason = null);
+    public record Resultat(bool Ok, string? ExternalReference, string? SigningUrl, string? Status, string Detalj,
+        string? Reason = null, decimal? InnvilgetBelop = null, string? InstabankId = null, string? RawJson = null);
 
     // Instabank vil IKKE ha tomme strenger / 0 / false for felt uten verdi — utelat dem.
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -136,7 +137,8 @@ public class InstabankService
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new(false, null, null, null, "401 — feil brukernavn/passord for valgt miljø.");
 
-            string? extRef = null, signing = null, status = null, reason = null;
+            string? extRef = null, signing = null, status = null, reason = null, instabankId = null;
+            decimal? innvilgetBelop = null;
             try
             {
                 using var doc = JsonDocument.Parse(tekst);
@@ -145,13 +147,19 @@ public class InstabankService
                 status = Finn(root, "Status");
                 extRef = Finn(root, "ExternalReference");
                 // Avslagsårsak — prøv flere feltnavn (Instabank oppgir den ikke alltid).
-                reason = Finn(root, "RejectionReason") ?? Finn(root, "DeclineReason") ?? Finn(root, "StatusReason")
-                         ?? Finn(root, "Reason") ?? Finn(root, "RejectReason") ?? Finn(root, "DecisionReason");
+                reason = FinnFlere(root, "RejectionReason", "DeclineReason", "StatusReason", "Reason", "RejectReason", "DecisionReason");
+                // Innvilget beløp (kan avvike fra omsøkt) — prøv flere kandidat-navn, IKKE generisk «Amount» (= omsøkt).
+                innvilgetBelop = TalltolkBelop(FinnFlere(root, "ApprovedAmount", "GrantedAmount", "OfferedAmount",
+                    "ApprovedCreditLimit", "GrantedCreditLimit", "CreditLimit", "AcceptedAmount", "OfferAmount", "ApprovedLoanAmount"));
+                // Instabank sin egen sak-id (IKKE vår ExternalReference).
+                instabankId = FinnFlere(root, "ApplicationId", "ApplicationNumber", "InstabankId", "LoanApplicationId",
+                    "CaseId", "CaseNumber", "LoanNumber", "ApplicationReference");
             }
             catch { /* ikke-JSON respons */ }
 
             return new(resp.IsSuccessStatusCode, extRef, signing, status,
-                resp.IsSuccessStatusCode ? "OK" : $"{(int)resp.StatusCode} {resp.ReasonPhrase}: {Kort(tekst)}", reason);
+                resp.IsSuccessStatusCode ? "OK" : $"{(int)resp.StatusCode} {resp.ReasonPhrase}: {Kort(tekst)}",
+                reason, innvilgetBelop, instabankId, Kort(tekst, 2000));
         }
         catch (Exception ex)
         {
@@ -549,5 +557,20 @@ public class InstabankService
         return null;
     }
 
-    private static string Kort(string s) => s.Length <= 240 ? s : s[..240] + "…";
+    private static string Kort(string s) => Kort(s, 240);
+    private static string Kort(string s, int maks) => s.Length <= maks ? s : s[..maks] + "…";
+
+    // Første ikke-tomme treff blant flere kandidat-feltnavn (dyp-søk).
+    private static string? FinnFlere(JsonElement el, params string[] navn)
+        => navn.Select(n => Finn(el, n)).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+    // Tolker et beløp (tall eller streng, med ev. mellomrom/komma) til decimal.
+    private static decimal? TalltolkBelop(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var clean = new string(s.Where(c => char.IsDigit(c) || c is '.' or ',' or '-').ToArray()).Replace(" ", "");
+        if (clean.Contains(',') && !clean.Contains('.')) clean = clean.Replace(',', '.');
+        else clean = clean.Replace(",", "");
+        return decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
 }

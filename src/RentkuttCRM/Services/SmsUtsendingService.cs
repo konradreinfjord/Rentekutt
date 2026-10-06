@@ -48,6 +48,18 @@ public class SmsUtsendingService
         catch (Exception ex) { _log.LogWarning(ex, "Sjekk av tidligere SMS-utsending feilet"); return false; }
     }
 
+    /// <summary>Antall OK SMS sendt til en kunde de siste N dagene (valgfritt filtrert på type-prefiks).
+    /// Sikkerhetsnett mot runaway-utsending.</summary>
+    public async Task<int> AntallSisteDagerAsync(Guid kundekortId, int dager, string? typePrefiks = null)
+    {
+        var fra = DateTime.UtcNow.AddDays(-dager);
+        bool Match(SmsUtsending s) => s.Ok && s.SendtAt >= fra
+            && (typePrefiks is null || (s.Type?.StartsWith(typePrefiks, StringComparison.Ordinal) ?? false));
+        if (!IsConfigured) return _staging.Count(Match);
+        try { return (await ForKundeAsync(kundekortId)).Count(Match); }
+        catch (Exception ex) { _log.LogWarning(ex, "Telling av SMS-utsending feilet"); return 0; }
+    }
+
     public async Task LoggAsync(Guid kundekortId, string type, string? mobil, bool ok, string? detalj)
     {
         var rad = new SmsUtsending { KundekortId = kundekortId, Type = type, Mobil = mobil, Ok = ok, Detalj = detalj };

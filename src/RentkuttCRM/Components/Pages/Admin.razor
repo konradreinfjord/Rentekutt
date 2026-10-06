@@ -868,7 +868,7 @@ Authorization: Bearer &lt;token&gt;</pre>
             </div>
             @if (!string.IsNullOrEmpty(_ibRefMsg))
             {
-                <p class="page-sub" style="margin:0 0 16px; font-size:12px; color:@(_ibRefOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_ibRefMsg</p>
+                <p class="page-sub" style="margin:0 0 16px; font-size:12px; white-space:pre-wrap; word-break:break-word; color:@(_ibRefOk ? "var(--green-dark)" : "var(--danger, #b42318)")">@_ibRefMsg</p>
             }
 
             <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
@@ -3121,6 +3121,9 @@ else if (_active == "GDPR")
         _ibRefOk = r.Ok;
         _ibRefMsg = r.Ok
             ? $"✓ Funnet. Status: {r.Status ?? "(ukjent)"} · ref: {r.ExternalReference ?? _ibRef.Trim()}"
+              + (r.InnvilgetBelop is not null ? $" · innvilget: {r.InnvilgetBelop:N0} kr" : "")
+              + (string.IsNullOrWhiteSpace(r.InstabankId) ? "" : $" · Instabank-id: {r.InstabankId}")
+              + (string.IsNullOrWhiteSpace(r.RawJson) ? "" : $"\nRå-respons: {r.RawJson}")
             : $"✗ {r.Detalj}";
         _ibAksjon = false;
     }

@@ -18,6 +18,9 @@ public class BankSending : BaseModel
     [Column("utfall")] public string? Utfall { get; set; } = SendUtfall.Venter;
     [Column("ekstern_ref")] public string? EksternRef { get; set; }
     [Column("signing_url")] public string? SigningUrl { get; set; }
+    // Innvilget beløp + Instabank sin egen sak-id — fanges fra Instabank-responsen (kan avvike fra omsøkt).
+    [Column("innvilget_belop")] public decimal? InnvilgetBelop { get; set; }
+    [Column("instabank_id")] public string? InstabankId { get; set; }
     [Column("detalj")] public string? Detalj { get; set; }
     [Column("sendt_av")] public string? SendtAv { get; set; }
     [Column("forsok")] public int Forsok { get; set; }
@@ -116,7 +119,7 @@ public class BankSendingService
         if (!IsConfigured)
         {
             var k = _staging.FirstOrDefault(x => x.Id == s.Id);
-            if (k is not null) { k.Status = s.Status; k.EksternRef = s.EksternRef; k.SigningUrl = s.SigningUrl; k.Detalj = s.Detalj; k.Forsok = s.Forsok; }
+            if (k is not null) { k.Status = s.Status; k.EksternRef = s.EksternRef; k.SigningUrl = s.SigningUrl; k.InnvilgetBelop = s.InnvilgetBelop; k.InstabankId = s.InstabankId; k.Detalj = s.Detalj; k.Forsok = s.Forsok; }
             return;
         }
         try
@@ -126,6 +129,8 @@ public class BankSendingService
                 .Set(x => x.Status!, s.Status)
                 .Set(x => x.EksternRef!, s.EksternRef ?? "")
                 .Set(x => x.SigningUrl!, s.SigningUrl ?? "")
+                .Set(x => x.InnvilgetBelop, s.InnvilgetBelop)
+                .Set(x => x.InstabankId!, s.InstabankId ?? "")
                 .Set(x => x.Detalj!, s.Detalj ?? "")
                 .Set(x => x.Forsok, s.Forsok)
                 .Update();
@@ -140,6 +145,27 @@ public class BankSendingService
         if (!IsConfigured) { var k = _staging.FirstOrDefault(x => x.Id == id); if (k is not null) k.SigningUrl = url; return; }
         try { await EnsureInitAsync(); await _client.From<BankSending>().Where(x => x.Id == id).Set(x => x.SigningUrl!, url).Update(); }
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av signeringslenke feilet"); }
+    }
+
+    /// <summary>Oppdater innvilget beløp / Instabank-id på en sending (fanges ved statussynk). Null = ikke endre.</summary>
+    public async Task SetInstabankDetaljerAsync(Guid id, decimal? innvilgetBelop, string? instabankId)
+    {
+        if (innvilgetBelop is null && string.IsNullOrWhiteSpace(instabankId)) return;
+        if (!IsConfigured)
+        {
+            var k = _staging.FirstOrDefault(x => x.Id == id);
+            if (k is not null) { if (innvilgetBelop is not null) k.InnvilgetBelop = innvilgetBelop; if (!string.IsNullOrWhiteSpace(instabankId)) k.InstabankId = instabankId; }
+            return;
+        }
+        try
+        {
+            await EnsureInitAsync();
+            var q = _client.From<BankSending>().Where(x => x.Id == id);
+            if (innvilgetBelop is not null) q = q.Set(x => x.InnvilgetBelop, innvilgetBelop);
+            if (!string.IsNullOrWhiteSpace(instabankId)) q = q.Set(x => x.InstabankId!, instabankId);
+            await q.Update();
+        }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av Instabank-detaljer feilet"); }
     }
 
     /// <summary>Sett per-bank utfall (bankens beslutning) på én sending.</summary>

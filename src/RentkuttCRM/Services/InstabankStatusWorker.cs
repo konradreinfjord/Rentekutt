@@ -72,6 +72,9 @@ public class InstabankStatusWorker : BackgroundService
                                 await sendinger.SetSigningUrlAsync(siste.Id, r.SigningUrl);
                                 siste.SigningUrl = r.SigningUrl;
                             }
+                            // Fang innvilget beløp + Instabank-id fra responsen (vises på kundekortet).
+                            if (r.InnvilgetBelop is not null || !string.IsNullOrWhiteSpace(r.InstabankId))
+                                await sendinger.SetInstabankDetaljerAsync(siste.Id, r.InnvilgetBelop, r.InstabankId);
 
                             var utfall = MapUtfall(r.Status);
                             if (utfall is not null && utfall != siste.Utfall)

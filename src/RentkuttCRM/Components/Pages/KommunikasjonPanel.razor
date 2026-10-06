@@ -135,9 +135,25 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             <p class="page-sub" style="color:#b42318; margin:0 0 14px">⚠️ LinkMobility er ikke konfigurert (ClientId/secret mangler). Løpene sender ingenting før dette er på plass. Sett det opp under Admin → API og Data → LinkMobility.</p>
         }
 
+        @* Hovedbryter: automatisk SMS AV som standard ⇒ SMS sendes kun manuelt. *@
+        <div class="section" style="background:@(_automatikkPaa ? "#ecfdf3" : "#fef3f2"); border:1px solid @(_automatikkPaa ? "#abefc6" : "#fecdca"); border-radius:10px; padding:14px 16px; margin-bottom:16px">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin:0">
+                <input type="checkbox" checked="@_automatikkPaa" @onchange="ToggleAutomatikk" />
+                <span>
+                    <strong>Automatisk SMS: @(_automatikkPaa ? "PÅ" : "AV")</strong>
+                    — @(_automatikkPaa
+                        ? "SMS-løp og «ved ny søknad» sendes automatisk."
+                        : "SMS sendes kun manuelt. Alle automatiske utsendinger (SMS-løp + «ved ny søknad») er stoppet.")
+                </span>
+            </label>
+            @if (!string.IsNullOrEmpty(_automatikkMsg)) { <span class="ok-msg" style="margin-left:28px">@_automatikkMsg</span> }
+        </div>
+
         <div class="kv-list" style="margin-bottom:16px">
             <span class="k">Sendevindu</span>
             <span class="v">⏰ <strong>08–21 på hverdager</strong> (man–fre). Meldinger utenfor vinduet venter til neste virketime.</span>
+            <span class="k">Maks per kunde/uke</span>
+            <span class="v"><input class="rb-input" type="number" min="1" max="7" style="max-width:80px; display:inline-block" @bind="_maksPerUke" /> SMS <button class="btn-sm" @onclick="LagreMaksPerUke">Lagre</button> <span class="page-sub" style="margin-left:6px">Hard sperre — teller alle automatiske SMS (løp + ny søknad).</span></span>
             <span class="k">Skann hvert</span>
             <span class="v"><input class="rb-input" type="number" min="5" style="max-width:80px; display:inline-block" @bind="_intervall" /> min <button class="btn-sm" @onclick="LagreIntervall">Lagre</button></span>
         </div>
@@ -244,6 +260,9 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     private string? _klaviyoMsg, _testMsg;
 
     // SMS-løp
+    private bool _automatikkPaa;
+    private string? _automatikkMsg;
+    private int _maksPerUke = RentkuttCRM.Services.Paamindelse24tWorker.StandardMaksPerUke;
     private int _intervall = RentkuttCRM.Services.Paamindelse24tWorker.StandardIntervallMin;
     private string? _smsMsg;
     private List<RentkuttCRM.Services.SmsLoep> _loep = new();
@@ -272,6 +291,8 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _laster = true;
         _maler = await SmsMaler.ListAsync();
         _klaviyoEnabled = await Settings.GetBoolAsync(RentkuttCRM.Services.KlaviyoService.KeyEnabled, false);
+        _automatikkPaa = await Settings.GetBoolAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyAutomatikkPaa, false);
+        _maksPerUke = await Settings.GetIntAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMaksPerUke, RentkuttCRM.Services.Paamindelse24tWorker.StandardMaksPerUke);
         _intervall = await Settings.GetIntAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyIntervallMin, RentkuttCRM.Services.Paamindelse24tWorker.StandardIntervallMin);
         _loep = await Loep.HentAsync();
         _partnere = await Partners.ListAsync();
@@ -353,6 +374,20 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         if (_intervall < 5) _intervall = 5;
         await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyIntervallMin, _intervall.ToString());
         _smsMsg = "Skann-intervall lagret.";
+    }
+
+    private async Task ToggleAutomatikk(ChangeEventArgs e)
+    {
+        _automatikkPaa = e.Value is true;
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyAutomatikkPaa, _automatikkPaa ? "true" : "false");
+        _automatikkMsg = _automatikkPaa ? "Automatisk SMS slått PÅ." : "Automatisk SMS slått AV — kun manuell sending.";
+    }
+
+    private async Task LagreMaksPerUke()
+    {
+        _maksPerUke = Math.Clamp(_maksPerUke, 1, 7);
+        await Settings.SetAsync(RentkuttCRM.Services.Paamindelse24tWorker.KeyMaksPerUke, _maksPerUke.ToString());
+        _smsMsg = $"Ukesgrense lagret: maks {_maksPerUke} SMS per kunde per uke.";
     }
 
     private async Task LagreLoep()

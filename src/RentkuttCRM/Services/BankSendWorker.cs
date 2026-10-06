@@ -292,6 +292,8 @@ public class BankSendWorker : BackgroundService
             s.Status = SendStatus.Sendt;
             s.EksternRef = r.ExternalReference;
             s.SigningUrl = r.SigningUrl;
+            if (r.InnvilgetBelop is not null) s.InnvilgetBelop = r.InnvilgetBelop;
+            if (!string.IsNullOrWhiteSpace(r.InstabankId)) s.InstabankId = r.InstabankId;
             s.Detalj = r.Detalj;
             utfall = Utfall.Ok;
         }

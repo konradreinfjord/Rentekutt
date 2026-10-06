@@ -503,6 +503,23 @@
                             }
                         </div>
                     </div>
+                    @if (sending is not null && (sending.InnvilgetBelop is not null || !string.IsNullOrWhiteSpace(sending.InstabankId) || !string.IsNullOrWhiteSpace(sending.SigningUrl)))
+                    {
+                        <div class="kv-list" style="margin-top:10px">
+                            @if (sending.InnvilgetBelop is not null)
+                            {
+                                <span class="k">Innvilget beløp</span><span class="v"><strong>@($"{sending.InnvilgetBelop.Value:N0} kr")</strong></span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sending.InstabankId))
+                            {
+                                <span class="k">Instabank-ID</span><span class="v mono">@sending.InstabankId</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sending.SigningUrl))
+                            {
+                                <span class="k">Signeringslenke</span><span class="v"><a href="@sending.SigningUrl" target="_blank" rel="noopener">Åpne signering ↗</a></span>
+                            }
+                        </div>
+                    }
                 </div>
             }
         }

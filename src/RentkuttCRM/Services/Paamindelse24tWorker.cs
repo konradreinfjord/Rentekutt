@@ -14,6 +14,15 @@ public class Paamindelse24tWorker : BackgroundService
     public const string KeyMaksTimer = "sms_24t_maks_timer";     // ikke send til saker eldre enn dette (hindrer masseutsending)
     public const string KeyIntervallMin = "sms_24t_intervall_min"; // hvor ofte løpet skanner
 
+    // Hovedbryter for ALL automatisk SMS-utsending (SMS-løp + «ved ny søknad»). Standard AV ⇒ SMS
+    // sendes kun manuelt. Må slås eksplisitt PÅ i Kommunikasjon-fanen.
+    public const string KeyAutomatikkPaa = "sms_automatikk_paa";
+
+    // Konfigurerbar sikkerhetsgrense: maks automatiske SMS per kunde per uke (uansett antall løp).
+    // Settes i Kommunikasjon-fanen. Standard = 1.
+    public const string KeyMaksPerUke = "sms_maks_per_uke";
+    public const int StandardMaksPerUke = 1;
+
     public const int StandardMinTimer = 24;
     public const int StandardMaksTimer = 72;
     public const int StandardIntervallMin = 60;
@@ -76,12 +85,18 @@ public class Paamindelse24tWorker : BackgroundService
 
     private async Task KjorSyklusAsync(IServiceScope scope, SettingsService settings, CancellationToken ct)
     {
+        // Hovedbryter: automatisk SMS er AV som standard ⇒ SMS sendes kun manuelt.
+        if (!await settings.GetBoolAsync(KeyAutomatikkPaa, false)) return;
+
         var loepListe = (await scope.ServiceProvider.GetRequiredService<SmsLoepService>().HentAsync())
             .Where(l => l.Aktiv && !string.IsNullOrWhiteSpace(l.MalNavn)).ToList();
         if (loepListe.Count == 0) return;
 
         // Send kun innenfor sendevinduet (08–21 på hverdager). Utenfor → vent til neste syklus.
         if (!InnenforSendevindu(DateTime.UtcNow)) return;
+
+        // Konfigurerbar ukesgrense: maks automatiske SMS per kunde per uke (teller alle automatiske SMS).
+        var maksPerUke = Math.Max(1, await settings.GetIntAsync(KeyMaksPerUke, StandardMaksPerUke));
 
         var sms = scope.ServiceProvider.GetRequiredService<SmsMalService>();
         var kundekort = scope.ServiceProvider.GetRequiredService<KundekortService>();
@@ -131,6 +146,13 @@ public class Paamindelse24tWorker : BackgroundService
             {
                 if (ct.IsCancellationRequested) break;
                 if (await utsending.HarSendtOkAsync(k.Id, type)) continue;
+
+                // Sikkerhetsnett mot runaway: maks automatiske SMS per kunde per uke (alle typer).
+                if (await utsending.AntallSisteDagerAsync(k.Id, 7) >= maksPerUke)
+                {
+                    _log.LogWarning("SMS-løp: {Id} har nådd ukesgrensen ({Maks}) — hopper over.", k.Id, maksPerUke);
+                    continue;
+                }
 
                 // Signeringslenke for NØYAKTIG denne kunden (kundekort-id-nøklet). Null hvis ingen finnes.
                 var signeringslenke = signPerKort.TryGetValue(k.Id, out var u) ? u : null;
