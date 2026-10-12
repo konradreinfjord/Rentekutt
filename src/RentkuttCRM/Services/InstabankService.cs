@@ -71,12 +71,18 @@ public class InstabankService
     private decimal BoliglaanMaks =>
         decimal.TryParse(_config["Instabank:BoliglaanMaks"], out var v) && v > 0 ? v : 10_000_000m;
 
-    /// <summary>Maks lånebeløp for et Instabank-produkt (forbrukslån/boliglån). Brukes både av
+    /// <summary>Maks kredittgrense for kredittkort (produkt 600) hos Instabank. Overstyres med
+    /// Instabank__KredittkortMaks; standard 150 000 kr (Instabanks typiske kortgrense).</summary>
+    private decimal KredittkortMaks =>
+        decimal.TryParse(_config["Instabank:KredittkortMaks"], out var v) && v > 0 ? v : 150_000m;
+
+    /// <summary>Maks beløp for et Instabank-produkt (forbrukslån/boliglån/kredittkort). Brukes både av
     /// send-barrieren og av kundeportalen for å vise grensen. 0 = ingen kjent grense.</summary>
     public decimal MaksBelopFor(int? produkt) => produkt switch
     {
         ProduktForbrukslaan => ForbrukslaanMaks,
         ProduktBoliglaan => BoliglaanMaks,
+        ProduktKredittkort => KredittkortMaks,
         _ => 0m,
     };
     private string? PassordFor(string env) =>
@@ -194,10 +200,11 @@ public class InstabankService
                 return await SendPrivatAsync(k, preOffer);
             case ProduktBoliglaan:                                      // 180 (samme payload som 151)
                 return await SendPrivatAsync(k, preOffer, ProduktBoliglaan);
+            case ProduktKredittkort:                                    // 600 (privat kreditt — kredittgrense, ingen løpetid)
+                return await SendPrivatAsync(k, preOffer, ProduktKredittkort);
             case ProduktBedriftslaan:                                   // 2001
                 return await SendBedriftAsync(k, preOffer);
             case ProduktKredittlinje:                                   // 251
-            case ProduktKredittkort:                                    // 600
             case ProduktBedriftKreditt:                                 // 2000
                 return new(false, null, null, null,
                     $"Produktet «{ProduktNavn(produktKode.Value)}» ({produktKode}) støttes ikke for automatisk sending ennå — verifisert Agent API-payload mangler.");
@@ -222,9 +229,9 @@ public class InstabankService
         _ => $"Produkt {kode}",
     };
 
-    /// <summary>Produktkoder som faktisk kan sendes til Instabank i dag (verifisert payload).
-    /// null = auto-ruting (bakoverkompatibelt). 151/2001 støttes; 251/600/2000 gjør ikke ennå.</summary>
-    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBoliglaan or ProduktBedriftslaan;
+    /// <summary>Produktkoder som faktisk kan sendes til Instabank i dag.
+    /// null = auto-ruting (bakoverkompatibelt). 151/180/600/2001 støttes; 251/2000 gjør ikke ennå.</summary>
+    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBoliglaan or ProduktKredittkort or ProduktBedriftslaan;
 
     private static bool ErBoliglaan(string? laanetype) =>
         (laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase);
@@ -232,16 +239,20 @@ public class InstabankService
     // Privat forbrukslån (151) og boliglån (180) — samme payload-skjema, kun produktkoden skiller.
     private async Task<Resultat> SendPrivatAsync(Kundekort k, bool preOffer, int produkt = ProduktForbrukslaan)
     {
+        // Kredittkort (600) er revolverende kreditt — kredittgrense i stedet for lånebeløp, og ingen
+        // nedbetalingstid. Løpetid-kravet gjelder derfor kun lån (forbrukslån/boliglån).
+        var erKredittkort = produkt == ProduktKredittkort;
+
         // Påkrevde felt: SSN, e-post, mobil, beløp.
         var ssn = FoerstGyldigFnr(k.Foedselsnummer, k.KundeId);
         var mangler = new List<string>();
         if (string.IsNullOrWhiteSpace(ssn)) mangler.Add(FnrManglerGrunn(k.Foedselsnummer));
         if (string.IsNullOrWhiteSpace(k.Epost)) mangler.Add("e-post");
         if (string.IsNullOrWhiteSpace(k.Mobilnummer)) mangler.Add("mobilnummer");
-        if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add("ønsket lånebeløp");
-        // Instabank krever løpetid — uten den velger Instabank selv en verdi som kan havne under
-        // avtalens minimum (E_DURATION_IS_BELOW_AGR_LIMIT). Krev en gyldig løpetid før sending.
-        if ((k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
+        if ((k.OnsketLaanebelop ?? 0) <= 0) mangler.Add(erKredittkort ? "ønsket kredittgrense" : "ønsket lånebeløp");
+        // Instabank krever løpetid for LÅN — uten den velger Instabank selv en verdi som kan havne under
+        // avtalens minimum (E_DURATION_IS_BELOW_AGR_LIMIT). Kredittkort har ingen løpetid.
+        if (!erKredittkort && (k.OnsketLopetidMnd ?? 0) <= 0) mangler.Add("ønsket nedbetalingstid (mnd)");
         if (mangler.Count > 0)
             return new(false, null, null, null, "Kan ikke sende — mangler: " + string.Join(", ", mangler));
 
@@ -291,7 +302,8 @@ public class InstabankService
         var application = new Dictionary<string, object?>
         {
             ["Product"] = new { Code = produkt },
-            ["Calculation"] = k.OnsketLopetidMnd is int lm && lm > 0
+            // Kredittkort: kun kredittgrense (Amount), ingen løpetid. Lån: Amount + DurationInMonths.
+            ["Calculation"] = (!erKredittkort && k.OnsketLopetidMnd is int lm && lm > 0)
                 ? new Dictionary<string, object?> { ["Amount"] = sendBelop, ["DurationInMonths"] = lm }
                 : new Dictionary<string, object?> { ["Amount"] = sendBelop },
             ["Applicant"] = applicant,
