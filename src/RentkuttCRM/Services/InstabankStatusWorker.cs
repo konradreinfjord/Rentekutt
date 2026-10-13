@@ -77,6 +77,12 @@ public class InstabankStatusWorker : BackgroundService
                                 await sendinger.SetInstabankDetaljerAsync(siste.Id, r.InnvilgetBelop, r.InstabankId);
 
                             var utfall = MapUtfall(r.Status);
+                            // Signeringslenke i retur = Instabank har gitt et signerbart tilbud ⇒ søknaden
+                            // er innvilget. Kjente «Complete/Rejected» (fra MapUtfall) har forrang; ellers
+                            // promoterer vi til «Innvilget» så ukjente tilbuds-/signeringsstatuser fanges
+                            // (f.eks. «Offered»/«Signing») i stedet for å bli stående uendret.
+                            if (utfall is null && !string.IsNullOrWhiteSpace(siste.SigningUrl))
+                                utfall = SendUtfall.Innvilget;
                             if (utfall is not null && utfall != siste.Utfall)
                             {
                                 await sendinger.SetUtfallAsync(siste.Id, utfall);

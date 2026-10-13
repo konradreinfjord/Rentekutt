@@ -11,6 +11,22 @@
 
 <div class="wide-page"></div>
 
+<style>
+    /* Mer leselige innsiktstabeller: tydelig radhøyde, volumsøyler og fargede marginpiller. */
+    .mi-table td { vertical-align: middle; }
+    .mi-table .mi-bank { font-weight: 600; }
+    .mi-table .mi-strong { font-weight: 700; }
+    .mi-table .mi-muted { color: var(--text-2, #64748b); font-variant-numeric: tabular-nums; }
+    .mi-table .num { font-variant-numeric: tabular-nums; }
+    .mi-barcell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; position: relative; min-width: 72px; }
+    .mi-barcell .mi-bar { position: absolute; right: 26px; height: 7px; border-radius: 4px; background: var(--accent-blue, #1f5fc4); opacity: .22; }
+    .mi-barcell .mi-barnum { position: relative; min-width: 18px; text-align: right; font-weight: 600; }
+    .mi-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .mi-pill-up { background: #fef3e2; color: #b45309; }
+    .mi-pill-down { background: #e8f6ed; color: #266f32; }
+    .mi-link { border: none; background: none; padding: 0; color: var(--accent-blue, #1f5fc4); cursor: pointer; text-decoration: underline; font: inherit; }
+</style>
+
 <h1 class="page-title">Markedsinnsikt</h1>
 <p class="page-sub">Rentene kundene oppgir i søknaden, sammenlignet med Norges Banks styringsrente. Velg en produktkategori for å se prisbildet for akkurat det produktet.</p>
 
@@ -31,13 +47,56 @@ else
         }
     </div>
 
-    @if (_punkter.Count == 0)
+    @if (_kategoriPunkter.Count == 0)
     {
         <div class="mi-empty">
             <div class="mi-empty-ic">📊</div>
             <div>
                 <strong>Ingen registrerte renter for @_kategori ennå.</strong>
                 <p class="page-sub" style="margin:4px 0 0">Rentene kommer inn automatisk fra søknadene, og fra «Lagre bank &amp; rente» på kundekortet.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+    @* Filterlinje — samme oppsett som på Saker (søk + nedtrekk). Alt under følger utvalget. *@
+    <div class="db-toolbar">
+        <input class="db-search" @bind="_search" @bind:event="oninput" @bind:after="Beregn" placeholder="Søk bank …" />
+        <select class="db-select" @bind="_bankFilter" @bind:after="Beregn">
+            <option value="">Alle banker</option>
+            @foreach (var b in BankValg) { <option value="@b.Navn">@b.Navn (@b.Antall)</option> }
+        </select>
+        <select class="db-select" @bind="_kildeFilter" @bind:after="Beregn">
+            <option value="">Alle kilder</option>
+            <option value="soknad">Fra søknad (@_kategoriPunkter.Count(p => p.Soknad))</option>
+            <option value="manuell">Manuelt registrert (@_kategoriPunkter.Count(p => !p.Soknad))</option>
+        </select>
+        <select class="db-select" @bind="_segmentFilter" @bind:after="Beregn" title="Filtrer på lånestørrelse">
+            <option value="">Alle lånebeløp</option>
+            @foreach (var s in SegmentValg) { <option value="@s.Navn">@s.Navn (@s.Antall)</option> }
+        </select>
+        <select class="db-select" @bind="_periodeFilter" @bind:after="Beregn" title="Tidsrom">
+            <option value="">Hele perioden</option>
+            <option value="30">Siste 30 dager</option>
+            <option value="90">Siste 90 dager</option>
+            <option value="365">Siste 12 måneder</option>
+            <option value="ytd">Hittil i år</option>
+        </select>
+        @if (HarAktivtFilter)
+        {
+            <button class="db-select" style="cursor:pointer" @onclick="NullstillFilter" title="Nullstill alle filtre">✕ Nullstill</button>
+        }
+        <div class="db-spacer"></div>
+        <span class="db-count">@_punkter.Count av @_kategoriPunkter.Count</span>
+    </div>
+
+    @if (_punkter.Count == 0)
+    {
+        <div class="mi-empty">
+            <div class="mi-empty-ic">🔍</div>
+            <div>
+                <strong>Ingen treff med valgte filtre.</strong>
+                <p class="page-sub" style="margin:4px 0 0">Juster bank, kilde, lånebeløp eller tidsrom — eller <button type="button" class="mi-link" @onclick="NullstillFilter">nullstill filtrene</button>.</p>
             </div>
         </div>
     }
@@ -77,28 +136,44 @@ else
 
     <div class="section">
         <h2>Registrerte renter per bank</h2>
+        <p class="page-sub">Snittrente per bank sammenlignet med Norges Banks styringsrente (@_naaStyring.ToString("N2", Nb) %). Søylen viser hvor stor andel av utvalget hver bank står for.</p>
         <div class="table-scroll">
-        <table class="data-table">
+        <table class="data-table mi-table">
             <thead>
-                <tr><th>Bank</th><th class="num">Antall</th><th class="num">Snitt rente</th><th class="num">Laveste</th><th class="num">Høyeste</th><th class="num">Over styringsrente</th><th class="num">Snitt lånebeløp</th><th class="num">Snitt LTV</th><th>Sist registrert</th></tr>
+                <tr>
+                    <th>Bank</th>
+                    <th class="num">Antall</th>
+                    <th class="num">Snitt rente</th>
+                    <th class="num">Spenn (lav–høy)</th>
+                    <th class="num">Over styringsrente</th>
+                    <th class="num">Snitt lånebeløp</th>
+                    <th class="num">Snitt LTV</th>
+                    <th class="num">Sist</th>
+                </tr>
             </thead>
             <tbody>
                 @if (_banker.Count == 0)
                 {
-                    <tr><td colspan="9" class="empty-row">Ingen data ennå.</td></tr>
+                    <tr><td colspan="8" class="empty-row">Ingen data ennå.</td></tr>
                 }
+                @{ var maxAnt = _banker.Count > 0 ? _banker.Max(x => x.Antall) : 1; }
                 @foreach (var b in _banker)
                 {
+                    var margin = b.Snitt - (decimal)_naaStyring;
                     <tr>
-                        <td>@b.Bank</td>
-                        <td class="num">@b.Antall</td>
-                        <td class="num">@b.Snitt.ToString("N2", Nb) %</td>
-                        <td class="num">@b.Min.ToString("N2", Nb) %</td>
-                        <td class="num">@b.Max.ToString("N2", Nb) %</td>
-                        <td class="num">@((b.Snitt - (decimal)_naaStyring).ToString("N2", Nb)) pp</td>
+                        <td class="mi-bank">@b.Bank</td>
+                        <td class="num">
+                            <span class="mi-barcell">
+                                <span class="mi-bar" style="width:@(((double)b.Antall / Math.Max(1, maxAnt) * 100).ToString("0.#", Inv))%"></span>
+                                <span class="mi-barnum">@b.Antall</span>
+                            </span>
+                        </td>
+                        <td class="num mi-strong">@b.Snitt.ToString("N2", Nb) %</td>
+                        <td class="num mi-muted">@b.Min.ToString("N2", Nb)&nbsp;–&nbsp;@b.Max.ToString("N2", Nb) %</td>
+                        <td class="num"><span class="mi-pill @(margin >= 0 ? "mi-pill-up" : "mi-pill-down")">@(margin >= 0 ? "+" : "")@margin.ToString("N2", Nb) pp</span></td>
                         <td class="num">@(b.SnittBelop is > 0 ? (b.SnittBelop!.Value / 1_000_000m).ToString("N2", Nb) + " M" : "—")</td>
                         <td class="num">@(b.SnittLtv is not null ? b.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
-                        <td>@b.Siste.TilOslo().ToString("dd.MM.yyyy")</td>
+                        <td class="num mi-muted">@b.Siste.TilOslo().ToString("dd.MM.yy")</td>
                     </tr>
                 }
             </tbody>
@@ -110,23 +185,28 @@ else
         <h2>Rentenivå per lånebeløp</h2>
         <p class="page-sub">Snitt rente og LTV gruppert på lånestørrelse — ser vi forskjell mellom store og små lån?</p>
         <div class="table-scroll">
-        <table class="data-table">
+        <table class="data-table mi-table">
             <thead>
-                <tr><th>Lånebeløp</th><th class="num">Antall</th><th class="num">Snitt rente</th><th class="num">Laveste</th><th class="num">Høyeste</th><th class="num">Snitt lånebeløp</th><th class="num">Snitt LTV</th></tr>
+                <tr><th>Lånebeløp</th><th class="num">Antall</th><th class="num">Snitt rente</th><th class="num">Spenn (lav–høy)</th><th class="num">Snitt lånebeløp</th><th class="num">Snitt LTV</th></tr>
             </thead>
             <tbody>
                 @if (_segmenter.Count == 0)
                 {
-                    <tr><td colspan="7" class="empty-row">Ingen kunder med lånebeløp registrert ennå.</td></tr>
+                    <tr><td colspan="6" class="empty-row">Ingen kunder med lånebeløp registrert ennå.</td></tr>
                 }
+                @{ var maxSeg = _segmenter.Count > 0 ? _segmenter.Max(x => x.Antall) : 1; }
                 @foreach (var s in _segmenter)
                 {
                     <tr>
-                        <td>@s.Navn</td>
-                        <td class="num">@s.Antall</td>
-                        <td class="num">@s.Snitt.ToString("N2", Nb) %</td>
-                        <td class="num">@s.Min.ToString("N2", Nb) %</td>
-                        <td class="num">@s.Max.ToString("N2", Nb) %</td>
+                        <td class="mi-bank">@s.Navn</td>
+                        <td class="num">
+                            <span class="mi-barcell">
+                                <span class="mi-bar" style="width:@(((double)s.Antall / Math.Max(1, maxSeg) * 100).ToString("0.#", Inv))%"></span>
+                                <span class="mi-barnum">@s.Antall</span>
+                            </span>
+                        </td>
+                        <td class="num mi-strong">@s.Snitt.ToString("N2", Nb) %</td>
+                        <td class="num mi-muted">@s.Min.ToString("N2", Nb)&nbsp;–&nbsp;@s.Max.ToString("N2", Nb) %</td>
                         <td class="num">@((s.SnittBelop / 1_000_000m).ToString("N2", Nb)) M</td>
                         <td class="num">@(s.SnittLtv is not null ? s.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
                     </tr>
@@ -135,7 +215,8 @@ else
         </table>
         </div>
     </div>
-    } @* /_punkter.Count > 0 *@
+    } @* /_punkter.Count > 0 (filtrert) *@
+    } @* /_kategoriPunkter.Count > 0 *@
 }
 
 @code {
@@ -145,8 +226,22 @@ else
     private bool _loading = true;
     private List<Punkt> _allePunkter = new();   // alle med bank + rente (alle kategorier)
     private string _kategori = Produktkategori.Boliglaan;   // valgt fane — Boliglån default
-    private List<Punkt> _punkter = new();      // valgt kategori, med bank + rente
+    private List<Punkt> _kategoriPunkter = new(); // valgt kategori, før filterlinje (styrer filtervalg)
+    private List<Punkt> _punkter = new();      // valgt kategori etter filterlinje — alt under følger denne
     private List<Punkt> _punkter12 = new();     // siste 12 måneder
+
+    // Filterlinje (samme oppsett som Saker). Tomt = alt.
+    private string _search = "", _bankFilter = "", _kildeFilter = "", _segmentFilter = "", _periodeFilter = "";
+    private bool HarAktivtFilter => !(string.IsNullOrWhiteSpace(_search) && _bankFilter == "" && _kildeFilter == "" && _segmentFilter == "" && _periodeFilter == "");
+
+    // Valg til nedtrekkene — bygges fra kategoriens punkter (uavhengig av øvrige aktive filtre).
+    private IEnumerable<(string Navn, int Antall)> BankValg => _kategoriPunkter
+        .GroupBy(p => p.Bank, StringComparer.OrdinalIgnoreCase)
+        .Select(g => (Navn: g.Key, Antall: g.Count()))
+        .OrderByDescending(x => x.Antall).ThenBy(x => x.Navn);
+    private IEnumerable<(string Navn, int Antall)> SegmentValg => SegmentNavn
+        .Select(n => (Navn: n, Antall: _kategoriPunkter.Count(p => p.Belop is > 0 && SegmentNavnFor(p.Belop!.Value) == n)))
+        .Where(x => x.Antall > 0);
     private List<BankRad> _banker = new();
     private List<Segment> _segmenter = new();
     private decimal _snittRente, _snittMargin, _snittLtv;
@@ -206,18 +301,46 @@ else
         _loading = false;
     }
 
-    // Bytt produktkategori-fane og regn ut aggregatene på nytt for valgt kategori.
+    // Bytt produktkategori-fane. Nullstiller filterlinja så man starter rent i ny kategori.
     private void VelgKategori(string kat)
     {
         if (_kategori == kat) return;
         _kategori = kat;
+        _search = _bankFilter = _kildeFilter = _segmentFilter = _periodeFilter = "";
         Beregn();
     }
 
-    // Regn ut alle aggregater/diagrammer for punktene i valgt produktkategori.
+    private void NullstillFilter()
+    {
+        _search = _bankFilter = _kildeFilter = _segmentFilter = _periodeFilter = "";
+        Beregn();
+    }
+
+    // Grense for tidsrom-filteret (null = hele perioden).
+    private DateTime? PeriodeFra() => _periodeFilter switch
+    {
+        "30" => DateTime.UtcNow.AddDays(-30),
+        "90" => DateTime.UtcNow.AddDays(-90),
+        "365" => DateTime.UtcNow.AddDays(-365),
+        "ytd" => new DateTime(Tid.IDag.Year, 1, 1),
+        _ => null,
+    };
+
+    // Regn ut alle aggregater/diagrammer for punktene i valgt kategori + aktiv filterlinje.
     private void Beregn()
     {
-        _punkter = _allePunkter.Where(p => p.Kategori == _kategori).OrderBy(p => p.Dato).ToList();
+        _kategoriPunkter = _allePunkter.Where(p => p.Kategori == _kategori).OrderBy(p => p.Dato).ToList();
+
+        // Filterlinja (søk/bank/kilde/segment/tidsrom) — alt under følger dette utvalget.
+        var søk = _search.Trim();
+        var fra = PeriodeFra();
+        _punkter = _kategoriPunkter.Where(p =>
+            (søk.Length == 0 || p.Bank.Contains(søk, StringComparison.OrdinalIgnoreCase)) &&
+            (_bankFilter == "" || p.Bank.Equals(_bankFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (_kildeFilter == "" || (_kildeFilter == "soknad" ? p.Soknad : !p.Soknad)) &&
+            (_segmentFilter == "" || (p.Belop is > 0 && SegmentNavnFor(p.Belop!.Value) == _segmentFilter)) &&
+            (fra is null || p.Dato >= fra.Value))
+            .OrderBy(p => p.Dato).ToList();
 
         _snittRente = _snittMargin = _snittLtv = 0; _antLtv = 0;
         _banker = new(); _segmenter = new();
@@ -261,17 +384,19 @@ else
         return l.Count > 0 ? l.Average() : null;
     }
 
+    // Lånestørrelse-segmenter — delt definisjon for både filter-nedtrekk og tabell.
+    private static readonly decimal[] SegmentGrenser = { 1_000_000m, 2_000_000m, 3_000_000m, 5_000_000m };
+    private static readonly string[] SegmentNavn = { "< 1 MNOK", "1–2 MNOK", "2–3 MNOK", "3–5 MNOK", "5 MNOK +" };
+    private static int SegmentBucket(decimal b) { for (var i = 0; i < SegmentGrenser.Length; i++) if (b < SegmentGrenser[i]) return i; return SegmentGrenser.Length; }
+    private static string SegmentNavnFor(decimal b) => SegmentNavn[SegmentBucket(b)];
+
     // Grupper på lånestørrelse for å se om rente/LTV varierer med beløp.
     private void ByggSegmenter()
     {
-        var (grenser, navn) = (new decimal[] { 1_000_000m, 2_000_000m, 3_000_000m, 5_000_000m },
-            new[] { "< 1 MNOK", "1–2 MNOK", "2–3 MNOK", "3–5 MNOK", "5 MNOK +" });
-        int Bucket(decimal b) { for (var i = 0; i < grenser.Length; i++) if (b < grenser[i]) return i; return grenser.Length; }
-
         _segmenter = _punkter.Where(p => p.Belop is > 0)
-            .GroupBy(p => Bucket(p.Belop!.Value))
+            .GroupBy(p => SegmentBucket(p.Belop!.Value))
             .OrderBy(g => g.Key)
-            .Select(g => new Segment(navn[g.Key], g.Count(), g.Average(x => x.Rente),
+            .Select(g => new Segment(SegmentNavn[g.Key], g.Count(), g.Average(x => x.Rente),
                 g.Min(x => x.Rente), g.Max(x => x.Rente), g.Average(x => x.Belop!.Value),
                 SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value))))
             .ToList();

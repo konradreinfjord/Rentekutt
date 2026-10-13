@@ -19,18 +19,32 @@ public class BankRegisterService
     private List<string> _cache = new();
     private DateTime _hentet;
 
+    /// <summary>Banker som skal med i lista selv om de ikke ligger i Finanstilsynets norske
+    /// BANK-register: Husbanken (statlig, ikke konsesjonspliktig) og Nordea (filial av utenlandsk
+    /// bank). Flettes alltid inn på lesesiden, så de vises uansett og aldri overskriver API-lista.</summary>
+    private static readonly string[] ManuelleBanker = { "Husbanken", "Nordea" };
+
     public BankRegisterService(IHttpClientFactory http, ILogger<BankRegisterService> log)
     {
         _http = http;
         _log = log;
     }
 
-    /// <summary>Returnerer cachet liste; henter første gang (eller når cache er tom).</summary>
+    /// <summary>Returnerer cachet liste (+ manuelle banker); henter første gang (eller når cache er tom).</summary>
     public async Task<List<string>> HentBankerAsync()
     {
-        if (_cache.Count > 0 && DateTime.UtcNow - _hentet < Levetid) return _cache;
-        if (_cache.Count == 0) await RefreshAsync();
-        return _cache;
+        if (!(_cache.Count > 0 && DateTime.UtcNow - _hentet < Levetid) && _cache.Count == 0)
+            await RefreshAsync();
+        return MedManuelle(_cache);
+    }
+
+    /// <summary>Fletter inn de manuelle bankene og sorterer, uten duplikater (case-insensitivt).</summary>
+    private static List<string> MedManuelle(IEnumerable<string> banker)
+    {
+        var sett = new SortedSet<string>(banker, StringComparer.CurrentCulture);
+        foreach (var m in ManuelleBanker)
+            if (!sett.Contains(m, StringComparer.OrdinalIgnoreCase)) sett.Add(m);
+        return sett.ToList();
     }
 
     /// <summary>Henter friskt fra APIet og oppdaterer cachen. Kalles av BankRegisterWorker (oppstart + daglig).</summary>

@@ -389,6 +389,8 @@
     var (ber, linjer) = BeregningService.Detaljert(_k, _berParams);
     var (alderS, kjS) = BeregningService.FnrInfo(_k.Foedselsnummer);
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
+    var fodtS = BeregningService.FnrFodselsaar(_k.Foedselsnummer);
+    var fodtM = BeregningService.FnrFodselsaar(_k.MedsokerFoedselsnummer);
     var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
     var terminalStatus = _k.Status is "Avslag" or "Kansellert" or "Teknisk feil" or "Avsluttet";
 }
@@ -915,7 +917,23 @@
         <h2>A · Søker</h2>
         <div class="form-grid">
             <div class="ff wide"><label>Fullt navn</label><input @bind="_k.FulltNavn" placeholder="Hentes ev. fra Vipps" /></div>
-            <div class="ff"><label>Fødselsnummer <span class="muted">(blank for Prismatch-leads)</span></label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
+            <div class="ff">
+                <label>Fødselsnummer <span class="muted">(blank for Prismatch-leads)</span></label>
+                <input @bind="_k.Foedselsnummer" @bind:event="oninput" placeholder="11 siffer" />
+                @if (alderS is int aS)
+                {
+                    var ungS = fodtS is int fyS && fyS >= 1993;
+                    <div style="margin-top:6px; display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:8px; font-size:14px; font-weight:600; background:@(ungS ? "#e8f6ed" : "#eef2f7"); color:@(ungS ? "#1b7f3b" : "#334155"); border:1px solid @(ungS ? "#abefc6" : "#dbe2ea")">
+                        <span style="font-size:16px">👤</span>
+                        <span>@aS år@(kjS is char cS ? (cS == 'M' ? " · mann" : " · kvinne") : "")@(fodtS is int fS ? $" · f. {fS}" : "")</span>
+                        @if (ungS) { <span style="background:#1b7f3b; color:#fff; padding:1px 7px; border-radius:6px; font-size:12px">Boliglån ung</span> }
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_k.Foedselsnummer))
+                {
+                    <div style="margin-top:6px; font-size:13px; color:#94a3b8">Alder vises når 11 gyldige siffer er fylt inn.</div>
+                }
+            </div>
             <div class="ff">
                 <label>Kilde fnr (sikkerhetsnivå)</label>
                 <select @bind="_k.FnrKilde">
@@ -944,7 +962,19 @@
     {
         <div class="form-grid" style="margin-top:16px">
             <div class="ff wide"><label>Fullt navn</label><input @bind="_k.MedsokerNavn" /></div>
-            <div class="ff"><label>Fødselsnummer</label><input @bind="_k.MedsokerFoedselsnummer" /></div>
+            <div class="ff">
+                <label>Fødselsnummer</label>
+                <input @bind="_k.MedsokerFoedselsnummer" @bind:event="oninput" />
+                @if (alderM is int aM)
+                {
+                    var ungM = fodtM is int fyM && fyM >= 1993;
+                    <div style="margin-top:6px; display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:8px; font-size:14px; font-weight:600; background:@(ungM ? "#e8f6ed" : "#eef2f7"); color:@(ungM ? "#1b7f3b" : "#334155"); border:1px solid @(ungM ? "#abefc6" : "#dbe2ea")">
+                        <span style="font-size:16px">👤</span>
+                        <span>@aM år@(kjM is char cM ? (cM == 'M' ? " · mann" : " · kvinne") : "")@(fodtM is int fM ? $" · f. {fM}" : "")</span>
+                        @if (ungM) { <span style="background:#1b7f3b; color:#fff; padding:1px 7px; border-radius:6px; font-size:12px">Boliglån ung</span> }
+                    </div>
+                }
+            </div>
             <div class="ff">
                 <label>Mobilnummer</label>
                 <div style="display:flex; gap:6px">
