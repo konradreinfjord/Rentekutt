@@ -25,6 +25,37 @@
 
 <PageTitle>Ny kunde — Rentekutt</PageTitle>
 
+<style>
+    /* Instabank-sjekkliste — ryddig klargjøringskort med fremhevet «mangler»-liste. */
+    .insjekk { border-radius: 14px; padding: 16px 18px; margin-bottom: 20px; border: 1.5px solid; }
+    .insjekk-ok { border-color: #abefc6; background: linear-gradient(180deg, #f0fbf3, #eafaf0); }
+    .insjekk-mangler { border-color: #f4c99a; background: linear-gradient(180deg, #fffdf8, #fff7ec); }
+    .insjekk-topp { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .insjekk-tittel { display: flex; align-items: center; gap: 12px; }
+    .insjekk-ikon { font-size: 24px; line-height: 1; }
+    .insjekk-tittel strong { font-size: 15.5px; color: #1f2937; }
+    .insjekk-sub { font-size: 12.5px; color: #6b7280; margin-top: 2px; }
+    .insjekk-teller { font-size: 26px; font-weight: 800; line-height: 1; color: #1f2937; font-variant-numeric: tabular-nums; }
+    .insjekk-teller-av { font-size: 16px; font-weight: 600; color: #9ca3af; }
+    .insjekk-bar { height: 8px; border-radius: 999px; background: #e9edf2; overflow: hidden; margin: 14px 0 0; }
+    .insjekk-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .25s ease; background: linear-gradient(90deg, #34c759, #1b9e4b); }
+    .insjekk-mangler .insjekk-bar > span { background: linear-gradient(90deg, #f0a04b, #e36209); }
+    .insjekk-mangelliste { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .insjekk-mangeltag { width: 100%; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #b45309; margin-bottom: 2px; }
+    .insjekk-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; text-decoration: none; }
+    .insjekk-chip-mangler { background: #fff; color: #b42318; border: 1.5px solid #f3b4ad; cursor: pointer; transition: all .15s ease; }
+    .insjekk-chip-mangler:hover { background: #b42318; color: #fff; border-color: #b42318; transform: translateY(-1px); }
+    .insjekk-chip-mangler:hover .insjekk-hvor { color: #ffd9d4; }
+    .insjekk-x { font-size: 12px; }
+    .insjekk-hvor { font-size: 11.5px; font-weight: 500; color: #a16207; }
+    .insjekk-ferdigliste { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .insjekk-chip-ok { background: #e8f6ed; color: #1b7f3b; border: 1px solid #c7ecd3; font-weight: 500; padding: 5px 10px; font-size: 12.5px; }
+    .insjekk-v, .insjekk-x { font-weight: 800; }
+    /* Fremhev feltet man nettopp hoppet til via «mangler»-lenkene. */
+    .ff:target, .form-card:target { animation: insjekk-blink 1.6s ease; border-radius: 10px; }
+    @@keyframes insjekk-blink { 0%, 60% { box-shadow: 0 0 0 3px #f4a74080; } 100% { box-shadow: 0 0 0 3px transparent; } }
+</style>
+
 <div class="kk">
 
 @* ---- Topp-kort: hvem kunden er ---- *@
@@ -32,7 +63,7 @@
 {
     <button class="kk-back" @onclick="Tilbake" title="Lukk sak og gå tilbake">← Tilbake til oversikten</button>
 }
-<div class="kk-head" style="position:relative">
+<div class="kk-head" id="felt-eier" style="position:relative">
     @if (_isEdit)
     {
         <span class="kk-chip" style="position:absolute; top:14px; right:16px; z-index:2; @ChipStyle(_harSamtykke ? "#16a34a" : "#dc2626")"
@@ -721,28 +752,45 @@
 }
 
 @* Instabank-sjekkliste: felt som kreves for å kunne sende. Grønn ramme når alt er fylt ut. *@
-<div style="border:2px solid @(instaKlar ? "#1b7f3b" : "#f0a04b"); background:@(instaKlar ? "#f0fbf3" : "#fffaf2"); border-radius:12px; padding:16px 18px; margin-bottom:18px">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
-        <div style="display:flex; align-items:center; gap:10px">
-            <span style="font-size:20px">@(instaKlar ? "✅" : "📋")</span>
-            <strong style="font-size:15px">@(instaKlar ? "Klar til å sendes til Instabank" : "Mangler før sending til Instabank")</strong>
+@{
+    var instaMangler = instaSjekk.Where(p => !p.Ok).ToList();
+    var instaPct = instaSjekk.Count == 0 ? 100 : (int)Math.Round(100.0 * instaOk / instaSjekk.Count);
+}
+<div class="insjekk @(instaKlar ? "insjekk-ok" : "insjekk-mangler")">
+    <div class="insjekk-topp">
+        <div class="insjekk-tittel">
+            <span class="insjekk-ikon">@(instaKlar ? "✅" : "📋")</span>
+            <div>
+                <strong>@(instaKlar ? "Klar til å sendes til Instabank" : "Klargjør for Instabank")</strong>
+                <div class="insjekk-sub">@(instaKlar ? "Alle påkrevde felt er fylt ut." : $"{instaMangler.Count} felt gjenstår før saken kan sendes.")</div>
+            </div>
         </div>
-        <span style="font-weight:700; font-size:15px; padding:4px 12px; border-radius:999px; background:@(instaKlar ? "#1b7f3b" : "#e36209"); color:#fff">
-            @instaOk av @instaSjekk.Count utfylt
-        </span>
+        <span class="insjekk-teller">@instaOk<span class="insjekk-teller-av">/@instaSjekk.Count</span></span>
     </div>
-    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px">
-        @foreach (var p in instaSjekk)
-        {
-            <span title="Fylles ut under: @p.Hvor" style="display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:8px; font-size:13px; font-weight:500; background:@(p.Ok ? "#e8f6ed" : "#fdecec"); color:@(p.Ok ? "#1b7f3b" : "#b42318"); border:1px solid @(p.Ok ? "#abefc6" : "#f3b4ad")">
-                <span>@(p.Ok ? "✓" : "✗")</span>@p.Felt
-            </span>
-        }
-    </div>
+
+    <div class="insjekk-bar"><span style="width:@(instaPct)%"></span></div>
+
     @if (!instaKlar)
     {
-        <p style="margin:12px 0 0; font-size:13px; color:#8a5a1a">Fyll ut de røde feltene (markert med ✗) så blir saken klar. Boksen blir grønn når alt er på plass.</p>
+        <div class="insjekk-mangelliste">
+            <div class="insjekk-mangeltag">Mangler — klikk for å fylle ut:</div>
+            @foreach (var p in instaMangler)
+            {
+                <a class="insjekk-chip insjekk-chip-mangler" href="#@p.Anker">
+                    <span class="insjekk-x">✗</span>
+                    <span>@p.Felt</span>
+                    <span class="insjekk-hvor">@p.Hvor ›</span>
+                </a>
+            }
+        </div>
     }
+
+    <div class="insjekk-ferdigliste">
+        @foreach (var p in instaSjekk.Where(p => p.Ok))
+        {
+            <span class="insjekk-chip insjekk-chip-ok"><span class="insjekk-v">✓</span>@p.Felt</span>
+        }
+    </div>
 </div>
 
 @* Firma (bedrift) — øverst for B2B. Orgnr som identifikator + kontaktperson/signer. *@
@@ -753,7 +801,7 @@
         <h3 style="margin:6px 0 8px; font-size:13px">Firmaopplysninger</h3>
         <div class="form-grid">
             <div class="ff wide"><label>Firmanavn</label><input @bind="_k.FulltNavn" placeholder="Selskapets navn" /></div>
-            <div class="ff"><label>Organisasjonsnummer</label><input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" /></div>
+            <div class="ff" id="felt-orgnr"><label>Organisasjonsnummer</label><input @bind="_k.Orgnr" disabled="@_isEdit" placeholder="9 siffer" /></div>
             <div class="ff wide"><label>Forretningsadresse</label><input @bind="_k.Adresse" /></div>
             <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
             <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>
@@ -763,15 +811,15 @@
         <h3 style="margin:14px 0 8px; font-size:13px">Kontaktperson / signer</h3>
         <div class="form-grid">
             <div class="ff wide"><label>Kontaktperson (navn)</label><input @bind="_k.KontaktpersonNavn" placeholder="Personen bak firmaet" /></div>
-            <div class="ff"><label>Fødselsnummer (signer)</label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
+            <div class="ff" id="felt-fnr"><label>Fødselsnummer (signer)</label><input @bind="_k.Foedselsnummer" placeholder="11 siffer" /></div>
             <div class="ff"><label>Kilde fnr (sikkerhetsnivå)</label>
                 <select @bind="_k.FnrKilde">
                     <option value="">— ukjent —</option>
                     @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
                 </select>
             </div>
-            <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
-            <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
+            <div class="ff" id="felt-mobil"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
+            <div class="ff" id="felt-epost"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
         </div>
     </div>
 }
@@ -906,8 +954,8 @@
                 </div>
             }
         </div>
-        <div class="ff"><label>Ønsket lånebeløp (kr)</label><KroneInput @bind-Value="_k.OnsketLaanebelop" /></div>
-        <div class="ff"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
+        <div class="ff" id="felt-belop"><label>Ønsket lånebeløp (kr)</label><KroneInput @bind-Value="_k.OnsketLaanebelop" /></div>
+        <div class="ff" id="felt-lopetid"><label>Ønsket nedbetalingstid (mnd)</label><input type="number" @bind="_k.OnsketLopetidMnd" /></div>
         <div class="ff"><label>Låneformål</label><input @bind="_k.Laaneformal" /></div>
         <div class="ff"><label>Nåværende bank</label>
             @if (_navaerendeBanker.Count > 0)
@@ -945,7 +993,7 @@
         <h2>A · Søker</h2>
         <div class="form-grid">
             <div class="ff wide"><label>Fullt navn</label><input @bind="_k.FulltNavn" placeholder="Hentes ev. fra Vipps" /></div>
-            <div class="ff">
+            <div class="ff" id="felt-fnr">
                 <label>Fødselsnummer <span class="muted">(blank for Prismatch-leads)</span></label>
                 <input @bind="_k.Foedselsnummer" @bind:event="oninput" placeholder="11 siffer" />
                 @if (alderS is int aS)
@@ -969,8 +1017,8 @@
                     @foreach (var kilde in KundekortService.FnrKilder) { <option value="@kilde">@kilde</option> }
                 </select>
             </div>
-            <div class="ff"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
-            <div class="ff"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
+            <div class="ff" id="felt-mobil"><label>Mobilnummer</label><input @bind="_k.Mobilnummer" /></div>
+            <div class="ff" id="felt-epost"><label>E-postadresse</label><input @bind="_k.Epost" /></div>
             <div class="ff wide"><label>Adresse</label><input @bind="_k.Adresse" /></div>
             <div class="ff"><label>Postnummer</label><input @bind="_k.Postnummer" /></div>
             <div class="ff"><label>Poststed</label><input @bind="_k.Poststed" /></div>

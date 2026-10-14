@@ -184,8 +184,9 @@ public class InstabankService
         return (true, "Tilkoblet og autentisert ✓");
     }
 
-    /// <summary>Ett krav i Instabank-sjekklista: feltnavn, om det er oppfylt, og hvor man fyller det ut.</summary>
-    public record SjekkPunkt(string Felt, bool Ok, string Hvor);
+    /// <summary>Ett krav i Instabank-sjekklista: feltnavn, om det er oppfylt, hvor man fyller det ut,
+    /// og et anker (element-id) så kundekortet kan hoppe rett til feltet.</summary>
+    public record SjekkPunkt(string Felt, bool Ok, string Hvor, string Anker);
 
     /// <summary>Effektivt produkt saken ville blitt sendt som (samme ruting som <see cref="SendSoknadAsync"/>).</summary>
     public int EffektivtProdukt(Kundekort k, int? produktKode = null)
@@ -214,23 +215,23 @@ public class InstabankService
             var ssn = FoerstGyldigFnr(k.Foedselsnummer);
             var mobil = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
             var agentEpost = ErEpost(k.Eier) ? k.Eier!.Trim() : AgentEmail;
-            liste.Add(new("Organisasjonsnummer (9 siffer)", orgnr.Length == 9, "Firma"));
-            liste.Add(new("Signers fødselsnummer", !string.IsNullOrWhiteSpace(ssn) && ErGyldigFnr(ssn), "A · Søker"));
-            liste.Add(new("Mobilnummer", mobil.Length > 0, "Firma"));
-            liste.Add(new("Ønsket lånebeløp", (k.OnsketLaanebelop ?? 0) > 0, "Lånebehov"));
-            liste.Add(new("Agent-e-post (sakseier)", !string.IsNullOrWhiteSpace(agentEpost), "Eier av saken"));
+            liste.Add(new("Organisasjonsnummer (9 siffer)", orgnr.Length == 9, "Firma", "felt-orgnr"));
+            liste.Add(new("Signers fødselsnummer", !string.IsNullOrWhiteSpace(ssn) && ErGyldigFnr(ssn), "A · Søker", "felt-fnr"));
+            liste.Add(new("Mobilnummer", mobil.Length > 0, "A · Søker", "felt-mobil"));
+            liste.Add(new("Ønsket lånebeløp", (k.OnsketLaanebelop ?? 0) > 0, "Lånebehov", "felt-belop"));
+            liste.Add(new("Agent-e-post (sakseier)", !string.IsNullOrWhiteSpace(agentEpost), "Eier av saken", "felt-eier"));
             return liste;
         }
 
         // Privat (forbrukslån 151 / boliglån 180 / kredittkort 600).
         var erKredittkort = produkt == ProduktKredittkort;
         var pssn = FoerstGyldigFnr(k.Foedselsnummer, k.KundeId);
-        liste.Add(new("Fødselsnummer (gyldig)", !string.IsNullOrWhiteSpace(pssn) && ErGyldigFnr(pssn), "A · Søker"));
-        liste.Add(new("E-postadresse", !string.IsNullOrWhiteSpace(k.Epost), "A · Søker"));
-        liste.Add(new("Mobilnummer", !string.IsNullOrWhiteSpace(k.Mobilnummer), "A · Søker"));
-        liste.Add(new(erKredittkort ? "Ønsket kredittgrense" : "Ønsket lånebeløp", (k.OnsketLaanebelop ?? 0) > 0, "Lånebehov"));
+        liste.Add(new("Fødselsnummer (gyldig)", !string.IsNullOrWhiteSpace(pssn) && ErGyldigFnr(pssn), "A · Søker", "felt-fnr"));
+        liste.Add(new("E-postadresse", !string.IsNullOrWhiteSpace(k.Epost), "A · Søker", "felt-epost"));
+        liste.Add(new("Mobilnummer", !string.IsNullOrWhiteSpace(k.Mobilnummer), "A · Søker", "felt-mobil"));
+        liste.Add(new(erKredittkort ? "Ønsket kredittgrense" : "Ønsket lånebeløp", (k.OnsketLaanebelop ?? 0) > 0, "Lånebehov", "felt-belop"));
         if (!erKredittkort)
-            liste.Add(new("Ønsket nedbetalingstid (mnd)", (k.OnsketLopetidMnd ?? 0) > 0, "Lånebehov"));
+            liste.Add(new("Ønsket nedbetalingstid (mnd)", (k.OnsketLopetidMnd ?? 0) > 0, "Lånebehov", "felt-lopetid"));
         return liste;
     }
 
