@@ -184,6 +184,56 @@ public class InstabankService
         return (true, "Tilkoblet og autentisert ✓");
     }
 
+    /// <summary>Ett krav i Instabank-sjekklista: feltnavn, om det er oppfylt, og hvor man fyller det ut.</summary>
+    public record SjekkPunkt(string Felt, bool Ok, string Hvor);
+
+    /// <summary>Effektivt produkt saken ville blitt sendt som (samme ruting som <see cref="SendSoknadAsync"/>).</summary>
+    public int EffektivtProdukt(Kundekort k, int? produktKode = null)
+    {
+        if (produktKode is ProduktForbrukslaan) return ErBoliglaan(k.Laanetype) ? ProduktBoliglaan : ProduktForbrukslaan;
+        if (produktKode is not null) return produktKode.Value;
+        if (k.KundeType == "B2B") return ProduktBedriftslaan;
+        if (ErBoliglaan(k.Laanetype)) return ProduktBoliglaan;
+        if ((k.Laanetype ?? "").Contains("kredittkort", StringComparison.OrdinalIgnoreCase)) return ProduktKredittkort;
+        return ProduktForbrukslaan;
+    }
+
+    /// <summary>
+    /// Sjekkliste over feltene Instabank krever for å kunne sende saken — nøyaktig samme krav som
+    /// <see cref="SendPrivatAsync"/>/<see cref="SendBedriftAsync"/> validerer. Brukes på kundekortet
+    /// for å vise «X av Y utfylt» og hvilke felt som mangler, slik at agenten innhenter alt før sending.
+    /// </summary>
+    public List<SjekkPunkt> Sjekkliste(Kundekort k, int? produktKode = null)
+    {
+        var produkt = EffektivtProdukt(k, produktKode);
+        var liste = new List<SjekkPunkt>();
+
+        if (produkt == ProduktBedriftslaan)
+        {
+            var orgnr = new string((k.Orgnr ?? k.KundeId ?? "").Where(char.IsDigit).ToArray());
+            var ssn = FoerstGyldigFnr(k.Foedselsnummer);
+            var mobil = new string((k.Mobilnummer ?? "").Where(char.IsDigit).ToArray());
+            var agentEpost = ErEpost(k.Eier) ? k.Eier!.Trim() : AgentEmail;
+            liste.Add(new("Organisasjonsnummer (9 siffer)", orgnr.Length == 9, "Firma"));
+            liste.Add(new("Signers fødselsnummer", !string.IsNullOrWhiteSpace(ssn) && ErGyldigFnr(ssn), "A · Søker"));
+            liste.Add(new("Mobilnummer", mobil.Length > 0, "Firma"));
+            liste.Add(new("Ønsket lånebeløp", (k.OnsketLaanebelop ?? 0) > 0, "Lånebehov"));
+            liste.Add(new("Agent-e-post (sakseier)", !string.IsNullOrWhiteSpace(agentEpost), "Eier av saken"));
+            return liste;
+        }
+
+        // Privat (forbrukslån 151 / boliglån 180 / kredittkort 600).
+        var erKredittkort = produkt == ProduktKredittkort;
+        var pssn = FoerstGyldigFnr(k.Foedselsnummer, k.KundeId);
+        liste.Add(new("Fødselsnummer (gyldig)", !string.IsNullOrWhiteSpace(pssn) && ErGyldigFnr(pssn), "A · Søker"));
+        liste.Add(new("E-postadresse", !string.IsNullOrWhiteSpace(k.Epost), "A · Søker"));
+        liste.Add(new("Mobilnummer", !string.IsNullOrWhiteSpace(k.Mobilnummer), "A · Søker"));
+        liste.Add(new(erKredittkort ? "Ønsket kredittgrense" : "Ønsket lånebeløp", (k.OnsketLaanebelop ?? 0) > 0, "Lånebehov"));
+        if (!erKredittkort)
+            liste.Add(new("Ønsket nedbetalingstid (mnd)", (k.OnsketLopetidMnd ?? 0) > 0, "Lånebehov"));
+        return liste;
+    }
+
     /// <summary>
     /// Ruter søknaden til riktig Instabank-produkt ut fra kundetype og lånetype:
     /// bedrift → bedriftslån (2001), privat boliglån → gates (matrikkel via Eiendomsverdi),

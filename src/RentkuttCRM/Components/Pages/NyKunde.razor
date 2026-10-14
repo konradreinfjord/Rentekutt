@@ -391,6 +391,9 @@
     var (alderM, kjM) = BeregningService.FnrInfo(_k.MedsokerFoedselsnummer);
     var fodtS = BeregningService.FnrFodselsaar(_k.Foedselsnummer);
     var fodtM = BeregningService.FnrFodselsaar(_k.MedsokerFoedselsnummer);
+    var instaSjekk = Instabank.Sjekkliste(_k);
+    var instaOk = instaSjekk.Count(p => p.Ok);
+    var instaKlar = instaOk == instaSjekk.Count;
     var flytIdx = Array.IndexOf(FlytSteg, _k.Status);
     var terminalStatus = _k.Status is "Avslag" or "Kansellert" or "Teknisk feil" or "Avsluttet";
 }
@@ -716,6 +719,31 @@
 {
     <div class="felt-laas-hint"><span class="auto-lagret @(_autoOk ? "ok" : "err")">@_autoMsg</span></div>
 }
+
+@* Instabank-sjekkliste: felt som kreves for å kunne sende. Grønn ramme når alt er fylt ut. *@
+<div style="border:2px solid @(instaKlar ? "#1b7f3b" : "#f0a04b"); background:@(instaKlar ? "#f0fbf3" : "#fffaf2"); border-radius:12px; padding:16px 18px; margin-bottom:18px">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+        <div style="display:flex; align-items:center; gap:10px">
+            <span style="font-size:20px">@(instaKlar ? "✅" : "📋")</span>
+            <strong style="font-size:15px">@(instaKlar ? "Klar til å sendes til Instabank" : "Mangler før sending til Instabank")</strong>
+        </div>
+        <span style="font-weight:700; font-size:15px; padding:4px 12px; border-radius:999px; background:@(instaKlar ? "#1b7f3b" : "#e36209"); color:#fff">
+            @instaOk av @instaSjekk.Count utfylt
+        </span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px">
+        @foreach (var p in instaSjekk)
+        {
+            <span title="Fylles ut under: @p.Hvor" style="display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:8px; font-size:13px; font-weight:500; background:@(p.Ok ? "#e8f6ed" : "#fdecec"); color:@(p.Ok ? "#1b7f3b" : "#b42318"); border:1px solid @(p.Ok ? "#abefc6" : "#f3b4ad")">
+                <span>@(p.Ok ? "✓" : "✗")</span>@p.Felt
+            </span>
+        }
+    </div>
+    @if (!instaKlar)
+    {
+        <p style="margin:12px 0 0; font-size:13px; color:#8a5a1a">Fyll ut de røde feltene (markert med ✗) så blir saken klar. Boksen blir grønn når alt er på plass.</p>
+    }
+</div>
 
 @* Firma (bedrift) — øverst for B2B. Orgnr som identifikator + kontaktperson/signer. *@
 @if (_k.KundeType == "B2B")
