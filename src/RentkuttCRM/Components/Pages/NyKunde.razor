@@ -27,41 +27,39 @@
 
 <style>
     /* Instabank-sjekkliste — ryddig klargjøringskort med fremhevet «mangler»-liste. */
-    .insjekk { border-radius: 16px; padding: 18px 20px; margin-bottom: 22px; border: 1.5px solid; box-shadow: 0 6px 20px -12px rgba(16,24,40,.28); }
-    .insjekk-ok { border-color: #abefc6; background: linear-gradient(180deg, #f3fcf6, #eafaf0); }
-    .insjekk-mangler { border-color: #f4c99a; background: linear-gradient(180deg, #fffdf9, #fff6ea); }
-    .insjekk-topp { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-    .insjekk-tittel { display: flex; align-items: center; gap: 12px; }
-    .insjekk-ikon { font-size: 24px; line-height: 1; }
-    .insjekk-tittel strong { font-size: 15.5px; color: #1f2937; }
-    .insjekk-sub { font-size: 12.5px; color: #6b7280; margin-top: 2px; }
-    .insjekk-teller { font-size: 26px; font-weight: 800; line-height: 1; color: #1f2937; font-variant-numeric: tabular-nums; }
-    .insjekk-teller-av { font-size: 16px; font-weight: 600; color: #9ca3af; }
-    .insjekk-bar { height: 8px; border-radius: 999px; background: #e9edf2; overflow: hidden; margin: 14px 0 0; }
-    .insjekk-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .25s ease; background: linear-gradient(90deg, #34c759, #1b9e4b); }
-    .insjekk-mangler .insjekk-bar > span { background: linear-gradient(90deg, #f0a04b, #e36209); }
-    .insjekk-mangelliste { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .insjekk-mangeltag { width: 100%; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #b45309; margin-bottom: 2px; }
-    .insjekk-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 10px; font-size: 13px; font-weight: 600; text-decoration: none; }
-    .insjekk-chip-mangler { background: #fff; color: #b42318; border: 1.5px solid #f3b4ad; cursor: pointer; transition: all .15s ease; box-shadow: 0 1px 2px rgba(180,35,24,.08); }
-    .insjekk-chip-mangler:hover { background: #b42318; color: #fff; border-color: #b42318; transform: translateY(-1px); box-shadow: 0 4px 10px -4px rgba(180,35,24,.5); }
+    .insjekk { border-radius: 12px; padding: 13px 15px; margin-bottom: 18px; border: 1px solid; }
+    .insjekk-ok { border-color: #c3ecd1; background: #f4fbf6; }
+    .insjekk-mangler { border-color: #f0d3ad; background: #fffaf2; }
+    .insjekk-topp { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .insjekk-tittel { display: flex; align-items: center; gap: 9px; }
+    .insjekk-ikon { font-size: 17px; line-height: 1; }
+    .insjekk-tittel strong { font-size: 13.5px; color: #1f2937; }
+    .insjekk-sub { font-size: 11.5px; color: #6b7280; margin-top: 1px; }
+    .insjekk-teller { font-size: 15px; font-weight: 700; line-height: 1; color: #374151; font-variant-numeric: tabular-nums; }
+    .insjekk-teller-av { font-size: 12px; font-weight: 600; color: #9ca3af; }
+    .insjekk-bar { height: 5px; border-radius: 999px; background: #eceff3; overflow: hidden; margin: 10px 0 0; }
+    .insjekk-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .25s ease; background: #22a152; }
+    .insjekk-mangler .insjekk-bar > span { background: #e88a2a; }
+    .insjekk-mangelliste { margin-top: 11px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .insjekk-mangeltag { width: 100%; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #b06a12; margin-bottom: 1px; }
+    .insjekk-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; text-decoration: none; }
+    .insjekk-chip-mangler { background: #fff; color: #b42318; border: 1px solid #f0bfb9; cursor: pointer; transition: all .12s ease; }
+    .insjekk-chip-mangler:hover { background: #b42318; color: #fff; border-color: #b42318; }
     .insjekk-chip-mangler:hover .insjekk-hvor { color: #ffd9d4; border-color: #ffffff55; }
-    .insjekk-x { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #fde6e4; color: #b42318; font-size: 11px; }
-    .insjekk-chip-mangler:hover .insjekk-x { background: #ffffff33; color: #fff; }
-    .insjekk-hvor { font-size: 11px; font-weight: 600; color: #a16207; border-left: 1px solid #e7d2b0; padding-left: 8px; }
-    .insjekk-ferdigliste { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
-    .insjekk-chip-ok { background: #e8f6ed; color: #1b7f3b; border: 1px solid #c7ecd3; font-weight: 500; padding: 5px 10px; font-size: 12.5px; }
-    .insjekk-v, .insjekk-x { font-weight: 800; }
+    .insjekk-x { font-size: 10px; color: #d9534f; }
+    .insjekk-chip-mangler:hover .insjekk-x { color: #fff; }
+    .insjekk-hvor { font-size: 10.5px; font-weight: 500; color: #a16207; border-left: 1px solid #ecd9b8; padding-left: 7px; }
+    .insjekk-ferdigliste { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px; }
+    .insjekk-chip-ok { color: #1b7f3b; font-weight: 500; padding: 3px 4px; font-size: 11.5px; gap: 5px; }
+    .insjekk-v { color: #22a152; font-weight: 700; font-size: 11px; }
     /* Fremhev feltet man nettopp hoppet til via «mangler»-lenkene. */
     .ff:target, .form-card:target { animation: insjekk-blink 1.6s ease; border-radius: 10px; }
     @@keyframes insjekk-blink { 0%, 60% { box-shadow: 0 0 0 3px #f4a74080; } 100% { box-shadow: 0 0 0 3px transparent; } }
 
-    /* Inline-markering i selve skjemaet av feltene Instabank mangler. */
-    .ff.felt-mangler { position: relative; padding: 10px 12px; border-radius: 10px; background: #fff7f6; box-shadow: inset 0 0 0 1.5px #f3b4ad; }
-    .ff.felt-mangler > label { color: #b42318; font-weight: 600; }
-    .ff.felt-mangler > label::after { content: "Må fylles ut for Instabank"; display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #b42318; color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; vertical-align: middle; text-transform: uppercase; }
-    .ff.felt-mangler input, .ff.felt-mangler select { border-color: #e5484d !important; box-shadow: 0 0 0 3px #e5484d1f; background: #fff; }
-    .ff.felt-mangler input:focus, .ff.felt-mangler select:focus { box-shadow: 0 0 0 3px #e5484d33; }
+    /* Inline-markering: kun selve inputfeltet i rødt — slankt, ingen badge. */
+    .ff.felt-mangler > label { color: #c0392b; }
+    .ff.felt-mangler input, .ff.felt-mangler select { border-color: #e5484d !important; }
+    .ff.felt-mangler input:focus, .ff.felt-mangler select:focus { border-color: #e5484d !important; box-shadow: 0 0 0 2px #e5484d2e !important; }
 </style>
 
 <div class="kk">
