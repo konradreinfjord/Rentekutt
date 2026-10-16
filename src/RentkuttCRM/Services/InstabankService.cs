@@ -209,7 +209,7 @@ public class InstabankService
         var produkt = EffektivtProdukt(k, produktKode);
         var liste = new List<SjekkPunkt>();
 
-        if (produkt == ProduktBedriftslaan)
+        if (produkt is ProduktBedriftslaan or ProduktBedriftKreditt)
         {
             var orgnr = new string((k.Orgnr ?? k.KundeId ?? "").Where(char.IsDigit).ToArray());
             var ssn = FoerstGyldigFnr(k.Foedselsnummer);
@@ -255,8 +255,9 @@ public class InstabankService
                 return await SendPrivatAsync(k, preOffer, ProduktKredittkort);
             case ProduktBedriftslaan:                                   // 2001
                 return await SendBedriftAsync(k, preOffer);
+            case ProduktBedriftKreditt:                                 // 2000 (samme bedrifts-payload som 2001)
+                return await SendBedriftAsync(k, preOffer, ProduktBedriftKreditt);
             case ProduktKredittlinje:                                   // 251
-            case ProduktBedriftKreditt:                                 // 2000
                 return new(false, null, null, null,
                     $"Produktet «{ProduktNavn(produktKode.Value)}» ({produktKode}) støttes ikke for automatisk sending ennå — verifisert Agent API-payload mangler.");
         }
@@ -281,8 +282,8 @@ public class InstabankService
     };
 
     /// <summary>Produktkoder som faktisk kan sendes til Instabank i dag.
-    /// null = auto-ruting (bakoverkompatibelt). 151/180/600/2001 støttes; 251/2000 gjør ikke ennå.</summary>
-    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBoliglaan or ProduktKredittkort or ProduktBedriftslaan;
+    /// null = auto-ruting (bakoverkompatibelt). 151/180/600/2000/2001 støttes; kun 251 gjør ikke ennå.</summary>
+    public static bool KanSendeProdukt(int? kode) => kode is null or ProduktForbrukslaan or ProduktBoliglaan or ProduktKredittkort or ProduktBedriftslaan or ProduktBedriftKreditt;
 
     private static bool ErBoliglaan(string? laanetype) =>
         (laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase);
@@ -418,8 +419,9 @@ public class InstabankService
             : r with { Detalj = $"{r.Detalj} [sendt: beløp={sendBelop:N0} kr, løpetid={(k.OnsketLopetidMnd?.ToString() ?? "ikke satt")} mnd]{kappet}" };
     }
 
-    // Bedriftslån (produkt 2001). Krever Company (orgnr + mobil), Applicant (signer-fnr) og Agent-e-post.
-    private async Task<Resultat> SendBedriftAsync(Kundekort k, bool preOffer)
+    // Bedriftslån (2001) / Bedriftskreditt (2000) — identisk payload, kun produktkoden skiller.
+    // Krever Company (orgnr + mobil), Applicant (signer-fnr) og Agent-e-post.
+    private async Task<Resultat> SendBedriftAsync(Kundekort k, bool preOffer, int produkt = ProduktBedriftslaan)
     {
         var orgnr = new string((k.Orgnr ?? k.KundeId ?? "").Where(char.IsDigit).ToArray());
         var ssn = FoerstGyldigFnr(k.Foedselsnummer);
@@ -447,7 +449,7 @@ public class InstabankService
 
         var application = new Dictionary<string, object?>
         {
-            ["Product"] = new { Code = ProduktBedriftslaan },
+            ["Product"] = new { Code = produkt },
             ["Calculation"] = new Dictionary<string, object?> { ["Amount"] = k.OnsketLaanebelop },
             ["Company"] = new Dictionary<string, object?>
             {
