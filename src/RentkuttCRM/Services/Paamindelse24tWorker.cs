@@ -88,8 +88,9 @@ public class Paamindelse24tWorker : BackgroundService
         // Hovedbryter: automatisk SMS er AV som standard ⇒ SMS sendes kun manuelt.
         if (!await settings.GetBoolAsync(KeyAutomatikkPaa, false)) return;
 
+        // Kun tidsbaserte løp her. Hendelsesbaserte (VedInnvilgelse) fyres av InstabankInnvilgetEventService.
         var loepListe = (await scope.ServiceProvider.GetRequiredService<SmsLoepService>().HentAsync())
-            .Where(l => l.Aktiv && !string.IsNullOrWhiteSpace(l.MalNavn)).ToList();
+            .Where(l => l.Aktiv && !l.VedInnvilgelse && !string.IsNullOrWhiteSpace(l.MalNavn)).ToList();
         if (loepListe.Count == 0) return;
 
         // Send kun innenfor sendevinduet (08–21 på hverdager). Utenfor → vent til neste syklus.

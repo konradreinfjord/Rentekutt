@@ -356,13 +356,15 @@ public class KundekortService
     // gjentatte sidelastinger (CRM → Marked → Oppfølging → tilbake) gjenbruker
     // lista i stedet for å hente hele kundekort-tabellen på nytt hver gang —
     // hovedårsaken til at portalen føltes treg ved navigering. Cachen invalideres
-    // ved enhver skriving (InvaliderCache), og utløper uansett etter kort tid slik
-    // at endringer fra andre brukere/webhooks kommer inn raskt.
+    // ved egne skrivinger (InvaliderCache), og utløper uansett etter kort tid slik
+    // at endringer fra andre brukere/webhooks kommer inn. Per-circuit (ikke statisk):
+    // en agents egne endringer tømmer kun egen cache, så travle agenter ikke tvinger
+    // full re-henting hos alle andre.
     private List<Kundekort>? _listeCache;
     private DateTime _listeCacheTid;
     private List<Kundekort>? _lettCache;
     private DateTime _lettCacheTid;
-    private static readonly TimeSpan CacheLevetid = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan CacheLevetid = TimeSpan.FromSeconds(45);
 
     private void InvaliderCache() { _listeCache = null; _lettCache = null; }
 

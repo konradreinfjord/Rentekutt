@@ -43,6 +43,7 @@ public class KlaviyoService
         ("Påbegynt søknad", "Når en søknad settes i status «Påbegynt søknad»."),
         ("Status endret", "Når en søknads status endres."),
         ("Søknad sendt til bank", "Når en søknad sendes til bankpartner."),
+        (InstabankInnvilgetEventService.StandardKlaviyoEvent, "Når Instabank-API-et innvilger en søknad (trigger e-post-flow)."),
     };
 
     private HttpClient Klient()

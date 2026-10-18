@@ -93,6 +93,13 @@ public class InstabankStatusWorker : BackgroundService
                                 if (utfall == SendUtfall.Avslatt)
                                     await kunder.SetAvslagGrunnAsync(kortId,
                                         (string.IsNullOrWhiteSpace(r.Reason) ? "Avslått av Instabank" : r.Reason) + " (Instabank)");
+                                // Transaksjonell hendelse: SMS + Klaviyo/e-post ved innvilgelse i Instabank-API-et.
+                                if (utfall == SendUtfall.Innvilget
+                                    && await kunder.GetAsync(kortId) is { } kort)
+                                {
+                                    var ev = scope.ServiceProvider.GetRequiredService<InstabankInnvilgetEventService>();
+                                    await ev.FyrInnvilgetAsync(kort, siste.SigningUrl);
+                                }
                                 oppdatert++;
                             }
                         }

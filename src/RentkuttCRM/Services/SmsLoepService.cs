@@ -10,6 +10,11 @@ public class SmsLoep
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
     public string Navn { get; set; } = "";
     public bool Aktiv { get; set; }
+    /// <summary>Når løpet skal fyre:
+    /// <c>false</c> (standard) = tidsbasert — X timer etter registrering mens saken står i <see cref="TriggerStatus"/>;
+    /// <c>true</c> = hendelsesbasert — umiddelbart når Instabank-API-et innvilger søknaden (egen event).
+    /// Hendelsesbaserte løp ignorerer tidsfeltene og sendevinduet.</summary>
+    public bool VedInnvilgelse { get; set; }
     /// <summary>Status saken må stå i (trigger + betingelse: fortsatt i denne statusen når det sendes).</summary>
     public string TriggerStatus { get; set; } = KundekortService.StatusPaabegynt;
     /// <summary>Timer etter at saken ble registrert før SMS sendes (målt fra opprettet).</summary>

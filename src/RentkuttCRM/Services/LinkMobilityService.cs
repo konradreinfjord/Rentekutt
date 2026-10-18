@@ -22,21 +22,50 @@ public class LinkMobilityService
     private const string StandardTokenUrl = "https://sso.linkmobility.com/auth/realms/CPaaS/protocol/openid-connect/token";
     private const string StandardSendUrl = "https://api.linkmobility.com/sms/v1/messages";
 
+    // Innstillingsnøkkel: overstyr avsender fra portalen (f.eks. et numerisk nummer for toveis-SMS)
+    // uten å endre Azure-config. Tom = bruk LinkMobility__Sender / standard.
+    public const string KeySenderOverstyr = "sms_sender_override";
+
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<LinkMobilityService> _logger;
 
-    public LinkMobilityService(IConfiguration config, IHttpClientFactory httpFactory, ILogger<LinkMobilityService> logger)
+    public LinkMobilityService(IConfiguration config, IHttpClientFactory httpFactory,
+        IServiceScopeFactory scopeFactory, ILogger<LinkMobilityService> logger)
     {
         _config = config;
         _httpFactory = httpFactory;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
     private string? ClientId => _config["LinkMobility:ClientId"];
     private string? ClientSecret => _config["LinkMobility:ClientSecret"];
-    // Ikke-hemmelige felt — kan vises i Admin.
+    // Config-avsender (ikke-hemmelig) — standardverdien før ev. portal-overstyring.
     public string Sender => _config["LinkMobility:Sender"] ?? StandardSender;
+
+    // Aktiv avsender = portal-overstyring hvis satt, ellers config. Cachet kort (singleton).
+    private string? _aktivSenderCache;
+    private DateTime _aktivSenderTid;
+    public void NullstillSenderCache() => _aktivSenderCache = null;
+
+    public async Task<string> AktivSenderAsync()
+    {
+        if (_aktivSenderCache is not null && DateTime.UtcNow - _aktivSenderTid < TimeSpan.FromSeconds(30))
+            return _aktivSenderCache;
+        var aktiv = Sender;
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var settings = scope.ServiceProvider.GetRequiredService<SettingsService>();
+            var overstyr = await settings.GetAsync(KeySenderOverstyr);
+            if (!string.IsNullOrWhiteSpace(overstyr)) aktiv = overstyr.Trim();
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Kunne ikke lese avsender-overstyring (bruker config)"); }
+        _aktivSenderCache = aktiv; _aktivSenderTid = DateTime.UtcNow;
+        return aktiv;
+    }
     public string TokenUrl => _config["LinkMobility:TokenUrl"] ?? StandardTokenUrl;
     public string SendUrl => _config["LinkMobility:SendUrl"] ?? StandardSendUrl;
 
@@ -99,6 +128,7 @@ public class LinkMobilityService
             if (string.IsNullOrEmpty(token)) return (false, 401, $"Klarte ikke hente access token: {tokenFeil}");
 
             var http = _httpFactory.CreateClient("linkmobility");
+            var aktivSender = await AktivSenderAsync();
             var payload = new[]
             {
                 new
@@ -110,7 +140,7 @@ public class LinkMobilityService
                         options = new Dictionary<string, string>
                         {
                             ["sms.encoding"] = "AutoDetect",
-                            ["sms.sender"] = Sender,
+                            ["sms.sender"] = aktivSender,
                         },
                     },
                     referenceId = Guid.NewGuid().ToString(),

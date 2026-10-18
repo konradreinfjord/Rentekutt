@@ -197,6 +197,12 @@ builder.Services.AddHostedService<InstabankStatusWorker>();
 // SMS-maler + kundeutsending.
 builder.Services.AddScoped<SmsMalService>();
 
+// Transaksjonell Instabank-hendelse: SMS + Klaviyo/e-post når søknad innvilges i Instabank-API-et.
+builder.Services.AddScoped<InstabankInnvilgetEventService>();
+
+// Innkommende SMS (toveis) — kundesvar via LinkMobility MO-webhook, koblet til kundekort.
+builder.Services.AddScoped<InnkommendeSmsService>();
+
 // Beregningsmodell (finansieringsevne/likviditet).
 builder.Services.AddScoped<BeregningService>();
 

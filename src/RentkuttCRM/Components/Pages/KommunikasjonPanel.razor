@@ -7,6 +7,8 @@
 @inject RentkuttCRM.Services.SmsUtsendingService SmsLogg
 @inject RentkuttCRM.Services.KlaviyoService Klaviyo
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
+@inject RentkuttCRM.Services.InnkommendeSmsService InnSms
+@inject NavigationManager Nav
 
 @if (_laster)
 {
@@ -161,17 +163,17 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         <h3 class="ww-h">Løp</h3>
         <div class="table-scroll">
         <table class="data-table" style="margin-bottom:14px">
-            <thead><tr><th>Navn</th><th>Når saken står i</th><th>Bank</th><th>Send etter</th><th>Ikke eldre enn</th><th>Mal</th><th>Klaviyo</th><th>Aktiv</th><th></th></tr></thead>
+            <thead><tr><th>Navn</th><th>Utløses av</th><th>Bank</th><th>Send etter</th><th>Ikke eldre enn</th><th>Mal</th><th>Klaviyo</th><th>Aktiv</th><th></th></tr></thead>
             <tbody>
                 @if (_loep.Count == 0) { <tr><td colspan="9" class="empty-row">Ingen SMS-løp ennå — opprett ett under.</td></tr> }
                 @foreach (var l in _loep)
                 {
                     <tr>
                         <td><strong>@l.Navn</strong></td>
-                        <td>@l.TriggerStatus</td>
+                        <td>@(l.VedInnvilgelse ? "⚡ Ved innvilgelse (Instabank)" : $"Status: {l.TriggerStatus}")</td>
                         <td>@(string.IsNullOrWhiteSpace(l.Bank) ? "Alle" : l.Bank)</td>
-                        <td>@l.SendEtterTimer t</td>
-                        <td>@l.IkkeEldreTimer t</td>
+                        <td>@(l.VedInnvilgelse ? "—" : $"{l.SendEtterTimer} t")</td>
+                        <td>@(l.VedInnvilgelse ? "—" : $"{l.IkkeEldreTimer} t")</td>
                         <td>@(string.IsNullOrWhiteSpace(l.MalNavn) ? "—" : l.MalNavn)</td>
                         <td>@(string.IsNullOrWhiteSpace(l.KlaviyoEvent) ? "—" : l.KlaviyoEvent)</td>
                         <td><input type="checkbox" checked="@l.Aktiv" @onchange="e => ToggleAktiv(l, e)" /></td>
@@ -185,40 +187,52 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         <h3 class="ww-h">@(_fRedigerId is null ? "Nytt løp" : "Endre løp")</h3>
         <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap">
             <div class="rb-field" style="max-width:190px"><label>Navn</label><input class="rb-input" @bind="_fNavn" placeholder="F.eks. 1-times påminnelse" /></div>
-            <div class="rb-field" style="max-width:185px"><label>Når saken står i status</label>
-                <select class="rb-input" @bind="_fStatus">
-                    @foreach (var s in RentkuttCRM.Services.KundekortService.Statuser) { <option value="@s">@s</option> }
+            <div class="rb-field" style="max-width:215px"><label>Utløses av</label>
+                <select class="rb-input" @bind="_fVedInnvilgelse">
+                    <option value="false">Tid etter registrering</option>
+                    <option value="true">Ved innvilgelse i Instabank (umiddelbart)</option>
                 </select>
             </div>
+            @if (!_fVedInnvilgelse)
+            {
+                <div class="rb-field" style="max-width:185px"><label>Når saken står i status</label>
+                    <select class="rb-input" @bind="_fStatus">
+                        @foreach (var s in RentkuttCRM.Services.KundekortService.Statuser) { <option value="@s">@s</option> }
+                    </select>
+                </div>
+            }
             <div class="rb-field" style="max-width:170px"><label>Bank (valgfritt)</label>
                 <select class="rb-input" @bind="_fBank">
                     <option value="">Alle banker</option>
                     @foreach (var p in _partnere) { <option value="@p.Navn">@p.Navn</option> }
                 </select>
             </div>
-            <div class="rb-field rb-op" style="max-width:120px"><label>Send etter (t)</label><input class="rb-input" type="number" min="1" @bind="_fSendEtter" /></div>
-            <div class="rb-field rb-op" style="max-width:130px"><label>Ikke eldre (t)</label><input class="rb-input" type="number" min="2" @bind="_fIkkeEldre" /></div>
+            @if (!_fVedInnvilgelse)
+            {
+                <div class="rb-field rb-op" style="max-width:120px"><label>Send etter (t)</label><input class="rb-input" type="number" min="1" @bind="_fSendEtter" /></div>
+                <div class="rb-field rb-op" style="max-width:130px"><label>Ikke eldre (t)</label><input class="rb-input" type="number" min="2" @bind="_fIkkeEldre" /></div>
+            }
             <div class="rb-field" style="max-width:190px"><label>Mal</label>
                 <select class="rb-input" @bind="_fMal">
                     <option value="">— velg mal —</option>
                     @foreach (var m in _maler) { <option value="@m.Navn">@m.Navn</option> }
                 </select>
             </div>
-            <div class="rb-field" style="max-width:190px"><label>Klaviyo-event (valgfritt)</label><input class="rb-input" @bind="_fKlaviyo" placeholder="F.eks. Innvilget" /></div>
+            <div class="rb-field" style="max-width:190px"><label>Klaviyo-event (valgfritt)</label><input class="rb-input" @bind="_fKlaviyo" placeholder="F.eks. Innvilget i Instabank" /></div>
             <button class="btn-primary rb-add" @onclick="LagreLoep">@(_fRedigerId is null ? "Legg til løp" : "Lagre endring")</button>
             @if (_fRedigerId is not null) { <button class="btn-sec rb-add" @onclick="AvbrytRediger">Avbryt</button> }
         </div>
         <p class="page-sub" style="margin:8px 0 0; font-size:12px">
-            «Send etter» måles fra saken ble registrert. «Ikke eldre enn» hindrer masseutsending til gamle leads når et løp skrus på.
-            Eksempel: to løp på «Påbegynt søknad» — ett som sender etter 1 time og ett etter 24 timer, begge kun hvis saken fortsatt er påbegynt.
-            Instabank-eksempel: løp på status <strong>«Innvilget»</strong> med Klaviyo-event «Innvilget» → kunden får SMS med signeringslenke + event sendes til Klaviyo.
+            <strong>Tidsbasert:</strong> «Send etter» måles fra saken ble registrert; «Ikke eldre enn» hindrer masseutsending til gamle leads når et løp skrus på.
+            Eksempel: to løp på «Påbegynt søknad» — ett som sender etter 1 time og ett etter 24 timer.
+            <br /><strong>Ved innvilgelse i Instabank:</strong> fyrer umiddelbart når Instabank-API-et innvilger søknaden (uavhengig av tid/sendevindu). Sett gjerne bank = Instabank og legg på en Klaviyo-event for e-post → kunden får SMS med signeringslenke + e-post-flyt trigges.
             <br />Flettefelt i malen: <code>{navn}</code> <code>{signeringslenke}</code> <code>{belop}</code> <code>{lanetype}</code> <code>{bank}</code> (samme felt følger med som egenskaper på Klaviyo-eventen).
         </p>
         @if (!string.IsNullOrEmpty(_smsMsg)) { <p class="page-sub" style="margin:6px 0 0; font-size:12px">@_smsMsg</p> }
 
         <h3 class="ww-h" style="margin-top:20px">Send test-SMS</h3>
         <p class="page-sub" style="margin:-4px 0 10px; font-size:12px">
-            Send en test til deg selv. Avsender blir <strong>@LinkMobility.Sender</strong>. Skriv meldingen du vil teste. <code>{navn}</code> blir «Test».
+            Send en test til deg selv. Avsender blir <strong>@_aktivSender</strong>. Skriv meldingen du vil teste. <code>{navn}</code> blir «Test».
         </p>
         <div class="rule-builder" style="align-items:flex-start; flex-wrap:wrap">
             <div class="rb-field" style="max-width:180px"><label>Mobilnummer</label><input class="rb-input" @bind="_testMobil" placeholder="F.eks. 99887766" /></div>
@@ -248,6 +262,86 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         </table>
         </div>
     </div>
+
+    @* ============ TOVEIS-SMS (numerisk avsender + innkommende) ============ *@
+    <div class="section">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+            <h2 style="margin:0">Toveis-SMS <span class="ww-tag">test</span></h2>
+            <span class="status on">Aktiv avsender: @_aktivSender</span>
+        </div>
+        <p class="page-sub" style="margin:8px 0 14px">
+            For at kunder skal kunne svare må avsenderen være et <strong>numerisk nummer</strong> på LinkMobility-abonnementet
+            (f.eks. 59580499), ikke en tekst-avsender som «Rentekutt». Sett nummeret her, send en test, og bekreft at svar kommer inn nedenfor.
+        </p>
+
+        @* 1) Avsender-overstyring *@
+        <div class="kv-list" style="margin-bottom:8px">
+            <span class="k">Avsender (overstyring)</span>
+            <span class="v">
+                <input class="rb-input" @bind="_senderOverstyr" placeholder="@LinkMobility.Sender (standard)" style="max-width:220px; display:inline-block" />
+                <button class="btn-sm" @onclick="LagreSender">Lagre avsender</button>
+                <span class="page-sub" style="margin-left:6px">Tom = bruk standard «@LinkMobility.Sender». Numerisk nummer kreves for svar.</span>
+            </span>
+        </div>
+
+        @* 2) Send test ut *@
+        <div class="rule-builder" style="align-items:flex-start; flex-wrap:wrap; margin-bottom:6px">
+            <div class="rb-field" style="max-width:180px"><label>Send test til mobil</label><input class="rb-input" @bind="_toTestMobil" placeholder="F.eks. 99887766" /></div>
+            <div class="rb-field" style="flex:1; min-width:240px"><label>Melding</label><textarea class="rb-input" rows="2" @bind="_toTestTekst" placeholder="Test fra @_aktivSender — svar for å teste innkommende"></textarea></div>
+            <button class="btn-primary rb-add" @onclick="SendToveisTest" disabled="@(_toSender || !LinkMobility.ErKonfigurert)">@(_toSender ? "Sender…" : "Send test ut")</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_toTestMsg)) { <p class="page-sub" style="margin:4px 0 10px; font-size:12px">@_toTestMsg</p> }
+
+        @* 3) Innkommende webhook (registreres hos LinkMobility) *@
+        <h3 class="ww-h" style="margin-top:14px">Webhook for innkommende (MO)</h3>
+        <p class="page-sub" style="margin:-2px 0 8px; font-size:12px">
+            Gi denne URL-en til LinkMobility Support som mottaks-URL (MO) for nummeret. De POSTer kundesvar hit, og vi kobler dem til riktig sak på mobilnummer.
+        </p>
+        @if (string.IsNullOrWhiteSpace(_innToken))
+        {
+            <button class="btn-primary rb-add" @onclick="GenererToken">Aktivér innkommende (lag token)</button>
+        }
+        else
+        {
+            <div class="kv-list">
+                <span class="k">Webhook-URL</span>
+                <span class="v"><code style="word-break:break-all">@WebhookUrl</code></span>
+                <span class="k">Token</span>
+                <span class="v"><code>@_innToken</code> <button class="btn-sm" @onclick="GenererToken" title="Lag ny token (gammel slutter å virke)">Ny token</button></span>
+            </div>
+        }
+
+        @* 4) Simuler innkommende (verifiser kobling uten telefon) *@
+        <h3 class="ww-h" style="margin-top:16px">Simuler innkommende svar</h3>
+        <p class="page-sub" style="margin:-2px 0 8px; font-size:12px">Verifiser at et svar kobles til riktig kundekort — oppgi et kundemobilnummer som finnes i systemet.</p>
+        <div class="rule-builder" style="align-items:flex-start; flex-wrap:wrap">
+            <div class="rb-field" style="max-width:180px"><label>Fra (kundens mobil)</label><input class="rb-input" @bind="_simFra" placeholder="F.eks. 99887766" /></div>
+            <div class="rb-field" style="flex:1; min-width:240px"><label>Melding</label><input class="rb-input" @bind="_simTekst" placeholder="F.eks. Ja takk, jeg er interessert" /></div>
+            <button class="btn-sec rb-add" @onclick="SimulerInnkommende">Simuler mottak</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_simMsg)) { <p class="page-sub" style="margin:4px 0 0; font-size:12px">@_simMsg</p> }
+
+        @* 5) Mottatte svar *@
+        <h3 class="ww-h" style="margin-top:16px">Mottatte svar <button class="btn-sm" @onclick="OppdaterInnkommende">Oppdater</button></h3>
+        <div class="table-scroll">
+        <table class="data-table">
+            <thead><tr><th>Tidspunkt</th><th>Fra</th><th>Til</th><th>Melding</th><th>Koblet sak</th></tr></thead>
+            <tbody>
+                @if (_innkommende.Count == 0) { <tr><td colspan="5" class="empty-row">Ingen innkommende SMS ennå.</td></tr> }
+                @foreach (var s in _innkommende)
+                {
+                    <tr>
+                        <td style="white-space:nowrap">@s.MottattAt.TilOslo().ToString("dd.MM.yy HH:mm")</td>
+                        <td class="mono-cell">@s.FraNummer</td>
+                        <td class="mono-cell">@(s.TilNummer ?? "—")</td>
+                        <td class="brk-kilde">@s.Tekst</td>
+                        <td>@(s.KundekortId is null ? "— (ingen match)" : "✓ koblet")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    </div>
 }
 
 @code {
@@ -268,6 +362,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     private List<RentkuttCRM.Services.SmsLoep> _loep = new();
     // Skjema (nytt/endre løp)
     private string? _fRedigerId;
+    private bool _fVedInnvilgelse;
     private string _fNavn = "", _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt, _fMal = "";
     private string _fKlaviyo = "", _fBank = "";
     private int _fSendEtter = 24, _fIkkeEldre = 72;
@@ -284,6 +379,18 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     private List<RentkuttCRM.Services.SmsMal> _maler = new();
     private List<RentkuttCRM.Services.SmsUtsending> _sisteSms = new();
 
+    // Toveis-SMS
+    private string _aktivSender = "";
+    private string _senderOverstyr = "";
+    private string _toTestMobil = "", _toTestTekst = "";
+    private bool _toSender;
+    private string? _toTestMsg;
+    private string _innToken = "";
+    private string _simFra = "", _simTekst = "";
+    private string? _simMsg;
+    private List<RentkuttCRM.Services.InnkommendeSms> _innkommende = new();
+    private string WebhookUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/sms/inn?token={_innToken}";
+
     protected override async Task OnInitializedAsync() => await Last();
 
     private async Task Last()
@@ -297,8 +404,50 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _loep = await Loep.HentAsync();
         _partnere = await Partners.ListAsync();
         _sisteSms = await SmsLogg.SisteAsync(30);
+        _senderOverstyr = await Settings.GetAsync(RentkuttCRM.Services.LinkMobilityService.KeySenderOverstyr) ?? "";
+        _aktivSender = await LinkMobility.AktivSenderAsync();
+        _innToken = await Settings.GetAsync(RentkuttCRM.Controllers.SmsInnController.KeyToken) ?? "";
+        _innkommende = await InnSms.SisteAsync(50);
         _laster = false;
     }
+
+    private async Task LagreSender()
+    {
+        await Settings.SetAsync(RentkuttCRM.Services.LinkMobilityService.KeySenderOverstyr, (_senderOverstyr ?? "").Trim());
+        LinkMobility.NullstillSenderCache();
+        _aktivSender = await LinkMobility.AktivSenderAsync();
+        _toTestMsg = $"Avsender lagret. Aktiv avsender er nå «{_aktivSender}».";
+    }
+
+    private async Task SendToveisTest()
+    {
+        _toTestMsg = null;
+        if (string.IsNullOrWhiteSpace(_toTestMobil)) { _toTestMsg = "Oppgi et mobilnummer."; return; }
+        _toSender = true;
+        var tekst = string.IsNullOrWhiteSpace(_toTestTekst) ? $"Test fra {_aktivSender}. Svar på denne for å teste innkommende." : _toTestTekst;
+        var (ok, _, detalj) = await LinkMobility.SendSmsAsync(_toTestMobil, tekst);
+        _toTestMsg = ok ? $"Sendt fra «{_aktivSender}» til {_toTestMobil} ✓ — svar på SMS-en, så dukker den opp under «Mottatte svar»." : $"Feilet: {detalj}";
+        _toSender = false;
+    }
+
+    private async Task GenererToken()
+    {
+        _innToken = Guid.NewGuid().ToString("N");
+        await Settings.SetAsync(RentkuttCRM.Controllers.SmsInnController.KeyToken, _innToken);
+    }
+
+    private async Task SimulerInnkommende()
+    {
+        _simMsg = null;
+        if (string.IsNullOrWhiteSpace(_simFra)) { _simMsg = "Oppgi et avsendernummer."; return; }
+        var rad = await InnSms.MottaAsync(_simFra.Trim(), _aktivSender, _simTekst ?? "", "(simulert fra portalen)");
+        _innkommende = await InnSms.SisteAsync(50);
+        _simMsg = rad.KundekortId is null
+            ? "Mottatt — men fant ingen sak med dette mobilnummeret."
+            : "Mottatt og koblet til riktig sak ✓ (logget på kundekortet).";
+    }
+
+    private async Task OppdaterInnkommende() => _innkommende = await InnSms.SisteAsync(50);
 
     private async Task LagreKlaviyo()
     {
@@ -402,7 +551,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         {
             _loep.Add(new RentkuttCRM.Services.SmsLoep
             {
-                Navn = _fNavn, Aktiv = true, TriggerStatus = _fStatus,
+                Navn = _fNavn, Aktiv = true, VedInnvilgelse = _fVedInnvilgelse, TriggerStatus = _fStatus,
                 SendEtterTimer = _fSendEtter, IkkeEldreTimer = _fIkkeEldre, MalNavn = _fMal,
                 Bank = string.IsNullOrWhiteSpace(_fBank) ? null : _fBank,
                 KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim(),
@@ -413,7 +562,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             var l = _loep.FirstOrDefault(x => x.Id == _fRedigerId);
             if (l is not null)
             {
-                l.Navn = _fNavn; l.TriggerStatus = _fStatus;
+                l.Navn = _fNavn; l.VedInnvilgelse = _fVedInnvilgelse; l.TriggerStatus = _fStatus;
                 l.SendEtterTimer = _fSendEtter; l.IkkeEldreTimer = _fIkkeEldre; l.MalNavn = _fMal;
                 l.Bank = string.IsNullOrWhiteSpace(_fBank) ? null : _fBank;
                 l.KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim();
@@ -426,7 +575,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
 
     private void StartRediger(RentkuttCRM.Services.SmsLoep l)
     {
-        _fRedigerId = l.Id; _fNavn = l.Navn; _fStatus = l.TriggerStatus;
+        _fRedigerId = l.Id; _fNavn = l.Navn; _fVedInnvilgelse = l.VedInnvilgelse; _fStatus = l.TriggerStatus;
         _fSendEtter = l.SendEtterTimer; _fIkkeEldre = l.IkkeEldreTimer; _fMal = l.MalNavn;
         _fKlaviyo = l.KlaviyoEvent ?? ""; _fBank = l.Bank ?? "";
         _smsMsg = null;
@@ -434,7 +583,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
 
     private void AvbrytRediger()
     {
-        _fRedigerId = null; _fNavn = ""; _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt;
+        _fRedigerId = null; _fNavn = ""; _fVedInnvilgelse = false; _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt;
         _fMal = ""; _fSendEtter = 24; _fIkkeEldre = 72; _fKlaviyo = ""; _fBank = "";
     }
 
