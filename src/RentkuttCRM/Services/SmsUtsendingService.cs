@@ -69,6 +69,30 @@ public class SmsUtsendingService
         catch (Exception ex) { _log.LogError(ex, "Logging av SMS-utsending feilet"); }
     }
 
+    /// <summary>Saken som sist sendte en (vellykket) SMS til et mobilnummer — den «aktive samtalen».
+    /// Brukes til å koble et innkommende kundesvar til riktig sak (ikke bare nyeste opprettede sak
+    /// med samme nummer). Matcher på de siste 8 sifrene. Null hvis vi aldri har tekstet nummeret.</summary>
+    public async Task<Guid?> SisteKundekortForMobilAsync(string? mobil)
+    {
+        var digits = new string((mobil ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length < 8) return null;
+        var tail = digits[^8..];
+        bool Match(SmsUtsending s) => s.Ok && s.KundekortId != Guid.Empty && !string.IsNullOrWhiteSpace(s.Mobil)
+            && new string(s.Mobil!.Where(char.IsDigit).ToArray()).EndsWith(tail);
+
+        if (!IsConfigured)
+            return _staging.Where(Match).OrderByDescending(x => x.SendtAt).FirstOrDefault()?.KundekortId;
+        try
+        {
+            var rows = (await _client.From<SmsUtsending>()
+                .Where(x => x.Ok == true)
+                .Order(x => x.SendtAt, Constants.Ordering.Descending, Constants.NullPosition.Last)
+                .Limit(500).Get()).Models;
+            return rows.FirstOrDefault(Match)?.KundekortId;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Oppslag av sak for mobil (SMS-logg) feilet"); return null; }
+    }
+
     /// <summary>Alle SMS-utsendinger for én sak, nyeste først.</summary>
     public async Task<List<SmsUtsending>> ForKundeAsync(Guid kundekortId)
     {

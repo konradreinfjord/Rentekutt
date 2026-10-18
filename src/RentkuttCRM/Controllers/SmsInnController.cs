@@ -20,12 +20,14 @@ public class SmsInnController : ControllerBase
 
     private readonly InnkommendeSmsService _inn;
     private readonly SettingsService _settings;
+    private readonly SmsInnDebugLogg _debug;
     private readonly ILogger<SmsInnController> _log;
 
-    public SmsInnController(InnkommendeSmsService inn, SettingsService settings, ILogger<SmsInnController> log)
+    public SmsInnController(InnkommendeSmsService inn, SettingsService settings, SmsInnDebugLogg debug, ILogger<SmsInnController> log)
     {
         _inn = inn;
         _settings = settings;
+        _debug = debug;
         _log = log;
     }
 
@@ -33,18 +35,24 @@ public class SmsInnController : ControllerBase
     [EnableRateLimiting("webhook")]
     public async Task<IActionResult> Inn([FromQuery] string? token)
     {
+        // Les rå body (JSON eller skjema) først — så vi alltid kan logge hva som faktisk kom inn.
+        string raw;
+        using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
+            raw = await reader.ReadToEndAsync();
+
         // Token: query-param (?token=) eller header X-Sms-Token. Konstant-tids sammenligning.
         var forventet = await _settings.GetAsync(KeyToken);
         var presentert = !string.IsNullOrWhiteSpace(token) ? token : Request.Headers["X-Sms-Token"].ToString();
         if (string.IsNullOrWhiteSpace(forventet))
+        {
+            _debug.Logg("Avvist: ingen token konfigurert", Kort(raw));
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Inbound SMS er ikke aktivert (mangler token)." });
+        }
         if (!KonstantLik(forventet, presentert))
+        {
+            _debug.Logg("Avvist: ugyldig token", $"token={(string.IsNullOrWhiteSpace(presentert) ? "(mangler)" : "feil")} · {Kort(raw)}");
             return Unauthorized(new { error = "Ugyldig token." });
-
-        // Les rå body (JSON eller skjema) fleksibelt.
-        string raw;
-        using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
-            raw = await reader.ReadToEndAsync();
+        }
 
         var felt = ParseFelt(raw, Request);
         var fra = Foerste(felt, "source", "sender", "from", "msisdn", "originator", "sourceaddr", "sourcenumber", "sourceaddress");
@@ -53,11 +61,13 @@ public class SmsInnController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(fra))
         {
+            _debug.Logg("Mottatt, men fant ikke avsender", $"felt=[{string.Join(",", felt.Keys)}] · {Kort(raw)}");
             _log.LogWarning("Innkommende SMS: fant ikke avsendernummer i payload. Rå: {Raw}", Kort(raw));
             return BadRequest(new { error = "Mangler avsendernummer (source/sender/from/msisdn)." });
         }
 
         var rad = await _inn.MottaAsync(fra!, til, tekst ?? "", Kort(raw, 4000));
+        _debug.Logg("OK mottatt", $"fra={fra} · sak={(rad.KundekortId?.ToString() ?? "ingen match")} · «{Kort(tekst, 60)}»");
         _log.LogInformation("Innkommende SMS mottatt fra {Fra} (sak: {Sak}).", fra, rad.KundekortId?.ToString() ?? "ingen match");
         return Ok(new { ok = true, matchetSak = rad.KundekortId });
     }

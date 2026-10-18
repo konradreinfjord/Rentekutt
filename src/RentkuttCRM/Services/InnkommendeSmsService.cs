@@ -26,16 +26,18 @@ public class InnkommendeSmsService
 {
     private readonly Supabase.Client _client;
     private readonly KundekortService _kundekort;
+    private readonly SmsUtsendingService _utsending;
     private readonly LoggService _logg;
     private readonly ILogger<InnkommendeSmsService> _log;
     public bool IsConfigured { get; }
     private static readonly List<InnkommendeSms> _staging = new();
 
-    public InnkommendeSmsService(Supabase.Client client, KundekortService kundekort, LoggService logg,
-        IConfiguration cfg, ILogger<InnkommendeSmsService> log)
+    public InnkommendeSmsService(Supabase.Client client, KundekortService kundekort, SmsUtsendingService utsending,
+        LoggService logg, IConfiguration cfg, ILogger<InnkommendeSmsService> log)
     {
         _client = client;
         _kundekort = kundekort;
+        _utsending = utsending;
         _logg = logg;
         _log = log;
         IsConfigured = !string.IsNullOrWhiteSpace(cfg["Supabase:Url"]) && !string.IsNullOrWhiteSpace(cfg["Supabase:Key"]);
@@ -44,10 +46,14 @@ public class InnkommendeSmsService
     /// <summary>Tar imot en innkommende melding: kobler til kundekort på mobil, lagrer og logger på saken.</summary>
     public async Task<InnkommendeSms> MottaAsync(string fraNummer, string? tilNummer, string tekst, string? raw)
     {
-        var kort = await _kundekort.FindByMobilAsync(fraNummer);
+        // Koble svaret til saken som SIST tekstet nummeret (den aktive samtalen). Har vi aldri sendt
+        // til nummeret, faller vi tilbake til nyeste sak med samme mobil.
+        var kortId = await _utsending.SisteKundekortForMobilAsync(fraNummer);
+        if (kortId is null) kortId = (await _kundekort.FindByMobilAsync(fraNummer))?.Id;
+
         var rad = new InnkommendeSms
         {
-            KundekortId = kort?.Id,
+            KundekortId = kortId,
             FraNummer = fraNummer ?? "",
             TilNummer = tilNummer,
             Tekst = tekst ?? "",
@@ -62,10 +68,10 @@ public class InnkommendeSmsService
         }
 
         // Logg på kundekortet så svaret vises i sakshistorikken.
-        if (kort is not null)
+        if (kortId is { } id)
         {
             var kort140 = (tekst ?? "").Length > 140 ? tekst![..140] + "…" : tekst ?? "";
-            try { await _logg.LoggAsync(kort.Id, $"Kunde ({fraNummer})", $"Innkommende SMS: «{kort140}»", "sms"); }
+            try { await _logg.LoggAsync(id, $"Kunde ({fraNummer})", $"Innkommende SMS: «{kort140}»", "sms"); }
             catch (Exception ex) { _log.LogWarning(ex, "Logging av innkommende SMS på sak feilet"); }
         }
         else

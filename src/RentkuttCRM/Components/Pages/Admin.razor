@@ -1054,6 +1054,55 @@ LinkMobility__SendUrl       = &lt;overstyrbar&gt;     (valgfri)</pre>
             </p>
         </div>
 
+        @* ===== Innkommende SMS (toveis) — detaljer å dele med LinkMobility ===== *@
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Innkommende SMS (toveis) <span class="ww-tag">MO-webhook</span></h2>
+                <span class="status @(string.IsNullOrWhiteSpace(_innToken) ? "off" : "on")">@(string.IsNullOrWhiteSpace(_innToken) ? "Ikke aktivert" : "Aktiv")</span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 14px">
+                For at kunder skal kunne svare: avsender må være et <strong>numerisk nummer</strong> på LinkMobility-abonnementet,
+                og LinkMobility må rute innkommende (MO) til webhook-URL-en under. Del <strong>nummer + URL</strong> med LinkMobility Support.
+            </p>
+
+            <div class="kv-list" style="margin-bottom:12px">
+                <span class="k">Avsender / nummer</span>
+                <span class="v">
+                    <input class="rb-input" @bind="_innSenderOverstyr" placeholder="@LinkMobility.Sender (standard)" style="max-width:220px; display:inline-block" />
+                    <button class="btn-sm" @onclick="LagreInnSender">Lagre nummer</button>
+                    <span class="page-sub" style="margin-left:6px">Aktiv avsender nå: <strong>@_innAktivSender</strong></span>
+                </span>
+            </div>
+
+            @if (string.IsNullOrWhiteSpace(_innToken))
+            {
+                <button class="btn-primary rb-add" @onclick="GenererInnToken">Opprett token &amp; webhook-URL</button>
+            }
+            else
+            {
+                <div class="kv-list">
+                    <span class="k">Webhook-URL (MO)</span>
+                    <span class="v"><code style="word-break:break-all">@InnWebhookUrl</code></span>
+                    <span class="k">Token</span>
+                    <span class="v"><code>@_innToken</code></span>
+                    <span class="k">Metode</span>
+                    <span class="v">POST (JSON eller skjema). Token kan også sendes som header <code>X-Sms-Token</code>.</span>
+                </div>
+                <div style="margin-top:12px; padding:12px 14px; background:#f0f6ff; border:1px solid #cfe0fb; border-radius:10px">
+                    <strong style="font-size:13px">Del dette med LinkMobility Support:</strong>
+                    <ol style="margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.6">
+                        <li>Rut innkommende (MO) for nummer <strong>@(string.IsNullOrWhiteSpace(_innSenderOverstyr) ? LinkMobility.Sender : _innSenderOverstyr)</strong></li>
+                        <li>til (POST): <code style="word-break:break-all">@InnWebhookUrl</code></li>
+                    </ol>
+                </div>
+                <div style="margin-top:12px">
+                    <button class="btn-sec btn-sm" @onclick="GenererInnToken" title="Lag ny token — gammel URL slutter å virke">Ny token</button>
+                    <span class="page-sub" style="margin-left:8px; font-size:12px">Full test + «Webhook-treff»-logg ligger under <strong>Admin → Kommunikasjon → Toveis-SMS</strong>.</span>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_innMsg)) { <p class="page-sub" style="margin:10px 0 0; font-size:12px">@_innMsg</p> }
+        </div>
+
         <div class="section">
             <h2>SMS-maler til kunder</h2>
             <p class="page-sub" style="margin:-4px 0 0">SMS-maler administreres nå under <strong>Admin → Kommunikasjon</strong> (sammen med SMS-løp).</p>
@@ -2257,6 +2306,9 @@ else if (_active == "GDPR")
         _smsMaler = await SmsMaler.ListAsync();
         _autoEnabled = (await Settings.GetAsync(SmsMalService.KeyAutoEnabled)) == "true";
         _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
+        _innToken = await Settings.GetAsync(SmsInnController.KeyToken) ?? "";
+        _innSenderOverstyr = await Settings.GetAsync(LinkMobilityService.KeySenderOverstyr) ?? "";
+        _innAktivSender = await LinkMobility.AktivSenderAsync();
         _tpToken = await Settings.GetAsync(TredjepartController.KeyToken) ?? "";
         _tpEnabled = (await Settings.GetAsync(TredjepartController.KeyEnabled)) == "true";
         _ibEnabled = await Instabank.AktivertAsync();
@@ -2292,6 +2344,26 @@ else if (_active == "GDPR")
     {
         await Settings.SetAsync("login_ip_allowlist", _loginIpList);
         _loginIpMsg = "IP-whitelist lagret.";
+    }
+
+    // Innkommende SMS (toveis) — token/URL å dele med LinkMobility.
+    private string _innToken = "", _innSenderOverstyr = "", _innAktivSender = "";
+    private string? _innMsg;
+    private string InnWebhookUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/sms/inn?token={_innToken}";
+
+    private async Task GenererInnToken()
+    {
+        _innToken = Guid.NewGuid().ToString("N");
+        await Settings.SetAsync(SmsInnController.KeyToken, _innToken);
+        _innMsg = "Token opprettet. Del nummer + webhook-URL med LinkMobility.";
+    }
+
+    private async Task LagreInnSender()
+    {
+        await Settings.SetAsync(LinkMobilityService.KeySenderOverstyr, (_innSenderOverstyr ?? "").Trim());
+        LinkMobility.NullstillSenderCache();
+        _innAktivSender = await LinkMobility.AktivSenderAsync();
+        _innMsg = $"Avsender lagret. Aktiv avsender: {_innAktivSender}.";
     }
 
     private int _smsMaxHour = TwoFactorService.DefaultMaxPerHour;

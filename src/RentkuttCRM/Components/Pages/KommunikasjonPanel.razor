@@ -8,6 +8,7 @@
 @inject RentkuttCRM.Services.KlaviyoService Klaviyo
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
 @inject RentkuttCRM.Services.InnkommendeSmsService InnSms
+@inject RentkuttCRM.Services.SmsInnDebugLogg SmsDebug
 @inject NavigationManager Nav
 
 @if (_laster)
@@ -320,6 +321,35 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             <button class="btn-sec rb-add" @onclick="SimulerInnkommende">Simuler mottak</button>
         </div>
         @if (!string.IsNullOrEmpty(_simMsg)) { <p class="page-sub" style="margin:4px 0 0; font-size:12px">@_simMsg</p> }
+
+        @* 4b) Webhook-treff (debug) — ser vi treff her, NÅR LinkMobility oss *@
+        <h3 class="ww-h" style="margin-top:16px">Webhook-treff (debug) <button class="btn-sm" @onclick="() => StateHasChanged()">Oppdater</button></h3>
+        <p class="page-sub" style="margin:-2px 0 8px; font-size:12px">
+            Hvert kall LinkMobill gjør til inbound-URL-en vises her. <strong>Ingen treff = LinkMobility har ikke satt opp MO-videresending til URL-en vår ennå.</strong> (Nullstilles ved omstart av appen.)
+        </p>
+        @{ var treff = SmsDebug.Siste(); }
+        @if (treff.Count == 0)
+        {
+            <p class="page-sub" style="font-size:12px; color:#b45309">Ingen treff registrert — LinkMobility har (så langt) ikke POSTet noe til webhooken.</p>
+        }
+        else
+        {
+            <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Tidspunkt</th><th>Utfall</th><th>Detalj</th></tr></thead>
+                <tbody>
+                    @foreach (var t in treff)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap">@t.Tid.TilOslo().ToString("dd.MM HH:mm:ss")</td>
+                            <td><span class="status @(t.Utfall.StartsWith("OK") ? "on" : "off")">@t.Utfall</span></td>
+                            <td class="brk-kilde" style="font-size:11px">@t.Detalj</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        }
 
         @* 5) Mottatte svar *@
         <h3 class="ww-h" style="margin-top:16px">Mottatte svar <button class="btn-sm" @onclick="OppdaterInnkommende">Oppdater</button></h3>

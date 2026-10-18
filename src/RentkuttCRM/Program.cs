@@ -202,6 +202,7 @@ builder.Services.AddScoped<InstabankInnvilgetEventService>();
 
 // Innkommende SMS (toveis) — kundesvar via LinkMobility MO-webhook, koblet til kundekort.
 builder.Services.AddScoped<InnkommendeSmsService>();
+builder.Services.AddSingleton<SmsInnDebugLogg>();
 
 // Beregningsmodell (finansieringsevne/likviditet).
 builder.Services.AddScoped<BeregningService>();
