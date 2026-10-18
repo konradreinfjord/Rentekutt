@@ -8,10 +8,18 @@
 @inject RentkuttCRM.Services.MerknadsregelService MerknadSvc
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.DialerService Dialer
+@inject RentkuttCRM.Services.InnkommendeSmsService InnSms
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <PageTitle>@Tittel — Rentekutt</PageTitle>
+
+<style>
+    /* «!»-varsel på saksrad når kunden har svart på SMS. */
+    .svar-varsel { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+        margin-right: 7px; border-radius: 50%; background: #e5484d; color: #fff; font-weight: 800; font-size: 12px;
+        line-height: 1; vertical-align: middle; box-shadow: 0 0 0 3px #e5484d26; }
+</style>
 
 <div class="wide-page">
 
@@ -170,12 +178,12 @@ else
                     </td>
                     @if (ErBedrift)
                     {
-                        <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>@if (HarKryssType(k)) { <span class="krysstype-badge" title="Samme mobilnummer finnes også som privatkunde (B2C)">B2C</span> }</td>
+                        <td>@if (_ulesteSvar.Contains(k.Id)) { <span class="svar-varsel" title="Kunden har svart på SMS">!</span> }<span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>@if (HarKryssType(k)) { <span class="krysstype-badge" title="Samme mobilnummer finnes også som privatkunde (B2C)">B2C</span> }</td>
                         <td>@(string.IsNullOrWhiteSpace(k.KontaktpersonNavn) ? "—" : k.KontaktpersonNavn)</td>
                     }
                     else
                     {
-                        <td><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>@if (HarKryssType(k)) { <span class="krysstype-badge" title="Samme mobilnummer finnes også som bedriftskunde (B2B)">B2B</span> }</td>
+                        <td>@if (_ulesteSvar.Contains(k.Id)) { <span class="svar-varsel" title="Kunden har svart på SMS">!</span> }<span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.FulltNavn)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.FulltNavn) ? "—" : k.FulltNavn)</span>@if (HarKryssType(k)) { <span class="krysstype-badge" title="Samme mobilnummer finnes også som bedriftskunde (B2B)">B2B</span> }</td>
                     }
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Mobilnummer)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Mobilnummer) ? "—" : k.Mobilnummer)</span></td>
                     <td class="mono-cell"><span class="copyable" title="Klikk for å kopiere" @onclick="() => Copy(k.Epost)" @onclick:stopPropagation="true">@(string.IsNullOrWhiteSpace(k.Epost) ? "—" : k.Epost)</span></td>
@@ -251,6 +259,7 @@ else
 
 @code {
     private List<Kundekort> _rows = new();
+    private HashSet<Guid> _ulesteSvar = new();   // saker med ulest(e) kundesvar (SMS) → «!»-varsel
     private bool _loading = true;
     private bool _skjulTatte;
     private bool _visStatusInfo;   // info-popover som forklarer statusene
@@ -320,7 +329,9 @@ else
         var merknadTask = MerknadSvc.ListAsync();
         var berTask = Beregning.HentParametreAsync();
         var ringeTask = Dialer.HentSammendragAsync();
-        await Task.WhenAll(rowsTask, partnereTask, reglerTask, merknadTask, berTask, ringeTask);
+        var svarTask = InnSms.UlesteKundekortIderAsync();
+        await Task.WhenAll(rowsTask, partnereTask, reglerTask, merknadTask, berTask, ringeTask, svarTask);
+        _ulesteSvar = svarTask.Result;
         _rows = rowsTask.Result;
         _ringelogg = ringeTask.Result;
         _partnere = partnereTask.Result;

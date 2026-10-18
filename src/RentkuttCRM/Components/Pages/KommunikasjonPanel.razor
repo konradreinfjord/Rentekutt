@@ -424,9 +424,17 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _toTestMsg = null;
         if (string.IsNullOrWhiteSpace(_toTestMobil)) { _toTestMsg = "Oppgi et mobilnummer."; return; }
         _toSender = true;
+        // Bruk nummeret i avsenderfeltet direkte (lagre det først) slik at man ikke må huske å trykke
+        // «Lagre avsender» før test — ellers ville forrige aktive avsender (f.eks. «Rentekutt») blitt brukt.
+        await Settings.SetAsync(RentkuttCRM.Services.LinkMobilityService.KeySenderOverstyr, (_senderOverstyr ?? "").Trim());
+        LinkMobility.NullstillSenderCache();
+        _aktivSender = await LinkMobility.AktivSenderAsync();
+
         var tekst = string.IsNullOrWhiteSpace(_toTestTekst) ? $"Test fra {_aktivSender}. Svar på denne for å teste innkommende." : _toTestTekst;
         var (ok, _, detalj) = await LinkMobility.SendSmsAsync(_toTestMobil, tekst);
-        _toTestMsg = ok ? $"Sendt fra «{_aktivSender}» til {_toTestMobil} ✓ — svar på SMS-en, så dukker den opp under «Mottatte svar»." : $"Feilet: {detalj}";
+        _toTestMsg = ok
+            ? $"Sendt med avsender «{_aktivSender}» til {_toTestMobil} ✓ — svar på SMS-en, så dukker den opp under «Mottatte svar». (Vises SMS-en likevel som «Rentekutt» hos mottaker, har ikke LinkMobility godkjent nummeret som avsender ennå.)"
+            : $"Feilet: {detalj}";
         _toSender = false;
     }
 

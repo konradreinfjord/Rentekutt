@@ -167,7 +167,7 @@ public class Paamindelse24tWorker : BackgroundService
 
                 var melding = SmsMalService.Flett(mal.Tekst, k, signeringslenke);
                 var (ok, detalj) = await sms.SendRaaAsync(k.Mobilnummer, melding);
-                await utsending.LoggAsync(k.Id, type, k.Mobilnummer, ok, detalj);
+                await utsending.LoggAsync(k.Id, type, k.Mobilnummer, ok, detalj, melding);
                 if (ok) sendt++;
                 else { feilet++; _log.LogWarning("SMS-løp «{Navn}» feilet for {Id}: {Detalj}", loep.Navn, k.Id, detalj); }
 

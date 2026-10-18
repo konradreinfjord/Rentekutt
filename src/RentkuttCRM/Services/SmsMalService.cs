@@ -140,7 +140,7 @@ public class SmsMalService
             }
 
             var (ok, detalj) = await SendTilKundeAsync(k.Mobilnummer, mal.Tekst, k.FulltNavn);
-            await _utsending.LoggAsync(k.Id, "ny_soknad", k.Mobilnummer, ok, detalj);
+            await _utsending.LoggAsync(k.Id, "ny_soknad", k.Mobilnummer, ok, detalj, Flett(mal.Tekst, k, null));
             _log.LogInformation("Automatisk SMS sendt til ny søknad (mal {Mal})", malNavn);
         }
         catch (Exception ex) { _log.LogWarning(ex, "Automatisk SMS feilet"); }

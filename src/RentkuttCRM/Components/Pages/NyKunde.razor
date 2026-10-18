@@ -4,6 +4,7 @@
 @inject RentkuttCRM.Services.BeregningService Beregning
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.SmsUtsendingService SmsUtsend
+@inject RentkuttCRM.Services.InnkommendeSmsService InnSms
 @inject RentkuttCRM.Services.NotatService Notater
 @inject RentkuttCRM.Services.PartnerService Partners
 @inject RentkuttCRM.Services.RutingsregelService Ruting
@@ -60,6 +61,15 @@
     .ff.felt-mangler > label { color: #c0392b; }
     .ff.felt-mangler input, .ff.felt-mangler select { border-color: #e5484d !important; }
     .ff.felt-mangler input:focus, .ff.felt-mangler select:focus { border-color: #e5484d !important; box-shadow: 0 0 0 2px #e5484d2e !important; }
+
+    /* SMS-samtaletråd (ut + inn) på kundekortet. */
+    .sms-traad { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; padding: 4px 2px 12px; margin-bottom: 8px; }
+    .sms-boble { max-width: 78%; padding: 8px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.35; }
+    .sms-boble-tekst { white-space: pre-wrap; word-break: break-word; }
+    .sms-boble-meta { font-size: 10.5px; opacity: .7; margin-top: 3px; }
+    .sms-boble.ut { align-self: flex-end; background: #2f6fed; color: #fff; border-bottom-right-radius: 4px; }
+    .sms-boble.ut.feil { background: #fdecec; color: #b42318; border: 1px solid #f3b4ad; }
+    .sms-boble.inn { align-self: flex-start; background: #eef1f5; color: #1f2937; border-bottom-left-radius: 4px; }
 </style>
 
 <div class="kk">
@@ -322,8 +332,24 @@
 
 @* Send SMS til kunde *@
 <div class="form-card sms-card">
-    <h2>Send SMS til kunde</h2>
+    <h2>SMS med kunde@(_smsTraad.Any(t => t.Inn) ? " 💬" : "")</h2>
     <p class="page-sub" style="margin:-4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
+
+    @if (_smsTraad.Count > 0)
+    {
+        <div class="sms-traad">
+            @foreach (var m in _smsTraad)
+            {
+                <div class="sms-boble @(m.Inn ? "inn" : "ut") @(m.Inn ? "" : (m.Ok ? "" : "feil"))">
+                    <div class="sms-boble-tekst">@(string.IsNullOrWhiteSpace(m.Tekst) ? "(ingen tekst lagret)" : m.Tekst)</div>
+                    <div class="sms-boble-meta">
+                        @(m.Inn ? "Kunde" : "Oss")@(m.Inn ? "" : (m.Ok ? "" : " · feilet"))@(m.Etikett is null ? "" : $" · {m.Etikett}") · @m.Tid.TilOslo().ToString("dd.MM HH:mm")
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
     <div class="form-grid">
         <div class="ff">
             <label>Velg mal (valgfritt)</label>
@@ -1344,6 +1370,28 @@
     // «Ikke svar» åpner en popup: send ev. en SMS-mal + vis SMS-logg, før oppgaven utsettes.
     private const int SmsMaksPerUke = 3;
     private List<SmsUtsending> _smsLogg = new();
+    private List<RentkuttCRM.Services.InnkommendeSms> _innSms = new();
+    private record SmsTraadLinje(DateTime Tid, bool Inn, string? Tekst, bool Ok, string? Etikett);
+    private List<SmsTraadLinje> _smsTraad = new();
+
+    // Bygg samtaletråd (utgående + innkommende) sortert kronologisk for visning på kundekortet.
+    private void ByggSmsTraad()
+    {
+        var ut = _smsLogg.Select(s => new SmsTraadLinje(s.SendtAt, false,
+            string.IsNullOrWhiteSpace(s.Tekst) ? null : s.Tekst, s.Ok, SmsTypeEtikett(s.Type)));
+        var inn = _innSms.Select(s => new SmsTraadLinje(s.MottattAt, true, s.Tekst, true, null));
+        _smsTraad = ut.Concat(inn).OrderBy(x => x.Tid).ToList();
+    }
+
+    private static string? SmsTypeEtikett(string? type) => type switch
+    {
+        "manuell" => "manuell",
+        "ikke_svar" => "ikke svar",
+        "ny_soknad" => "ny søknad",
+        "instabank_innvilget" => "innvilget",
+        _ when type != null && type.StartsWith("sms_loep:") => "løp",
+        _ => type,
+    };
     private string? _sisteMal;
     private int SmsSisteUke => _smsLogg.Count(x => x.Ok && x.SendtAt >= DateTime.UtcNow.AddDays(-7));
     private bool SmsGrenseNadd => SmsSisteUke >= SmsMaksPerUke;
@@ -1377,9 +1425,11 @@
         if (string.IsNullOrWhiteSpace(_k.Mobilnummer)) { _isvMsg = "Kunden mangler mobilnummer."; return; }
         if (string.IsNullOrWhiteSpace(_isvTekst)) { _isvMsg = "Velg en mal eller skriv en melding."; return; }
         _isvSender = true; _isvMsg = null;
+        var isvSendtTekst = SmsMalService.Flett(_isvTekst, _k, null);
         var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_k.Mobilnummer, _isvTekst, _k.FulltNavn);
-        await SmsUtsend.LoggAsync(_k.Id, "ikke_svar", _k.Mobilnummer, ok, detalj);
+        await SmsUtsend.LoggAsync(_k.Id, "ikke_svar", _k.Mobilnummer, ok, detalj, isvSendtTekst);
         _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
+        ByggSmsTraad();
         _isvSender = false;
         if (!ok) { _isvMsg = $"Kunne ikke sende: {detalj}"; return; }
         if (!string.IsNullOrWhiteSpace(_isvMal)) { await SmsMaler.LagreSisteMalAsync(Session.Email ?? Session.UserName, _isvMal); _sisteMal = _isvMal; }
@@ -1520,9 +1570,11 @@
         if (SmsGrenseNadd) { _smsOk = false; _smsMsg = $"Grense nådd: maks {SmsMaksPerUke} SMS per uke til kunden."; return; }
         _smsSending = true;
         _smsMsg = null;
+        var sendtTekst = SmsMalService.Flett(_smsTekst, _k, null);
         var (ok, detalj) = await SmsMaler.SendTilKundeAsync(_k.Mobilnummer, _smsTekst, _k.FulltNavn);
-        await SmsUtsend.LoggAsync(_k.Id, "manuell", _k.Mobilnummer, ok, detalj);
+        await SmsUtsend.LoggAsync(_k.Id, "manuell", _k.Mobilnummer, ok, detalj, sendtTekst);
         _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
+        ByggSmsTraad();
         _smsOk = ok;
         _smsMsg = ok ? "SMS sendt ✓" : $"Kunne ikke sende: {detalj}";
         _smsSending = false;
@@ -1589,6 +1641,10 @@
             _oppgaveTilstander = await Arbeidsliste.HentTilstanderAsync();
             _utsattTimer = await Arbeidsliste.HentUtsattTimerAsync();
             _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
+            _innSms = await InnSms.ForKundeAsync(_k.Id);
+            ByggSmsTraad();
+            // Kundesvar på denne saken er nå sett → marker lest (fjerner «!»-varsel og notifikasjon).
+            if (_innSms.Any(x => !x.Lest)) await InnSms.MarkerLestForKundeAsync(_k.Id);
             _sisteMal = await SmsMaler.HentSisteMalAsync(Session.Email ?? Session.UserName);
             // Loggfør innsyn (hvem åpnet kundekortet, når) — del av det manipuleringssikre revisjonssporet.
             await Logg.LoggInnsynAsync(_k.Id, Session.UserName ?? Session.Email, "Åpnet kundekortet");

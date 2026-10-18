@@ -14,6 +14,7 @@ public class InnkommendeSms : BaseModel
     [Column("til_nummer")] public string? TilNummer { get; set; }
     [Column("tekst")] public string Tekst { get; set; } = "";
     [Column("raw")] public string? Raw { get; set; }
+    [Column("lest")] public bool Lest { get; set; }
     [Column("mottatt_at", ignoreOnInsert: true)] public DateTime MottattAt { get; set; }
 }
 
@@ -98,5 +99,41 @@ public class InnkommendeSmsService
                 .Get()).Models;
         }
         catch (Exception ex) { _log.LogWarning(ex, "Henting av innkommende SMS for sak feilet"); return new(); }
+    }
+
+    /// <summary>Uleste kundesvar (nyeste først) — til notifikasjonssenteret ved klokka.</summary>
+    public async Task<List<InnkommendeSms>> UlesteAsync(int antall = 50)
+    {
+        if (!IsConfigured) return _staging.Where(x => !x.Lest).OrderByDescending(x => x.MottattAt).Take(antall).ToList();
+        try
+        {
+            return (await _client.From<InnkommendeSms>()
+                .Where(x => x.Lest == false)
+                .Order(x => x.MottattAt, Constants.Ordering.Descending, Constants.NullPosition.Last)
+                .Limit(antall).Get()).Models;
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av uleste SMS feilet"); return new(); }
+    }
+
+    /// <summary>Saks-id-er som har ulest(e) kundesvar — for «!»-varsel på saksrader.</summary>
+    public async Task<HashSet<Guid>> UlesteKundekortIderAsync()
+        => (await UlesteAsync(500)).Where(x => x.KundekortId is not null).Select(x => x.KundekortId!.Value).ToHashSet();
+
+    /// <summary>Marker alle innkommende SMS på en sak som lest (når agenten åpner saken).</summary>
+    public async Task MarkerLestForKundeAsync(Guid kundekortId)
+    {
+        if (!IsConfigured)
+        {
+            foreach (var x in _staging.Where(x => x.KundekortId == kundekortId && !x.Lest)) x.Lest = true;
+            return;
+        }
+        try
+        {
+            await _client.From<InnkommendeSms>()
+                .Where(x => x.KundekortId == kundekortId && x.Lest == false)
+                .Set(x => x.Lest, true)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Marker lest feilet"); }
     }
 }

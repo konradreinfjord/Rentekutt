@@ -1,0 +1,84 @@
+@* Notifikasjonssenter for innkommende kundesvar (SMS) — vises ved klokka i topplinja.
+   Klikk åpner en nedtrekk med kundene som har svart; klikk på en kunde går rett til saken. *@
+@implements IDisposable
+@inject RentkuttCRM.Services.InnkommendeSmsService InnSms
+@inject RentkuttCRM.Services.KundekortService Svc
+@inject RentkuttCRM.Services.SessionState Session
+@inject NavigationManager Nav
+
+<div class="sms-varsel" @onclick="Veksle">
+    <span class="sms-varsel-ikon">💬</span>
+    @if (_uleste.Count > 0)
+    {
+        <span class="sms-varsel-teller">@(_uleste.Count > 9 ? "9+" : _uleste.Count.ToString())</span>
+    }
+    @if (_open)
+    {
+        <div class="sms-varsel-panel" @onclick:stopPropagation="true">
+            <div class="sms-varsel-tit">
+                Kundesvar @(_uleste.Count > 0 ? $"({_uleste.Count})" : "")
+                <button class="sms-varsel-ref" @onclick="Last" title="Oppdater">↻</button>
+            </div>
+            @if (_uleste.Count == 0)
+            {
+                <div class="sms-varsel-tom">Ingen nye svar.</div>
+            }
+            else
+            {
+                @foreach (var s in _uleste)
+                {
+                    <div class="sms-varsel-rad @(s.KundekortId is null ? "" : "klikk")" @onclick="() => Aapne(s)">
+                        <div class="sms-varsel-navn">@Navn(s)</div>
+                        <div class="sms-varsel-tekst">@(string.IsNullOrWhiteSpace(s.Tekst) ? "(tom melding)" : s.Tekst)</div>
+                        <div class="sms-varsel-tid">@s.MottattAt.TilOslo().ToString("dd.MM HH:mm")@(s.KundekortId is null ? " · ukjent nummer" : "")</div>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private List<RentkuttCRM.Services.InnkommendeSms> _uleste = new();
+    private Dictionary<Guid, string> _navn = new();
+    private System.Threading.Timer? _timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) return;
+        await Last();
+        // Oppdater i bakgrunnen hvert 30. sek så nye svar dukker opp uten at man laster siden på nytt.
+        _timer = new System.Threading.Timer(async _ => await InvokeAsync(async () =>
+        {
+            await Last();
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task Last()
+    {
+        if (!Session.IsLoggedIn) return;
+        _uleste = await InnSms.UlesteAsync(30);
+        var mangler = _uleste.Where(s => s.KundekortId is { } id && !_navn.ContainsKey(id)).Select(s => s.KundekortId!.Value).Distinct().ToList();
+        if (mangler.Count > 0)
+        {
+            var alle = await Svc.ListLettAsync();
+            foreach (var k in alle.Where(k => mangler.Contains(k.Id)))
+                _navn[k.Id] = string.IsNullOrWhiteSpace(k.FulltNavn) ? k.Mobilnummer ?? "Kunde" : k.FulltNavn;
+        }
+    }
+
+    private string Navn(RentkuttCRM.Services.InnkommendeSms s)
+        => s.KundekortId is { } id && _navn.TryGetValue(id, out var n) ? n : (s.FraNummer ?? "Ukjent");
+
+    private void Veksle() => _open = !_open;
+
+    private void Aapne(RentkuttCRM.Services.InnkommendeSms s)
+    {
+        _open = false;
+        if (s.KundekortId is { } id) Nav.NavigateTo($"/crm/ny-kunde?id={id}");
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

@@ -14,6 +14,7 @@ public class SmsUtsending : BaseModel
     [Column("mobil")] public string? Mobil { get; set; }
     [Column("ok")] public bool Ok { get; set; }
     [Column("detalj")] public string? Detalj { get; set; }
+    [Column("tekst")] public string? Tekst { get; set; }
     [Column("sendt_at", ignoreOnInsert: true)] public DateTime SendtAt { get; set; }
 }
 
@@ -60,9 +61,9 @@ public class SmsUtsendingService
         catch (Exception ex) { _log.LogWarning(ex, "Telling av SMS-utsending feilet"); return 0; }
     }
 
-    public async Task LoggAsync(Guid kundekortId, string type, string? mobil, bool ok, string? detalj)
+    public async Task LoggAsync(Guid kundekortId, string type, string? mobil, bool ok, string? detalj, string? tekst = null)
     {
-        var rad = new SmsUtsending { KundekortId = kundekortId, Type = type, Mobil = mobil, Ok = ok, Detalj = detalj };
+        var rad = new SmsUtsending { KundekortId = kundekortId, Type = type, Mobil = mobil, Ok = ok, Detalj = detalj, Tekst = tekst };
         if (!IsConfigured) { rad.Id = Guid.NewGuid(); rad.SendtAt = DateTime.UtcNow; _staging.Insert(0, rad); return; }
         try { await _client.From<SmsUtsending>().Insert(rad); }
         catch (Exception ex) { _log.LogError(ex, "Logging av SMS-utsending feilet"); }

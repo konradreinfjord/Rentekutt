@@ -54,7 +54,7 @@ public class InstabankInnvilgetEventService
                 {
                     var melding = SmsMalService.Flett(mal.Tekst, k, signeringslenke);
                     var (ok, detalj) = await _sms.SendRaaAsync(k.Mobilnummer, melding);
-                    await _utsending.LoggAsync(k.Id, type, k.Mobilnummer, ok, detalj);
+                    await _utsending.LoggAsync(k.Id, type, k.Mobilnummer, ok, detalj, melding);
                     if (!ok) _log.LogWarning("Innvilgelse-løp «{Navn}» SMS feilet for {Id}: {Detalj}", l.Navn, k.Id, detalj);
                 }
                 else
