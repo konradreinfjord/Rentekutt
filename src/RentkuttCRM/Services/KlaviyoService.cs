@@ -63,7 +63,8 @@ public class KlaviyoService
         try
         {
             using var c = Klient();
-            using var res = await c.GetAsync("api/metrics/?page%5Bsize%5D=1", ct);
+            // Metrics-endepunktet støtter ikke page[size] (gir 400). Hent bare lista.
+            using var res = await c.GetAsync("api/metrics/", ct);
             var body = await res.Content.ReadAsStringAsync(ct);
             return res.IsSuccessStatusCode
                 ? (true, (int)res.StatusCode, "Tilkobling OK — API-nøkkel er gyldig.")

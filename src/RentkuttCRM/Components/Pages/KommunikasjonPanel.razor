@@ -42,12 +42,8 @@ else
         @if (!string.IsNullOrEmpty(_klaviyoMsg)) { <p class="page-sub" style="margin:0 0 14px; font-size:12px">@_klaviyoMsg</p> }
 
         <h3 class="ww-h">Hendelser som er klargjort for Klaviyo</h3>
-        <div class="rule-builder" style="align-items:flex-end; margin-bottom:10px">
-            <div class="rb-field" style="max-width:280px"><label>Send testevent til e-post</label><input class="rb-input" @bind="_testEpost" placeholder="navn@eksempel.no" /></div>
-            <button class="btn-sm" @onclick="TestKlaviyo" disabled="@_klaviyoJobber">Test tilkobling</button>
-        </div>
         <table class="data-table" style="margin-bottom:16px">
-            <thead><tr><th>Hendelse (metric)</th><th>Utløses når</th><th>Egenskaper</th><th></th></tr></thead>
+            <thead><tr><th>Hendelse (metric)</th><th>Utløses når</th><th>Egenskaper</th></tr></thead>
             <tbody>
                 @foreach (var e in RentkuttCRM.Services.KlaviyoService.Eventtyper)
                 {
@@ -56,14 +52,25 @@ else
                         <td><strong>@e.Metric</strong></td>
                         <td class="brk-kilde">@e.Beskrivelse</td>
                         <td class="brk-kilde" style="font-size:11px">navn, laanetype, Lånebeløp, Bank@(erInnvilget ? ", Signeringslenke" : "")</td>
-                        <td style="white-space:nowrap"><button class="btn-sm" @onclick="() => TestEvent(e.Metric, erInnvilget)" disabled="@_klaviyoJobber">Test</button></td>
                     </tr>
                 }
             </tbody>
         </table>
+
+        <h3 class="ww-h">Test</h3>
+        <div class="rule-builder" style="align-items:flex-end; margin-bottom:6px">
+            <div class="rb-field" style="max-width:280px"><label>Hendelse</label>
+                <select class="rb-input" @bind="_testMetric">
+                    @foreach (var e in RentkuttCRM.Services.KlaviyoService.Eventtyper) { <option value="@e.Metric">@e.Metric</option> }
+                </select>
+            </div>
+            <div class="rb-field" style="max-width:260px"><label>Send til e-post</label><input class="rb-input" @bind="_testEpost" placeholder="navn@eksempel.no" /></div>
+            <button class="btn-primary rb-add" @onclick="FyrTestEvent" disabled="@_klaviyoJobber">@(_klaviyoJobber ? "Sender…" : "Fyr hendelse")</button>
+            <button class="btn-sm" @onclick="TestKlaviyo" disabled="@_klaviyoJobber">Test tilkobling</button>
+        </div>
         @if (!string.IsNullOrEmpty(_testMsg)) { <p class="page-sub" style="margin:0 0 14px; font-size:12px">@_testMsg</p> }
         <p class="page-sub" style="margin:0 0 14px; font-size:12px">
-            «Test» fyrer den faktiske navngitte hendelsen til e-posten over med eksempel-egenskaper. <strong>Signeringslenken følger kun med på «@RentkuttCRM.Services.InstabankInnvilgetEventService.StandardKlaviyoEvent»</strong>, med eksempelverdien <code>@EksempelSigneringslenke</code> (property <code>Signeringslenke</code>) — bruk den til å mappe lenken i Klaviyo-flyten. I produksjon er det den faktiske signeringslenken fra Instabank-API-et.
+            Velg hendelse, skriv e-post og trykk «Fyr hendelse» — den faktiske navngitte hendelsen sendes til Klaviyo med eksempel-egenskaper. <strong>Signeringslenken følger kun med på «@RentkuttCRM.Services.InstabankInnvilgetEventService.StandardKlaviyoEvent»</strong>, med eksempelverdien <code>@EksempelSigneringslenke</code> (property <code>Signeringslenke</code>) — bruk den til å mappe lenken i Klaviyo-flyten. I produksjon er det den faktiske signeringslenken fra Instabank-API-et.
         </p>
 
         <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
@@ -388,6 +395,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     private string _testEpost = "";
     private bool _klaviyoJobber;
     private string? _klaviyoMsg, _testMsg;
+    private string _testMetric = RentkuttCRM.Services.InstabankInnvilgetEventService.StandardKlaviyoEvent;
     private const string EksempelSigneringslenke = "https://netbank.instabank.no/esign/TEST-123456";
 
     // SMS-løp
@@ -507,6 +515,10 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _testMsg = (ok ? "✓ " : "✗ ") + detalj + (status > 0 ? $" (HTTP {status})" : "");
         _klaviyoJobber = false;
     }
+
+    // Fyr den valgte hendelsen fra nedtrekket.
+    private Task FyrTestEvent()
+        => TestEvent(_testMetric, _testMetric == RentkuttCRM.Services.InstabankInnvilgetEventService.StandardKlaviyoEvent);
 
     // Fyr én bestemt Klaviyo-hendelse — gjennom NØYAKTIG samme flyt som produksjon (profil-upsert +
     // navngitt event med samme egenskaper), så Klaviyo mottar en ekte hendelse med riktig metric-navn.
