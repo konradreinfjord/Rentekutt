@@ -507,24 +507,38 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _klaviyoJobber = false;
     }
 
-    // Fyr én bestemt Klaviyo-hendelse med eksempel-egenskaper. Signeringslenke tas kun med for
-    // innvilgelse-hendelsen (slik det er i produksjon — lenken kommer fra Instabank-API-et ved innvilgelse).
+    // Fyr én bestemt Klaviyo-hendelse — gjennom NØYAKTIG samme flyt som produksjon (profil-upsert +
+    // navngitt event med samme egenskaper), så Klaviyo mottar en ekte hendelse med riktig metric-navn.
+    // Signeringslenke tas kun med for innvilgelse-hendelsen (som i produksjon, der lenken kommer fra
+    // Instabank-API-et ved innvilgelse).
     private async Task TestEvent(string metric, bool medSigneringslenke)
     {
         if (string.IsNullOrWhiteSpace(_testEpost)) { _testMsg = "Skriv inn en e-post først."; return; }
+        if (!Klaviyo.ErKonfigurert) { _testMsg = "Klaviyo er ikke konfigurert (mangler API-nøkkel)."; return; }
         _klaviyoJobber = true; _testMsg = $"Sender «{metric}» …";
-        var egenskaper = new Dictionary<string, object?>
+
+        // Eksempelkunde — samme felt som et ekte kundekort fyrer med via KlaviyoService.Fyr.
+        var k = new RentkuttCRM.Services.Kundekort
         {
-            ["navn"] = "Test Testesen",
-            ["laanetype"] = "Forbrukslån",
-            ["Lånebeløp"] = 350000,
-            ["Bank"] = "Instabank",
-            ["kilde"] = "admin-test",
+            Id = Guid.NewGuid(),
+            Epost = _testEpost.Trim(),
+            FulltNavn = "Test Testesen",
+            Mobilnummer = "99999999",
+            Laanetype = "Forbrukslån",
+            OnsketLaanebelop = 350000,
+            DelegertBank = "Instabank",
         };
+
+        // 1) Profil-upsert (som i Fyr). 2) Navngitt event med laanetype (+ innvilget-egenskaper).
+        await Klaviyo.UpsertProfilAsync(k.Epost, k.Mobilnummer, k.FulltNavn, k.Id.ToString(),
+            new Dictionary<string, object?> { ["laanetype"] = k.Laanetype });
+        var egen = new Dictionary<string, object?> { ["laanetype"] = k.Laanetype };
         if (medSigneringslenke)
-            egenskaper["Signeringslenke"] = "https://netbank.instabank.no/esign/TEST-123456";
-        var (ok, status, detalj) = await Klaviyo.SendEventAsync(metric, _testEpost.Trim(), egenskaper);
-        _testMsg = (ok ? "✓ Sendt «" + metric + "»" : "✗ «" + metric + "»: " + detalj) + (status > 0 ? $" (HTTP {status})" : "");
+            foreach (var kv in RentkuttCRM.Services.SmsMalService.FletteEgenskaper(k, "https://netbank.instabank.no/esign/TEST-123456"))
+                egen[kv.Key] = kv.Value;
+
+        var (ok, status, detalj) = await Klaviyo.SendEventAsync(metric, k.Epost!, egen);
+        _testMsg = (ok ? $"✓ Hendelsen «{metric}» sendt til Klaviyo for {k.Epost}" : $"✗ «{metric}»: {detalj}") + (status > 0 ? $" (HTTP {status})" : "");
         _klaviyoJobber = false;
     }
 
