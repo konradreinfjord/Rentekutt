@@ -1,0 +1,133 @@
+@page "/crm/hendelser"
+@using System.Globalization
+@inject RentkuttCRM.Services.SessionState Session
+@inject RentkuttCRM.Services.SmsUtsendingService SmsUtsend
+@inject RentkuttCRM.Services.InnkommendeSmsService InnSms
+@inject RentkuttCRM.Services.KundekortService Svc
+@inject NavigationManager Nav
+
+<PageTitle>Hendelser — Rentekutt</PageTitle>
+
+<div class="wide-page"></div>
+
+<h1 class="page-title">Hendelser</h1>
+<p class="page-sub">All SMS-aktivitet — utgående meldinger og innkommende kundesvar, nyeste øverst.</p>
+
+@if (_loading)
+{
+    <p class="page-sub">Laster…</p>
+}
+else
+{
+    <div class="db-stats" style="margin-bottom:14px">
+        <div class="db-box"><span class="db-box-num">@_alle.Count</span><span class="db-box-lbl">Totalt</span></div>
+        <div class="db-box accent-blue"><span class="db-box-num">@_alle.Count(x => !x.Inn)</span><span class="db-box-lbl">Utgående</span></div>
+        <div class="db-box accent-green"><span class="db-box-num">@_alle.Count(x => x.Inn)</span><span class="db-box-lbl">Innkommende</span></div>
+        <div class="db-box accent-amber"><span class="db-box-num">@_uleste</span><span class="db-box-lbl">Ubesvarte svar</span></div>
+    </div>
+
+    <div class="db-toolbar" style="margin-bottom:12px">
+        <input class="db-search" @bind="_sok" @bind:event="oninput" placeholder="Søk — navn, nummer, tekst …" />
+        <select class="db-select" @bind="_retning">
+            <option value="">Alle retninger</option>
+            <option value="inn">Kun innkommende</option>
+            <option value="ut">Kun utgående</option>
+        </select>
+        <button class="db-select" style="cursor:pointer" @onclick="Last" title="Oppdater">↻ Oppdater</button>
+        <div class="db-spacer"></div>
+        <span class="db-count">@Filtrert.Count av @_alle.Count</span>
+    </div>
+
+    <div class="table-scroll">
+    <table class="data-table">
+        <thead>
+            <tr><th>Tidspunkt</th><th>Retning</th><th>Kunde</th><th>Nummer</th><th>Melding</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            @if (Filtrert.Count == 0) { <tr><td colspan="7" class="empty-row">Ingen hendelser.</td></tr> }
+            @foreach (var h in Filtrert)
+            {
+                <tr class="@(h.KundekortId is null ? "" : "row-link")" @onclick="() => Aapne(h)">
+                    <td style="white-space:nowrap">@h.Tid.TilOslo().ToString("dd.MM.yy HH:mm")</td>
+                    <td>
+                        @if (h.Inn) { <span class="hend-pil inn">◀ Inn</span> }
+                        else { <span class="hend-pil ut">Ut ▶</span> }
+                    </td>
+                    <td>@(string.IsNullOrWhiteSpace(h.Navn) ? "—" : h.Navn)</td>
+                    <td class="mono-cell">@(string.IsNullOrWhiteSpace(h.Nummer) ? "—" : h.Nummer)</td>
+                    <td class="brk-kilde">@(string.IsNullOrWhiteSpace(h.Tekst) ? "—" : h.Tekst)</td>
+                    <td>
+                        @if (h.Inn) { <span class="status @(h.Ulest ? "off" : "on")">@(h.Ulest ? "Ubesvart" : "Sett")</span> }
+                        else { <span class="status @(h.Ok ? "on" : "off")">@(h.Ok ? "Sendt" : "Feilet")</span><span class="hend-type">@h.Type</span> }
+                    </td>
+                    <td>@(h.KundekortId is null ? "" : "Åpne ›")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    </div>
+}
+
+<style>
+    .hend-pil { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+    .hend-pil.inn { background: #e8f6ed; color: #1b7f3b; }
+    .hend-pil.ut { background: #e7eefc; color: #2f6fed; }
+    .hend-type { margin-left: 6px; font-size: 11px; color: #94a3b8; }
+    tr.row-link { cursor: pointer; }
+    tr.row-link:hover { background: #f4f6f9; }
+</style>
+
+@code {
+    private bool _loading = true;
+    private string _sok = "", _retning = "";
+    private int _uleste;
+
+    private record Hendelse(DateTime Tid, bool Inn, Guid? KundekortId, string? Navn, string? Nummer, string? Tekst, bool Ok, bool Ulest, string? Type);
+    private List<Hendelse> _alle = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsLoggedIn) { Nav.NavigateTo("/login"); return; }
+        if (!Session.IsAdmin) { Nav.NavigateTo("/crm"); return; }
+        await Last();
+        _loading = false;
+    }
+
+    private async Task Last()
+    {
+        var utTask = SmsUtsend.SisteAsync(300);
+        var innTask = InnSms.SisteAsync(300);
+        var kortTask = Svc.ListLettAsync();
+        await Task.WhenAll(utTask, innTask, kortTask);
+        var navn = kortTask.Result.ToDictionary(k => k.Id, k => string.IsNullOrWhiteSpace(k.FulltNavn) ? (k.Mobilnummer ?? "") : k.FulltNavn);
+
+        var ut = utTask.Result.Select(s => new Hendelse(s.SendtAt, false, s.KundekortId,
+            navn.GetValueOrDefault(s.KundekortId), s.Mobil, s.Tekst, s.Ok, false, s.Type));
+        var inn = innTask.Result.Select(s => new Hendelse(s.MottattAt, true, s.KundekortId,
+            s.KundekortId is { } id ? navn.GetValueOrDefault(id) : null, s.FraNummer, s.Tekst, true, !s.Lest, null));
+
+        _alle = ut.Concat(inn).OrderByDescending(x => x.Tid).ToList();
+        _uleste = _alle.Count(x => x.Inn && x.Ulest);
+    }
+
+    private List<Hendelse> Filtrert
+    {
+        get
+        {
+            IEnumerable<Hendelse> q = _alle;
+            if (_retning == "inn") q = q.Where(x => x.Inn);
+            else if (_retning == "ut") q = q.Where(x => !x.Inn);
+            var s = _sok.Trim();
+            if (s.Length > 0)
+                q = q.Where(x => (x.Navn ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || (x.Nummer ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || (x.Tekst ?? "").Contains(s, StringComparison.OrdinalIgnoreCase));
+            return q.ToList();
+        }
+    }
+
+    private void Aapne(Hendelse h)
+    {
+        if (h.KundekortId is { } id) Nav.NavigateTo($"/crm/ny-kunde?id={id}");
+    }
+}

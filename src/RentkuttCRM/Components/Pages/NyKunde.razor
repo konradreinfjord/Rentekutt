@@ -332,8 +332,11 @@
 
 @* Send SMS til kunde *@
 <div class="form-card sms-card">
-    <h2>SMS med kunde@(_smsTraad.Any(t => t.Inn) ? " 💬" : "")</h2>
-    <p class="page-sub" style="margin:-4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+        <h2 style="margin:0">SMS med kunde@(_smsTraad.Any(t => t.Inn) ? " 💬" : "")</h2>
+        @if (_isEdit) { <button class="btn-sm" @onclick="OppdaterSmsTraad" disabled="@_smsOppdaterer" title="Hent nye kundesvar">@(_smsOppdaterer ? "Henter…" : "↻ Oppdater")</button> }
+    </div>
+    <p class="page-sub" style="margin:4px 0 12px">Til: <strong>@(string.IsNullOrWhiteSpace(_k.Mobilnummer) ? "— mangler mobilnummer —" : _k.Mobilnummer)</strong>. Bruk <code>{navn}</code> for kundens fornavn.</p>
 
     @if (_smsTraad.Count > 0)
     {
@@ -1371,6 +1374,19 @@
     private const int SmsMaksPerUke = 3;
     private List<SmsUtsending> _smsLogg = new();
     private List<RentkuttCRM.Services.InnkommendeSms> _innSms = new();
+    private bool _smsOppdaterer;
+
+    // Hent nye kundesvar (og egne sendinger) på denne saken og bygg tråden på nytt.
+    private async Task OppdaterSmsTraad()
+    {
+        if (!_isEdit) return;
+        _smsOppdaterer = true;
+        _smsLogg = await SmsUtsend.ForKundeAsync(_k.Id);
+        _innSms = await InnSms.ForKundeAsync(_k.Id);
+        ByggSmsTraad();
+        if (_innSms.Any(x => !x.Lest)) await InnSms.MarkerLestForKundeAsync(_k.Id);
+        _smsOppdaterer = false;
+    }
     private record SmsTraadLinje(DateTime Tid, bool Inn, string? Tekst, bool Ok, string? Etikett);
     private List<SmsTraadLinje> _smsTraad = new();
 
@@ -1380,7 +1396,8 @@
         var ut = _smsLogg.Select(s => new SmsTraadLinje(s.SendtAt, false,
             string.IsNullOrWhiteSpace(s.Tekst) ? null : s.Tekst, s.Ok, SmsTypeEtikett(s.Type)));
         var inn = _innSms.Select(s => new SmsTraadLinje(s.MottattAt, true, s.Tekst, true, null));
-        _smsTraad = ut.Concat(inn).OrderBy(x => x.Tid).ToList();
+        // Nyeste melding øverst.
+        _smsTraad = ut.Concat(inn).OrderByDescending(x => x.Tid).ToList();
     }
 
     private static string? SmsTypeEtikett(string? type) => type switch

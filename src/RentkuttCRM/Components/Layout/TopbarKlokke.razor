@@ -1,0 +1,24 @@
+@* Klokke i topplinja — egen komponent med egen timer, så sekund-oppdateringen KUN re-rendrer
+   klokka og ikke hele layouten/siden. (Tidligere re-rendret dette @Body hvert sekund, noe som
+   kunne nullstille felt man holdt på å skrive i — f.eks. mobilnummer på et nytt kundekort.) *@
+@implements IDisposable
+
+<div class="topbar-clock">
+    <span class="live-dot" title="Live"></span>
+    <span class="clock-time">@_now.ToString("HH:mm:ss")</span>
+    <span class="clock-date">@_now.ToString("dd.MM.yyyy")</span>
+</div>
+
+@code {
+    private DateTime _now = Tid.Naa;
+    private System.Threading.Timer? _timer;
+
+    protected override void OnInitialized()
+        => _timer = new System.Threading.Timer(async _ =>
+        {
+            _now = Tid.Naa;
+            await InvokeAsync(StateHasChanged);
+        }, null, 0, 1000);
+
+    public void Dispose() => _timer?.Dispose();
+}
