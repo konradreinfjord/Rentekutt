@@ -189,12 +189,12 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         <div class="rule-builder" style="align-items:flex-end; flex-wrap:wrap">
             <div class="rb-field" style="max-width:190px"><label>Navn</label><input class="rb-input" @bind="_fNavn" placeholder="F.eks. 1-times påminnelse" /></div>
             <div class="rb-field" style="max-width:215px"><label>Utløses av</label>
-                <select class="rb-input" @bind="_fVedInnvilgelse">
-                    <option value="false">Tid etter registrering</option>
-                    <option value="true">Ved innvilgelse i Instabank (umiddelbart)</option>
+                <select class="rb-input" @bind="_fTrigger">
+                    <option value="tid">Tid etter registrering</option>
+                    <option value="innvilgelse">Ved innvilgelse i Instabank (umiddelbart)</option>
                 </select>
             </div>
-            @if (!_fVedInnvilgelse)
+            @if (_fTrigger != "innvilgelse")
             {
                 <div class="rb-field" style="max-width:185px"><label>Når saken står i status</label>
                     <select class="rb-input" @bind="_fStatus">
@@ -208,7 +208,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
                     @foreach (var p in _partnere) { <option value="@p.Navn">@p.Navn</option> }
                 </select>
             </div>
-            @if (!_fVedInnvilgelse)
+            @if (_fTrigger != "innvilgelse")
             {
                 <div class="rb-field rb-op" style="max-width:120px"><label>Send etter (t)</label><input class="rb-input" type="number" min="1" @bind="_fSendEtter" /></div>
                 <div class="rb-field rb-op" style="max-width:130px"><label>Ikke eldre (t)</label><input class="rb-input" type="number" min="2" @bind="_fIkkeEldre" /></div>
@@ -392,7 +392,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     private List<RentkuttCRM.Services.SmsLoep> _loep = new();
     // Skjema (nytt/endre løp)
     private string? _fRedigerId;
-    private bool _fVedInnvilgelse;
+    private string _fTrigger = "tid";   // "tid" = tidsbasert, "innvilgelse" = Instabank-innvilgelse
     private string _fNavn = "", _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt, _fMal = "";
     private string _fKlaviyo = "", _fBank = "";
     private int _fSendEtter = 24, _fIkkeEldre = 72;
@@ -589,7 +589,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         {
             _loep.Add(new RentkuttCRM.Services.SmsLoep
             {
-                Navn = _fNavn, Aktiv = true, VedInnvilgelse = _fVedInnvilgelse, TriggerStatus = _fStatus,
+                Navn = _fNavn, Aktiv = true, VedInnvilgelse = _fTrigger == "innvilgelse", TriggerStatus = _fStatus,
                 SendEtterTimer = _fSendEtter, IkkeEldreTimer = _fIkkeEldre, MalNavn = _fMal,
                 Bank = string.IsNullOrWhiteSpace(_fBank) ? null : _fBank,
                 KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim(),
@@ -600,7 +600,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             var l = _loep.FirstOrDefault(x => x.Id == _fRedigerId);
             if (l is not null)
             {
-                l.Navn = _fNavn; l.VedInnvilgelse = _fVedInnvilgelse; l.TriggerStatus = _fStatus;
+                l.Navn = _fNavn; l.VedInnvilgelse = _fTrigger == "innvilgelse"; l.TriggerStatus = _fStatus;
                 l.SendEtterTimer = _fSendEtter; l.IkkeEldreTimer = _fIkkeEldre; l.MalNavn = _fMal;
                 l.Bank = string.IsNullOrWhiteSpace(_fBank) ? null : _fBank;
                 l.KlaviyoEvent = string.IsNullOrWhiteSpace(_fKlaviyo) ? null : _fKlaviyo.Trim();
@@ -613,7 +613,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
 
     private void StartRediger(RentkuttCRM.Services.SmsLoep l)
     {
-        _fRedigerId = l.Id; _fNavn = l.Navn; _fVedInnvilgelse = l.VedInnvilgelse; _fStatus = l.TriggerStatus;
+        _fRedigerId = l.Id; _fNavn = l.Navn; _fTrigger = l.VedInnvilgelse ? "innvilgelse" : "tid"; _fStatus = l.TriggerStatus;
         _fSendEtter = l.SendEtterTimer; _fIkkeEldre = l.IkkeEldreTimer; _fMal = l.MalNavn;
         _fKlaviyo = l.KlaviyoEvent ?? ""; _fBank = l.Bank ?? "";
         _smsMsg = null;
@@ -621,7 +621,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
 
     private void AvbrytRediger()
     {
-        _fRedigerId = null; _fNavn = ""; _fVedInnvilgelse = false; _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt;
+        _fRedigerId = null; _fNavn = ""; _fTrigger = "tid"; _fStatus = RentkuttCRM.Services.KundekortService.StatusPaabegynt;
         _fMal = ""; _fSendEtter = 24; _fIkkeEldre = 72; _fKlaviyo = ""; _fBank = "";
     }
 
