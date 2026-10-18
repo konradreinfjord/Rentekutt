@@ -63,7 +63,7 @@ else
         </table>
         @if (!string.IsNullOrEmpty(_testMsg)) { <p class="page-sub" style="margin:0 0 14px; font-size:12px">@_testMsg</p> }
         <p class="page-sub" style="margin:0 0 14px; font-size:12px">
-            «Test» fyrer hendelsen til e-posten over med eksempel-egenskaper. <strong>Signeringslenken følger kun med på «@RentkuttCRM.Services.InstabankInnvilgetEventService.StandardKlaviyoEvent»</strong> — i produksjon er det den faktiske signeringslenken fra Instabank-API-et.
+            «Test» fyrer den faktiske navngitte hendelsen til e-posten over med eksempel-egenskaper. <strong>Signeringslenken følger kun med på «@RentkuttCRM.Services.InstabankInnvilgetEventService.StandardKlaviyoEvent»</strong>, med eksempelverdien <code>@EksempelSigneringslenke</code> (property <code>Signeringslenke</code>) — bruk den til å mappe lenken i Klaviyo-flyten. I produksjon er det den faktiske signeringslenken fra Instabank-API-et.
         </p>
 
         <h3 class="ww-h">Konfigurasjon (Azure App Settings)</h3>
@@ -388,6 +388,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
     private string _testEpost = "";
     private bool _klaviyoJobber;
     private string? _klaviyoMsg, _testMsg;
+    private const string EksempelSigneringslenke = "https://netbank.instabank.no/esign/TEST-123456";
 
     // SMS-løp
     private bool _automatikkPaa;
@@ -518,6 +519,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
         _klaviyoJobber = true; _testMsg = $"Sender «{metric}» …";
 
         // Eksempelkunde — samme felt som et ekte kundekort fyrer med via KlaviyoService.Fyr.
+        // (Signeringslenke-eksempelverdien er EksempelSigneringslenke, vist i panelet.)
         var k = new RentkuttCRM.Services.Kundekort
         {
             Id = Guid.NewGuid(),
@@ -534,7 +536,7 @@ Klaviyo__Revision  = 2025-01-15        (valgfri)</pre>
             new Dictionary<string, object?> { ["laanetype"] = k.Laanetype });
         var egen = new Dictionary<string, object?> { ["laanetype"] = k.Laanetype };
         if (medSigneringslenke)
-            foreach (var kv in RentkuttCRM.Services.SmsMalService.FletteEgenskaper(k, "https://netbank.instabank.no/esign/TEST-123456"))
+            foreach (var kv in RentkuttCRM.Services.SmsMalService.FletteEgenskaper(k, EksempelSigneringslenke))
                 egen[kv.Key] = kv.Value;
 
         var (ok, status, detalj) = await Klaviyo.SendEventAsync(metric, k.Epost!, egen);
