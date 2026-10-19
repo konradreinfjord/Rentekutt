@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>ee03b278-06d1-466c-88de-c840f5fc8010</UserSecretsId>
+    <!-- XML-dok brukes av Swagger/partner-API-portalen for feltbeskrivelser. CS1591 dempes
+         (vi dokumenterer kun partner-DTO-ene, ikke hele kodebasen). -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

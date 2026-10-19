@@ -1224,6 +1224,51 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
             new[] { "Kredittscore og risikoklasse", "Betalingsanmerkninger og inkasso", "Bekreftet inntekt (skattedata)" },
             "Kredittsjekk__ClientId      = <klient-ID>\nKredittsjekk__ClientSecret  = <hemmelighet>\nKredittsjekk__ApiUrl        = <endepunkt>")
     }
+    else if (_apiTab == "Partner API")
+    {
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Partner API <span class="ww-tag">bankpartnere</span></h2>
+                <span class="status @(string.IsNullOrWhiteSpace(_partnerToken) ? "off" : "on")">@(string.IsNullOrWhiteSpace(_partnerToken) ? "Status-callback ikke aktivert" : "Aktiv")</span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 14px; max-width:820px">
+                Dokumentert API for bankpartnere som skal motta søknader fra oss. Del <strong>API-dok-lenken</strong> med banken
+                så de ser datamodellen og integrasjonen. Når de skal melde status tilbake, bruker de <strong>status-URL-en</strong> med Bearer-token.
+            </p>
+
+            <div class="kv-list" style="margin-bottom:14px">
+                <span class="k">API-dokumentasjon</span>
+                <span class="v"><code>@PartnerDocsUrl</code> <a href="@PartnerDocsUrl" target="_blank" class="btn-sm" style="text-decoration:none">Åpne</a></span>
+                <span class="k">Eksempel-søknad (JSON)</span>
+                <span class="v"><code>@PartnerEksempelUrl</code></span>
+                <span class="k">Status-callback (POST)</span>
+                <span class="v"><code>@PartnerStatusUrl</code></span>
+            </div>
+
+            <h3 class="ww-h">Bearer-token for status-callback</h3>
+            @if (string.IsNullOrWhiteSpace(_partnerToken))
+            {
+                <button class="btn-primary rb-add" @onclick="GenererPartnerToken">Opprett token</button>
+            }
+            else
+            {
+                <div class="kv-list">
+                    <span class="k">Token</span>
+                    <span class="v"><code>@_partnerToken</code> <button class="btn-sm" @onclick="GenererPartnerToken" title="Lag ny token (gammel slutter å virke)">Ny token</button></span>
+                    <span class="k">Autorisasjon</span>
+                    <span class="v"><code>Authorization: Bearer @_partnerToken</code></span>
+                </div>
+                <div style="margin-top:12px; padding:12px 14px; background:#f0f6ff; border:1px solid #cfe0fb; border-radius:10px">
+                    <strong style="font-size:13px">Del med banken:</strong>
+                    <ol style="margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.6">
+                        <li>API-dokumentasjon: <code>@PartnerDocsUrl</code></li>
+                        <li>Status meldes tilbake med POST til <code>@PartnerStatusUrl</code> og header <code>Authorization: Bearer @_partnerToken</code></li>
+                    </ol>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_partnerMsg)) { <p class="page-sub" style="margin:10px 0 0; font-size:12px">@_partnerMsg</p> }
+        </div>
+    }
 }
 else if (_active == "Arbeidsliste")
 {
@@ -2306,6 +2351,7 @@ else if (_active == "GDPR")
         _smsMaler = await SmsMaler.ListAsync();
         _autoEnabled = (await Settings.GetAsync(SmsMalService.KeyAutoEnabled)) == "true";
         _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
+        _partnerToken = await Settings.GetAsync(PartnerApiController.KeyToken) ?? "";
         _innToken = await Settings.GetAsync(SmsInnController.KeyToken) ?? "";
         _innSenderOverstyr = await Settings.GetAsync(LinkMobilityService.KeySenderOverstyr) ?? "";
         _innAktivSender = await LinkMobility.AktivSenderAsync();
@@ -2344,6 +2390,20 @@ else if (_active == "GDPR")
     {
         await Settings.SetAsync("login_ip_allowlist", _loginIpList);
         _loginIpMsg = "IP-whitelist lagret.";
+    }
+
+    // Partner API — token/URL-er å dele med bankpartnere.
+    private string _partnerToken = "";
+    private string? _partnerMsg;
+    private string PartnerDocsUrl => $"{Nav.BaseUri.TrimEnd('/')}/api-docs";
+    private string PartnerEksempelUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/soknad/eksempel";
+    private string PartnerStatusUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/status";
+
+    private async Task GenererPartnerToken()
+    {
+        _partnerToken = Guid.NewGuid().ToString("N");
+        await Settings.SetAsync(PartnerApiController.KeyToken, _partnerToken);
+        _partnerMsg = "Token opprettet. Del API-dok-lenken og status-URL + token med banken.";
     }
 
     // Innkommende SMS (toveis) — token/URL å dele med LinkMobility.
@@ -3101,7 +3161,7 @@ else if (_active == "GDPR")
     private readonly string[] _tabs = { "API og Data", "Generelt", "Partnere", "Brukere", "Dialer", "Arbeidsliste", "Kommunikasjon", "Duplikater", "Logikk-matrise", "Merknad lån", "Beregningsmodell", "GDPR", "Hendelseslogg" };
     private string _active = "API og Data";
 
-    private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
+    private readonly string[] _apiTabs = { "Oversikt", "Supabase", "Kanaler", "Tredjeparter", "Bank API", "LinkMobility", "Partner API", "Bank ID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
     private string _apiTab = "Oversikt";
     private readonly string[] _dataTjenester = { "BankID", "Gjeldsregisteret", "Eiendomsverdi", "Kredittsjekk" };
 

@@ -23,10 +23,40 @@ builder.Services.AddScoped(_ => new Client(
 // Response-komprimering (Brotli/Gzip) — mindre payload, raskere lasting.
 builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
 
-// Web API (controllers) + Swagger – beholdes som før.
+// Web API (controllers) + Swagger.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    // «partner»: kuratert, bank-rettet API-dokumentasjon (eksponeres også i produksjon).
+    c.SwaggerDoc("partner", new Microsoft.OpenApi.OpenApiInfo
+    {
+        Title = "Rentekutt Partner API",
+        Version = "v1",
+        Description = "API for bankpartnere som mottar søknader fra Rentekutt. Rentekutt sender en søknad "
+            + "til bankens mottaks-endepunkt, og banken melder status tilbake via POST /api/partner/status "
+            + "(Bearer-token). Alle beløp er i NOK.",
+        Contact = new Microsoft.OpenApi.OpenApiContact { Name = "Rentekutt / Metapro", Url = new Uri("https://portal.metapro.no") },
+    });
+    // «v1»: full intern API-flate — kun i Development.
+    if (builder.Environment.IsDevelopment())
+        c.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo { Title = "Rentekutt (internt API)", Version = "v1" });
+
+    // Partner-dokumentet inkluderer kun partner-gruppen; v1 (dev) tar med alt.
+    c.DocInclusionPredicate((docName, api) => docName == "partner" ? api.GroupName == "partner" : true);
+
+    // Bearer-token for status-callback (gir «Authorize»-knapp i Swagger UI).
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
+    {
+        Type = Microsoft.OpenApi.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        Description = "Token Rentekutt utleverer til partneren. Sendes som «Authorization: Bearer <token>».",
+    });
+
+    // Feltbeskrivelser fra XML-dok.
+    var xml = Path.Combine(AppContext.BaseDirectory, $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml");
+    if (File.Exists(xml)) c.IncludeXmlComments(xml, includeControllerXmlComments: true);
+});
 
 // Rate limiting for offentlige API-endepunkter (mot enumerering/misbruk).
 // «tredjepart» partisjoneres på token (ev. IP) — hindrer masseoppslag av lånestatus på mobilnr.
@@ -240,12 +270,17 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-// Swagger KUN i Development — eksponer ikke API-flaten i produksjon.
-if (app.Environment.IsDevelopment())
+// Swagger: i prod eksponeres KUN det kuraterte partner-dokumentet (på /api-docs), så bankpartnere
+// kan utforske integrasjonen. Den fulle interne API-flaten vises kun i Development.
+app.UseSwagger();   // serverer /swagger/{dokument}/swagger.json for definerte dokumenter
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    c.SwaggerEndpoint("/swagger/partner/swagger.json", "Rentekutt Partner API");
+    if (app.Environment.IsDevelopment())
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Rentekutt (internt API)");
+    c.RoutePrefix = "api-docs";      // portal.metapro.no/api-docs
+    c.DocumentTitle = "Rentekutt Partner API";
+});
 
 // Security-headere på ALLE svar (før static files/endepunkter).
 app.Use(async (ctx, next) =>
@@ -255,6 +290,9 @@ app.Use(async (ctx, next) =>
     h["X-Frame-Options"]        = "DENY";
     h["Referrer-Policy"]        = "no-referrer";
     h["Permissions-Policy"]     = "camera=(), microphone=(), geolocation=(), payment=()";
+    // Swagger UI (partner-API-dok på /api-docs) har et inline init-skript → trenger en løsere
+    // script-policy. Gjelder KUN dokumentasjonssidene; resten av appen beholder den strenge CSP-en.
+    var erApiDok = ctx.Request.Path.StartsWithSegments("/api-docs") || ctx.Request.Path.StartsWithSegments("/swagger");
     // Streng CSP: appen har ingen inline-skript (blazor.web.js + app.css er eksterne).
     // Inline style-attributter brukes mange steder → 'unsafe-inline' kun for style.
     // SignalR-circuit trenger ws:/wss:.
@@ -267,7 +305,7 @@ app.Use(async (ctx, next) =>
         "img-src 'self' data:; " +
         "font-src 'self'; " +
         "style-src 'self' 'unsafe-inline'; " +
-        "script-src 'self'; " +
+        (erApiDok ? "script-src 'self' 'unsafe-inline'; " : "script-src 'self'; ") +
         "connect-src 'self' ws: wss:;";
     await next();
 });
