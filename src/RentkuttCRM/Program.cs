@@ -37,21 +37,30 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description =
             "Dette API-et lar en **bankpartner** ta imot lånesøknader fra Rentekutt og melde status tilbake. "
-            + "Rentekutt er en låneformidler: vi sender søknader til banken, banken gir tilbud/svar. Alle beløp er i hele norske kroner.\n\n"
-            + "## Slik fungerer det\n"
-            + "1. **Logg inn** — `POST /auth/token` med brukernavn og passord (fra Rentekutt). Du får en token som varer 1 time.\n"
-            + "2. **Se datamodellen** — `GET /soknad/eksempel` viser nøyaktig hvordan en søknad ser ut.\n"
-            + "3. **Motta søknader** — Rentekutt sender søknader (samme format som eksempelet) til ditt mottaks-endepunkt (URL avtales per integrasjon).\n"
-            + "4. **Meld status tilbake** — `POST /status` hver gang søknaden endrer status (tilbud, innvilget, utbetalt, avslått …).\n\n"
-            + "## Innlogging\n"
-            + "Send tokenet som header: `Authorization: Bearer <token>`. Trykk **Authorize** øverst for å teste kallene her i portalen.\n\n"
-            + "## Når Rentekutt sender søknader til deg\n"
-            + "- Du svarer `200 OK` eller `202 Accepted` (gjerne med din egen referanse).\n"
-            + "- Timeout 30 sek; vi prøver inntil 3 ganger. Samme `referanse` kan komme flere ganger — **oppdater, ikke opprett på nytt** (idempotens).\n\n"
-            + "## Når du melder status tilbake\n"
-            + "- Hver melding har en unik `hendelseId` (idempotens — samme melding registreres kun én gang).\n"
-            + "- Status **«Tilbud»** skal inneholde `tilbud` (rente, gebyr, månedsbeløp, totalkostnad, gyldig til) — grunnlaget vi sammenligner på.\n"
-            + "- Status **«Utbetalt»** skal ha `utbetaltBelop` + `utbetaltDato`.\n\n"
+            + "Rentekutt er en låneformidler: vi sender søknaden til banken, og banken gir tilbud eller svar. "
+            + "Alle beløp er i hele norske kroner (heltall), og alle tidspunkt er ISO-8601 i UTC.\n\n"
+            + "## Slik fungerer det\n\n"
+            + "1. **Logg inn** — `POST /api/partner/v1/auth/token` med `{ \"username\": \"…\", \"password\": \"…\" }` (utlevert av Rentekutt). Du får en `access_token` som varer 1 time.\n\n"
+            + "2. **Se datamodellen** — `GET /api/partner/v1/soknad/eksempel` returnerer en ferdig utfylt eksempel-søknad du kan bygge mot.\n\n"
+            + "3. **Hent dine søknader** — `GET /api/partner/v1/soknader` gir søknadene som er sendt til DIN bank. "
+            + "(Rentekutt kan også pushe søknader i samme format til et mottaks-endepunkt hos deg — avtales per integrasjon.)\n\n"
+            + "4. **Meld status tilbake** — `POST /api/partner/v1/status` hver gang søknaden endrer status.\n\n"
+            + "## Innlogging og tilgang\n\n"
+            + "Hver bank har sin egen pålogging. Tokenet er knyttet til banken din, og **du ser kun søknader som er sendt til deg** — "
+            + "du kan heller ikke melde status på en annen banks søknader.\n\n"
+            + "Send tokenet som header på alle kall: `Authorization: Bearer <access_token>`. "
+            + "Trykk **Authorize** øverst til høyre for å lime inn tokenet og teste kallene direkte her i portalen.\n\n"
+            + "## Når Rentekutt sender en søknad til deg\n\n"
+            + "- Svar `200 OK` eller `202 Accepted` — gjerne med din egen saks-referanse i svaret.\n\n"
+            + "- Timeout er 30 sekunder. Får vi ikke svar, prøver vi på nytt inntil 3 ganger med økende pause.\n\n"
+            + "- Samme `referanse` (en UUID) kan derfor komme flere ganger — **oppdater den eksisterende søknaden, ikke opprett en ny** (idempotens).\n\n"
+            + "## Når du melder status tilbake\n\n"
+            + "Gyldige statusverdier: `Mottatt`, `UnderBehandling`, `TrengerDokumentasjon`, `Tilbud`, `Innvilget`, `Utbetalt`, `Avslatt`, `Kansellert`.\n\n"
+            + "- Hver melding må ha en unik `hendelseId` (UUID) — samme hendelse registreres kun én gang.\n\n"
+            + "- `referanse` må matche en kjent søknad; ukjent referanse gir `404`.\n\n"
+            + "- Status `Tilbud` skal inneholde objektet `tilbud` (nominell + effektiv rente, etablerings- og termingebyr, månedsbeløp, totalkostnad, gyldig til) — dette er grunnlaget vi sammenligner tilbud på.\n\n"
+            + "- Status `Utbetalt` skal ha `utbetaltBelop` + `utbetaltDato`.\n\n"
+            + "---\n\n"
             + "Spørsmål om integrasjonen? Kontakt Rentekutt.",
         Contact = new Microsoft.OpenApi.OpenApiContact { Name = "Rentekutt / Metapro", Url = new Uri("https://portal.metapro.no") },
     });
@@ -259,6 +268,9 @@ builder.Services.AddScoped<InstabankInnvilgetEventService>();
 builder.Services.AddScoped<InnkommendeSmsService>();
 builder.Services.AddSingleton<SmsInnDebugLogg>();
 
+// Partner API — per-bank pålogging (hver bank ser kun sine egne søknader).
+builder.Services.AddScoped<PartnerKredsService>();
+
 // Beregningsmodell (finansieringsevne/likviditet).
 builder.Services.AddScoped<BeregningService>();
 
@@ -295,10 +307,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-// Partner-API-dokumentasjonen (/swagger) er beskyttet med Basic Auth — banken logger inn før de
-// ser API-et. Brukernavn/passord settes i Admin → API og Data → Partner API (eller Azure-config
-// PartnerDocs__User/Pass som fallback). Ikke konfigurert: åpent i Development, STENGT i produksjon.
-static bool BasicAuthOk(HttpRequest req, string bruker, string passord)
+// Partner-API-dokumentasjonen (/swagger) åpnes med én felles, symbolsk tilgangskode (ikke bankens
+// brukernavn/passord — de brukes kun til selve API-innloggingen). Koden settes i Admin → Partner API.
+// Nettleserens Basic-dialog godtar koden i enten brukernavn- eller passord-feltet.
+// Ikke satt: åpent i Development, STENGT i produksjon (fail-closed).
+static bool BasicKodeOk(HttpRequest req, string kode)
 {
     var auth = req.Headers.Authorization.ToString();
     if (!auth.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)) return false;
@@ -306,29 +319,25 @@ static bool BasicAuthOk(HttpRequest req, string bruker, string passord)
     try { dekodet = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(auth["Basic ".Length..].Trim())); }
     catch { return false; }
     var i = dekodet.IndexOf(':');
-    if (i < 0) return false;
-    var u = System.Text.Encoding.UTF8.GetBytes(dekodet[..i]);
-    var p = System.Text.Encoding.UTF8.GetBytes(dekodet[(i + 1)..]);
-    return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(u, System.Text.Encoding.UTF8.GetBytes(bruker))
-        && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(p, System.Text.Encoding.UTF8.GetBytes(passord));
+    var bruker = i < 0 ? dekodet : dekodet[..i];
+    var passord = i < 0 ? "" : dekodet[(i + 1)..];
+    return PartnerKredsService.KonstantLik(kode, bruker) || PartnerKredsService.KonstantLik(kode, passord);
 }
 app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
     branch.Use(async (ctx, next) =>
     {
-        var settings = ctx.RequestServices.GetRequiredService<SettingsService>();
-        var cfg = ctx.RequestServices.GetRequiredService<IConfiguration>();
-        var bruker = await settings.GetAsync(RentkuttCRM.Controllers.PartnerApiController.KeyUser) ?? cfg["PartnerDocs:User"];
-        var passord = await settings.GetAsync(RentkuttCRM.Controllers.PartnerApiController.KeyPass) ?? cfg["PartnerDocs:Pass"];
-        if (string.IsNullOrWhiteSpace(bruker) || string.IsNullOrWhiteSpace(passord))
+        var kreds = ctx.RequestServices.GetRequiredService<PartnerKredsService>();
+        var kode = await kreds.DocsKodeAsync();
+        if (string.IsNullOrWhiteSpace(kode))
         {
             if (app.Environment.IsDevelopment()) { await next(); return; }   // åpent lokalt
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await ctx.Response.WriteAsync("Partner-API-dokumentasjonen er ikke aktivert.");
             return;
         }
-        if (!BasicAuthOk(ctx.Request, bruker, passord))
+        if (!BasicKodeOk(ctx.Request, kode!))
         {
-            ctx.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Rentekutt Partner API\"";
+            ctx.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Rentekutt Partner API — oppgi tilgangskode\"";
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }

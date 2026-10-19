@@ -9,6 +9,7 @@
 @inject RentkuttCRM.Services.SettingsService Settings
 @inject RentkuttCRM.Services.EventService Events
 @inject RentkuttCRM.Services.PartnerService Partners
+@inject RentkuttCRM.Services.PartnerKredsService PartnerKreds
 @inject RentkuttCRM.Services.PartnerProduktService Produkter
 @inject RentkuttCRM.Services.SmsMalService SmsMaler
 @inject RentkuttCRM.Services.InstabankService Instabank
@@ -1229,12 +1230,12 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
         <div class="section">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
                 <h2 style="margin:0">Partner API <span class="ww-tag">bankpartnere</span></h2>
-                <span class="status @(_partnerAktiv ? "on" : "off")">@(_partnerAktiv ? "Aktiv" : "Pålogging ikke satt")</span>
+                <span class="status @(_kredsListe.Count > 0 ? "on" : "off")">@(_kredsListe.Count > 0 ? $"{_kredsListe.Count} pålogging(er)" : "Ingen pålogging")</span>
             </div>
-            <p class="page-sub" style="margin:8px 0 14px; max-width:860px">
-                Dokumentert, innlogget API for bankpartnere som skal motta søknader fra oss. Banken logger inn med
-                <strong>brukernavn + passord</strong> (settes under) og får en <strong>tidsbestemt token</strong> (1 time),
-                som brukes på API-kallene. Samme pålogging beskytter også API-dokumentasjonen på <code>/swagger</code>.
+            <p class="page-sub" style="margin:8px 0 14px; max-width:880px">
+                Dokumentert, innlogget API for bankpartnere. Hver bank får <strong>egen pålogging</strong> knyttet til seg, logger inn
+                og får en <strong>tidsbestemt token</strong> (1 time). API-et er <strong>begrenset til bankens egne søknader</strong> —
+                banken ser kun saker som er sendt/delegert til seg. Samme pålogging gir tilgang til <code>/swagger</code>.
             </p>
 
             <div class="kv-list" style="margin-bottom:14px">
@@ -1242,34 +1243,70 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
                 <span class="v"><code>@PartnerDocsUrl</code> <a href="@PartnerDocsUrl" target="_blank" class="btn-sm" style="text-decoration:none">Åpne</a></span>
                 <span class="k">Innlogging (POST)</span>
                 <span class="v"><code>@PartnerTokenUrl</code></span>
-                <span class="k">Eksempel-søknad (GET)</span>
-                <span class="v"><code>@PartnerEksempelUrl</code></span>
+                <span class="k">Mine søknader (GET)</span>
+                <span class="v"><code>@PartnerSoknaderUrl</code></span>
                 <span class="k">Status-callback (POST)</span>
                 <span class="v"><code>@PartnerStatusUrl</code></span>
             </div>
 
-            <h3 class="ww-h">Pålogging (brukernavn + passord)</h3>
+            <h3 class="ww-h">Tilgangskode til dokumentasjonen (/swagger)</h3>
             <p class="page-sub" style="margin:-2px 0 8px; font-size:12px">
-                @(_partnerAktiv ? "✓ Pålogging aktiv." : "⚠️ Ikke satt — API-et og /swagger er STENGT i produksjon til dette er fylt ut.")
+                Én felles, enkel kode for å åpne API-dokumentasjonen. Banken oppgir koden i nettleserens pålogging
+                (i enten brukernavn- eller passord-feltet). Dette er <strong>ikke</strong> bankens API-pålogging.
             </p>
-            <div class="rule-builder" style="align-items:flex-end; margin-bottom:6px">
-                <div class="rb-field" style="max-width:200px"><label>Brukernavn</label><input class="rb-input" @bind="_partnerUser" placeholder="f.eks. banknavn" /></div>
-                <div class="rb-field" style="max-width:240px"><label>Passord</label><input class="rb-input" type="text" @bind="_partnerPass" placeholder="et sterkt passord" /></div>
-                <button class="btn-primary rb-add" @onclick="LagrePartnerKreds">Lagre pålogging</button>
+            <div class="rule-builder" style="align-items:flex-end; margin-bottom:12px">
+                <div class="rb-field" style="max-width:240px"><label>Tilgangskode</label><input class="rb-input" @bind="_docsKode" placeholder="f.eks. rentekutt-2026" /></div>
+                <button class="btn-primary rb-add" @onclick="LagreDocsKode">Lagre kode</button>
+                <button class="btn-sm" @onclick="GenererDocsKode">Generer</button>
             </div>
 
-            @if (_partnerAktiv)
+            <h3 class="ww-h">Bank-pålogginger</h3>
+            @if (_kredsListe.Count == 0)
             {
-                <div style="margin-top:12px; padding:12px 14px; background:#f0f6ff; border:1px solid #cfe0fb; border-radius:10px">
-                    <strong style="font-size:13px">Del dette med banken:</strong>
-                    <ol style="margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.6">
-                        <li>API-dokumentasjon: <code>@PartnerDocsUrl</code> (logg inn med brukernavn/passord)</li>
-                        <li>Logg inn: <code>POST @PartnerTokenUrl</code> med <code>{ "username": "…", "password": "…" }</code> → token (1 time)</li>
-                        <li>Status meldes tilbake: <code>POST @PartnerStatusUrl</code> med <code>Authorization: Bearer &lt;token&gt;</code></li>
-                    </ol>
+                <p class="page-sub" style="margin:-2px 0 8px; font-size:12px; color:var(--danger,#b42318)">⚠️ Ingen bank-pålogginger — ingen bank kan logge inn på API-et til minst én er opprettet.</p>
+            }
+            else
+            {
+                <div class="table-scroll">
+                <table class="data-table" style="margin-bottom:12px">
+                    <thead><tr><th>Bank</th><th>Brukernavn</th><th>Passord</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var kr in _kredsListe)
+                        {
+                            <tr>
+                                <td><strong>@kr.Bank</strong></td>
+                                <td class="mono-cell">@kr.Username</td>
+                                <td class="mono-cell">@kr.Password</td>
+                                <td><button class="btn-sm" @onclick="() => FjernKreds(kr)">Fjern</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
                 </div>
             }
+
+            <div class="rule-builder" style="align-items:flex-end; margin-bottom:6px">
+                <div class="rb-field" style="max-width:220px"><label>Bank</label>
+                    <select class="rb-input" @bind="_nyBank">
+                        <option value="">— velg bank —</option>
+                        @foreach (var p in _partnere) { <option value="@p.Navn">@p.Navn</option> }
+                    </select>
+                </div>
+                <div class="rb-field" style="max-width:180px"><label>Brukernavn</label><input class="rb-input" @bind="_nyUser" placeholder="f.eks. banknavn" /></div>
+                <div class="rb-field" style="max-width:200px"><label>Passord</label><input class="rb-input" type="text" @bind="_nyPass" placeholder="sterkt passord" /></div>
+                <button class="btn-primary rb-add" @onclick="LeggTilKreds">Legg til pålogging</button>
+            </div>
             @if (!string.IsNullOrEmpty(_partnerMsg)) { <p class="page-sub" style="margin:10px 0 0; font-size:12px">@_partnerMsg</p> }
+
+            <div style="margin-top:14px; padding:12px 14px; background:#f0f6ff; border:1px solid #cfe0fb; border-radius:10px">
+                <strong style="font-size:13px">Del dette med hver bank (deres egen bruker/passord):</strong>
+                <ol style="margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.6">
+                    <li>API-dokumentasjon: <code>@PartnerDocsUrl</code> — åpnes med tilgangskoden@(string.IsNullOrWhiteSpace(_docsKode) ? "" : (MarkupString)$" <code>{_docsKode}</code>")</li>
+                    <li>Logg inn: <code>POST @PartnerTokenUrl</code> med <code>{ "username": "…", "password": "…" }</code> → token (1 time)</li>
+                    <li>Hent egne søknader: <code>GET @PartnerSoknaderUrl</code> med <code>Authorization: Bearer &lt;token&gt;</code></li>
+                    <li>Meld status: <code>POST @PartnerStatusUrl</code> med samme token</li>
+                </ol>
+            </div>
         </div>
     }
 }
@@ -2354,9 +2391,9 @@ else if (_active == "GDPR")
         _smsMaler = await SmsMaler.ListAsync();
         _autoEnabled = (await Settings.GetAsync(SmsMalService.KeyAutoEnabled)) == "true";
         _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
-        _partnerUser = await Settings.GetAsync(PartnerApiController.KeyUser) ?? "";
-        _partnerPass = await Settings.GetAsync(PartnerApiController.KeyPass) ?? "";
-        _partnerAktiv = !string.IsNullOrWhiteSpace(_partnerUser) && !string.IsNullOrWhiteSpace(_partnerPass);
+        _kredsListe = await PartnerKreds.HentAsync();
+        _docsKode = await PartnerKreds.DocsKodeAsync() ?? "";
+        _partnere = await Partners.ListAsync();
         _innToken = await Settings.GetAsync(SmsInnController.KeyToken) ?? "";
         _innSenderOverstyr = await Settings.GetAsync(LinkMobilityService.KeySenderOverstyr) ?? "";
         _innAktivSender = await LinkMobility.AktivSenderAsync();
@@ -2397,24 +2434,50 @@ else if (_active == "GDPR")
         _loginIpMsg = "IP-whitelist lagret.";
     }
 
-    // Partner API — pålogging + URL-er å dele med bankpartnere.
-    private string _partnerUser = "", _partnerPass = "";
-    private bool _partnerAktiv;
+    // Partner API — per-bank pålogginger + URL-er å dele med bankpartnere.
+    private List<RentkuttCRM.Services.Partner> _partnere = new();
+    private List<RentkuttCRM.Services.PartnerKreds> _kredsListe = new();
+    private string _nyBank = "", _nyUser = "", _nyPass = "";
+    private string _docsKode = "";
     private string? _partnerMsg;
+
+    private async Task LagreDocsKode()
+    {
+        await PartnerKreds.SettDocsKodeAsync(_docsKode);
+        _partnerMsg = string.IsNullOrWhiteSpace(_docsKode)
+            ? "Tilgangskoden er fjernet — /swagger er stengt i produksjon."
+            : "Tilgangskode lagret.";
+    }
+
+    private async Task GenererDocsKode()
+    {
+        _docsKode = "rk-" + Guid.NewGuid().ToString("N")[..10];
+        await PartnerKreds.SettDocsKodeAsync(_docsKode);
+        _partnerMsg = "Ny tilgangskode generert og lagret.";
+    }
     private string PartnerDocsUrl => $"{Nav.BaseUri.TrimEnd('/')}/swagger";
     private string PartnerTokenUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/auth/token";
-    private string PartnerEksempelUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/soknad/eksempel";
+    private string PartnerSoknaderUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/soknader";
     private string PartnerStatusUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/status";
 
-    private async Task LagrePartnerKreds()
+    private async Task LeggTilKreds()
     {
-        await Settings.SetAsync(PartnerApiController.KeyUser, (_partnerUser ?? "").Trim());
-        await Settings.SetAsync(PartnerApiController.KeyPass, _partnerPass ?? "");
-        // Sørg for at det finnes en signeringsnøkkel for tokenene.
-        if (string.IsNullOrWhiteSpace(await Settings.GetAsync(PartnerApiController.KeySecret)))
-            await Settings.SetAsync(PartnerApiController.KeySecret, Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"));
-        _partnerAktiv = !string.IsNullOrWhiteSpace(_partnerUser) && !string.IsNullOrWhiteSpace(_partnerPass);
-        _partnerMsg = _partnerAktiv ? "Pålogging lagret. Del detaljene med banken." : "Brukernavn og passord må begge fylles ut.";
+        _nyBank = (_nyBank ?? "").Trim(); _nyUser = (_nyUser ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(_nyBank)) { _partnerMsg = "Velg en bank."; return; }
+        if (string.IsNullOrWhiteSpace(_nyUser) || string.IsNullOrWhiteSpace(_nyPass)) { _partnerMsg = "Fyll inn brukernavn og passord."; return; }
+        if (_kredsListe.Any(k => string.Equals(k.Username, _nyUser, StringComparison.OrdinalIgnoreCase))) { _partnerMsg = "Brukernavnet er allerede i bruk."; return; }
+        _kredsListe.Add(new RentkuttCRM.Services.PartnerKreds(_nyBank, _nyUser, _nyPass));
+        await PartnerKreds.LagreAsync(_kredsListe);
+        await PartnerKreds.SecretAsync();   // sørg for at token-nøkkel finnes
+        _nyBank = _nyUser = _nyPass = "";
+        _partnerMsg = "Pålogging lagt til. Del brukernavn/passord med banken.";
+    }
+
+    private async Task FjernKreds(RentkuttCRM.Services.PartnerKreds kr)
+    {
+        _kredsListe.Remove(kr);
+        await PartnerKreds.LagreAsync(_kredsListe);
+        _partnerMsg = "Pålogging fjernet.";
     }
 
     // Innkommende SMS (toveis) — token/URL å dele med LinkMobility.

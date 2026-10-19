@@ -44,7 +44,7 @@ public class TokenSvar
 
 /// <summary>
 /// En låne-/refinansieringssøknad som Rentekutt sender til bankpartneren. Alle beløp er i hele
-/// norske kroner (heltall). Felt uten verdi utelates. Bruk <see cref="Referanse"/> i statusmeldingene.
+/// norske kroner (heltall). Felt uten verdi utelates. Bruk feltet «referanse» i statusmeldingene.
 /// </summary>
 public class SoknadDto
 {
@@ -166,14 +166,14 @@ public class FirmaDto
 
 /// <summary>
 /// Status-tilbakemelding fra banken på en søknad. Sendes som POST med Bearer-token.
-/// Hver melding har en unik <see cref="HendelseId"/> (idempotens — samme melding registreres kun én gang).
+/// Hver melding har en unik «hendelseId» (idempotens — samme melding registreres kun én gang).
 /// </summary>
 public class StatusCallbackDto
 {
     /// <summary>Unik id for denne hendelsen (idempotensnøkkel). Samme id ignoreres ved gjentakelse.</summary>
     [Required] public string HendelseId { get; set; } = "";
 
-    /// <summary>Referansen fra søknaden (<see cref="SoknadDto.Referanse"/>).</summary>
+    /// <summary>Referansen fra søknaden (feltet «referanse» i søknaden).</summary>
     [Required] public string Referanse { get; set; } = "";
 
     /// <summary>Ny status for søknaden.</summary>
