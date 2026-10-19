@@ -337,7 +337,7 @@ app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
         }
         if (!BasicKodeOk(ctx.Request, kode!))
         {
-            ctx.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Rentekutt Partner API — oppgi tilgangskode\"";
+            ctx.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Rentekutt Partner API - oppgi tilgangskode\"";
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
