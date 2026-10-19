@@ -1229,40 +1229,43 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
         <div class="section">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
                 <h2 style="margin:0">Partner API <span class="ww-tag">bankpartnere</span></h2>
-                <span class="status @(string.IsNullOrWhiteSpace(_partnerToken) ? "off" : "on")">@(string.IsNullOrWhiteSpace(_partnerToken) ? "Status-callback ikke aktivert" : "Aktiv")</span>
+                <span class="status @(_partnerAktiv ? "on" : "off")">@(_partnerAktiv ? "Aktiv" : "Pålogging ikke satt")</span>
             </div>
-            <p class="page-sub" style="margin:8px 0 14px; max-width:820px">
-                Dokumentert API for bankpartnere som skal motta søknader fra oss. Del <strong>API-dok-lenken</strong> med banken
-                så de ser datamodellen og integrasjonen. Når de skal melde status tilbake, bruker de <strong>status-URL-en</strong> med Bearer-token.
+            <p class="page-sub" style="margin:8px 0 14px; max-width:860px">
+                Dokumentert, innlogget API for bankpartnere som skal motta søknader fra oss. Banken logger inn med
+                <strong>brukernavn + passord</strong> (settes under) og får en <strong>tidsbestemt token</strong> (1 time),
+                som brukes på API-kallene. Samme pålogging beskytter også API-dokumentasjonen på <code>/swagger</code>.
             </p>
 
             <div class="kv-list" style="margin-bottom:14px">
                 <span class="k">API-dokumentasjon</span>
                 <span class="v"><code>@PartnerDocsUrl</code> <a href="@PartnerDocsUrl" target="_blank" class="btn-sm" style="text-decoration:none">Åpne</a></span>
-                <span class="k">Eksempel-søknad (JSON)</span>
+                <span class="k">Innlogging (POST)</span>
+                <span class="v"><code>@PartnerTokenUrl</code></span>
+                <span class="k">Eksempel-søknad (GET)</span>
                 <span class="v"><code>@PartnerEksempelUrl</code></span>
                 <span class="k">Status-callback (POST)</span>
                 <span class="v"><code>@PartnerStatusUrl</code></span>
             </div>
 
-            <h3 class="ww-h">Bearer-token for status-callback</h3>
-            @if (string.IsNullOrWhiteSpace(_partnerToken))
+            <h3 class="ww-h">Pålogging (brukernavn + passord)</h3>
+            <p class="page-sub" style="margin:-2px 0 8px; font-size:12px">
+                @(_partnerAktiv ? "✓ Pålogging aktiv." : "⚠️ Ikke satt — API-et og /swagger er STENGT i produksjon til dette er fylt ut.")
+            </p>
+            <div class="rule-builder" style="align-items:flex-end; margin-bottom:6px">
+                <div class="rb-field" style="max-width:200px"><label>Brukernavn</label><input class="rb-input" @bind="_partnerUser" placeholder="f.eks. banknavn" /></div>
+                <div class="rb-field" style="max-width:240px"><label>Passord</label><input class="rb-input" type="text" @bind="_partnerPass" placeholder="et sterkt passord" /></div>
+                <button class="btn-primary rb-add" @onclick="LagrePartnerKreds">Lagre pålogging</button>
+            </div>
+
+            @if (_partnerAktiv)
             {
-                <button class="btn-primary rb-add" @onclick="GenererPartnerToken">Opprett token</button>
-            }
-            else
-            {
-                <div class="kv-list">
-                    <span class="k">Token</span>
-                    <span class="v"><code>@_partnerToken</code> <button class="btn-sm" @onclick="GenererPartnerToken" title="Lag ny token (gammel slutter å virke)">Ny token</button></span>
-                    <span class="k">Autorisasjon</span>
-                    <span class="v"><code>Authorization: Bearer @_partnerToken</code></span>
-                </div>
                 <div style="margin-top:12px; padding:12px 14px; background:#f0f6ff; border:1px solid #cfe0fb; border-radius:10px">
-                    <strong style="font-size:13px">Del med banken:</strong>
+                    <strong style="font-size:13px">Del dette med banken:</strong>
                     <ol style="margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.6">
-                        <li>API-dokumentasjon: <code>@PartnerDocsUrl</code></li>
-                        <li>Status meldes tilbake med POST til <code>@PartnerStatusUrl</code> og header <code>Authorization: Bearer @_partnerToken</code></li>
+                        <li>API-dokumentasjon: <code>@PartnerDocsUrl</code> (logg inn med brukernavn/passord)</li>
+                        <li>Logg inn: <code>POST @PartnerTokenUrl</code> med <code>{ "username": "…", "password": "…" }</code> → token (1 time)</li>
+                        <li>Status meldes tilbake: <code>POST @PartnerStatusUrl</code> med <code>Authorization: Bearer &lt;token&gt;</code></li>
                     </ol>
                 </div>
             }
@@ -2351,7 +2354,9 @@ else if (_active == "GDPR")
         _smsMaler = await SmsMaler.ListAsync();
         _autoEnabled = (await Settings.GetAsync(SmsMalService.KeyAutoEnabled)) == "true";
         _autoMal = await Settings.GetAsync(SmsMalService.KeyAutoMal) ?? "";
-        _partnerToken = await Settings.GetAsync(PartnerApiController.KeyToken) ?? "";
+        _partnerUser = await Settings.GetAsync(PartnerApiController.KeyUser) ?? "";
+        _partnerPass = await Settings.GetAsync(PartnerApiController.KeyPass) ?? "";
+        _partnerAktiv = !string.IsNullOrWhiteSpace(_partnerUser) && !string.IsNullOrWhiteSpace(_partnerPass);
         _innToken = await Settings.GetAsync(SmsInnController.KeyToken) ?? "";
         _innSenderOverstyr = await Settings.GetAsync(LinkMobilityService.KeySenderOverstyr) ?? "";
         _innAktivSender = await LinkMobility.AktivSenderAsync();
@@ -2392,18 +2397,24 @@ else if (_active == "GDPR")
         _loginIpMsg = "IP-whitelist lagret.";
     }
 
-    // Partner API — token/URL-er å dele med bankpartnere.
-    private string _partnerToken = "";
+    // Partner API — pålogging + URL-er å dele med bankpartnere.
+    private string _partnerUser = "", _partnerPass = "";
+    private bool _partnerAktiv;
     private string? _partnerMsg;
-    private string PartnerDocsUrl => $"{Nav.BaseUri.TrimEnd('/')}/api-docs";
-    private string PartnerEksempelUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/soknad/eksempel";
-    private string PartnerStatusUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/status";
+    private string PartnerDocsUrl => $"{Nav.BaseUri.TrimEnd('/')}/swagger";
+    private string PartnerTokenUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/auth/token";
+    private string PartnerEksempelUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/soknad/eksempel";
+    private string PartnerStatusUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/status";
 
-    private async Task GenererPartnerToken()
+    private async Task LagrePartnerKreds()
     {
-        _partnerToken = Guid.NewGuid().ToString("N");
-        await Settings.SetAsync(PartnerApiController.KeyToken, _partnerToken);
-        _partnerMsg = "Token opprettet. Del API-dok-lenken og status-URL + token med banken.";
+        await Settings.SetAsync(PartnerApiController.KeyUser, (_partnerUser ?? "").Trim());
+        await Settings.SetAsync(PartnerApiController.KeyPass, _partnerPass ?? "");
+        // Sørg for at det finnes en signeringsnøkkel for tokenene.
+        if (string.IsNullOrWhiteSpace(await Settings.GetAsync(PartnerApiController.KeySecret)))
+            await Settings.SetAsync(PartnerApiController.KeySecret, Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"));
+        _partnerAktiv = !string.IsNullOrWhiteSpace(_partnerUser) && !string.IsNullOrWhiteSpace(_partnerPass);
+        _partnerMsg = _partnerAktiv ? "Pålogging lagret. Del detaljene med banken." : "Brukernavn og passord må begge fylles ut.";
     }
 
     // Innkommende SMS (toveis) — token/URL å dele med LinkMobility.

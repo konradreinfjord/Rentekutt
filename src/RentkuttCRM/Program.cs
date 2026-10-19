@@ -24,7 +24,9 @@ builder.Services.AddScoped(_ => new Client(
 builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
 
 // Web API (controllers) + Swagger.
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(o =>
+    // Enum-verdier som strenger (f.eks. «FastAnsatt») i partner-API-et, ikke tall.
+    o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -33,9 +35,24 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Rentekutt Partner API",
         Version = "v1",
-        Description = "API for bankpartnere som mottar søknader fra Rentekutt. Rentekutt sender en søknad "
-            + "til bankens mottaks-endepunkt, og banken melder status tilbake via POST /api/partner/status "
-            + "(Bearer-token). Alle beløp er i NOK.",
+        Description =
+            "Dette API-et lar en **bankpartner** ta imot lånesøknader fra Rentekutt og melde status tilbake. "
+            + "Rentekutt er en låneformidler: vi sender søknader til banken, banken gir tilbud/svar. Alle beløp er i hele norske kroner.\n\n"
+            + "## Slik fungerer det\n"
+            + "1. **Logg inn** — `POST /auth/token` med brukernavn og passord (fra Rentekutt). Du får en token som varer 1 time.\n"
+            + "2. **Se datamodellen** — `GET /soknad/eksempel` viser nøyaktig hvordan en søknad ser ut.\n"
+            + "3. **Motta søknader** — Rentekutt sender søknader (samme format som eksempelet) til ditt mottaks-endepunkt (URL avtales per integrasjon).\n"
+            + "4. **Meld status tilbake** — `POST /status` hver gang søknaden endrer status (tilbud, innvilget, utbetalt, avslått …).\n\n"
+            + "## Innlogging\n"
+            + "Send tokenet som header: `Authorization: Bearer <token>`. Trykk **Authorize** øverst for å teste kallene her i portalen.\n\n"
+            + "## Når Rentekutt sender søknader til deg\n"
+            + "- Du svarer `200 OK` eller `202 Accepted` (gjerne med din egen referanse).\n"
+            + "- Timeout 30 sek; vi prøver inntil 3 ganger. Samme `referanse` kan komme flere ganger — **oppdater, ikke opprett på nytt** (idempotens).\n\n"
+            + "## Når du melder status tilbake\n"
+            + "- Hver melding har en unik `hendelseId` (idempotens — samme melding registreres kun én gang).\n"
+            + "- Status **«Tilbud»** skal inneholde `tilbud` (rente, gebyr, månedsbeløp, totalkostnad, gyldig til) — grunnlaget vi sammenligner på.\n"
+            + "- Status **«Utbetalt»** skal ha `utbetaltBelop` + `utbetaltDato`.\n\n"
+            + "Spørsmål om integrasjonen? Kontakt Rentekutt.",
         Contact = new Microsoft.OpenApi.OpenApiContact { Name = "Rentekutt / Metapro", Url = new Uri("https://portal.metapro.no") },
     });
     // «v1»: full intern API-flate — kun i Development.
@@ -45,12 +62,20 @@ builder.Services.AddSwaggerGen(c =>
     // Partner-dokumentet inkluderer kun partner-gruppen; v1 (dev) tar med alt.
     c.DocInclusionPredicate((docName, api) => docName == "partner" ? api.GroupName == "partner" : true);
 
-    // Bearer-token for status-callback (gir «Authorize»-knapp i Swagger UI).
+    // Korte skjemanavn (SoknadDto, ikke RentkuttCRM.Models.PartnerApi.SoknadDto).
+    c.CustomSchemaIds(t => t.Name);
+
+    // Bearer-token (gir «Authorize»-knapp i Swagger UI).
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
     {
         Type = Microsoft.OpenApi.SecuritySchemeType.Http,
         Scheme = "bearer",
-        Description = "Token Rentekutt utleverer til partneren. Sendes som «Authorization: Bearer <token>».",
+        Description = "Token fra /auth/token. Sendes som «Authorization: Bearer <token>».",
+    });
+    // Knytt Bearer-kravet globalt så «Authorize» faktisk sender tokenet (innloggingen ignorerer det).
+    c.AddSecurityRequirement(doc => new Microsoft.OpenApi.OpenApiSecurityRequirement
+    {
+        [new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", doc)] = new List<string>(),
     });
 
     // Feltbeskrivelser fra XML-dok.
@@ -270,15 +295,55 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-// Swagger: i prod eksponeres KUN det kuraterte partner-dokumentet (på /api-docs), så bankpartnere
-// kan utforske integrasjonen. Den fulle interne API-flaten vises kun i Development.
+// Partner-API-dokumentasjonen (/swagger) er beskyttet med Basic Auth — banken logger inn før de
+// ser API-et. Brukernavn/passord settes i Admin → API og Data → Partner API (eller Azure-config
+// PartnerDocs__User/Pass som fallback). Ikke konfigurert: åpent i Development, STENGT i produksjon.
+static bool BasicAuthOk(HttpRequest req, string bruker, string passord)
+{
+    var auth = req.Headers.Authorization.ToString();
+    if (!auth.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)) return false;
+    string dekodet;
+    try { dekodet = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(auth["Basic ".Length..].Trim())); }
+    catch { return false; }
+    var i = dekodet.IndexOf(':');
+    if (i < 0) return false;
+    var u = System.Text.Encoding.UTF8.GetBytes(dekodet[..i]);
+    var p = System.Text.Encoding.UTF8.GetBytes(dekodet[(i + 1)..]);
+    return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(u, System.Text.Encoding.UTF8.GetBytes(bruker))
+        && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(p, System.Text.Encoding.UTF8.GetBytes(passord));
+}
+app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
+    branch.Use(async (ctx, next) =>
+    {
+        var settings = ctx.RequestServices.GetRequiredService<SettingsService>();
+        var cfg = ctx.RequestServices.GetRequiredService<IConfiguration>();
+        var bruker = await settings.GetAsync(RentkuttCRM.Controllers.PartnerApiController.KeyUser) ?? cfg["PartnerDocs:User"];
+        var passord = await settings.GetAsync(RentkuttCRM.Controllers.PartnerApiController.KeyPass) ?? cfg["PartnerDocs:Pass"];
+        if (string.IsNullOrWhiteSpace(bruker) || string.IsNullOrWhiteSpace(passord))
+        {
+            if (app.Environment.IsDevelopment()) { await next(); return; }   // åpent lokalt
+            ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await ctx.Response.WriteAsync("Partner-API-dokumentasjonen er ikke aktivert.");
+            return;
+        }
+        if (!BasicAuthOk(ctx.Request, bruker, passord))
+        {
+            ctx.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Rentekutt Partner API\"";
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        await next();
+    }));
+
+// Swagger: i prod eksponeres KUN det kuraterte partner-dokumentet (på /swagger), bak Basic Auth.
+// Den fulle interne API-flaten vises kun i Development.
 app.UseSwagger();   // serverer /swagger/{dokument}/swagger.json for definerte dokumenter
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/partner/swagger.json", "Rentekutt Partner API");
     if (app.Environment.IsDevelopment())
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Rentekutt (internt API)");
-    c.RoutePrefix = "api-docs";      // portal.metapro.no/api-docs
+    c.RoutePrefix = "swagger";       // portal.metapro.no/swagger
     c.DocumentTitle = "Rentekutt Partner API";
 });
 
