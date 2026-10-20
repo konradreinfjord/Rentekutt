@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using RentkuttCRM.Services;
@@ -55,15 +56,25 @@ public class SmsInnController : ControllerBase
         }
 
         var felt = ParseFelt(raw, Request);
-        var fra = Foerste(felt, "source", "sender", "from", "msisdn", "originator", "sourceaddr", "sourcenumber", "sourceaddress");
-        var til = Foerste(felt, "destination", "receiver", "to", "shortnumber", "destinationaddr", "destinationaddress");
-        var tekst = Foerste(felt, "text", "message", "content", "body", "messagetext", "sms", "smstext");
+        // LinkMobility MO (JSON eller XML): source / destination / content.userData. Øvrige navn = varianter.
+        var fra = Foerste(felt, "source", "sender", "from", "msisdn", "originator", "sourceaddr", "sourcenumber",
+            "sourceaddress", "senderaddress", "sendernumber", "fromnumber", "sourcemsisdn", "phonenumber", "mobilenumber");
+        var til = Foerste(felt, "destination", "receiver", "to", "shortnumber", "destinationaddr", "destinationaddress",
+            "recipientaddress", "recipient", "tonumber");
+        var tekst = Foerste(felt, "userdata", "text", "message", "messagetext", "body", "sms", "smstext", "content");
 
         if (string.IsNullOrWhiteSpace(fra))
         {
-            _debug.Logg("Mottatt, men fant ikke avsender", $"felt=[{string.Join(",", felt.Keys)}] · {Kort(raw)}");
-            _log.LogWarning("Innkommende SMS: fant ikke avsendernummer i payload. Rå: {Raw}", Kort(raw));
-            return BadRequest(new { error = "Mangler avsendernummer (source/sender/from/msisdn)." });
+            var ct = Request.ContentType ?? "(ingen content-type)";
+            _debug.Logg("Mottatt, men fant ikke avsender", $"content-type={ct} · felt=[{string.Join(",", felt.Keys)}] · {Kort(raw)}");
+            _log.LogWarning("Innkommende SMS: fant ikke avsendernummer. Content-Type={Ct}. Felt=[{Felt}]. Rå: {Raw}", ct, string.Join(",", felt.Keys), Kort(raw));
+            // Returner hva vi faktisk så, så leverandørens utvikler ser feilen med en gang.
+            return BadRequest(new
+            {
+                error = "Mangler avsendernummer. Forventer «source» (ev. sender/from/msisdn) i JSON eller XML.",
+                contentType = ct,
+                feltFunnet = felt.Keys.ToArray(),
+            });
         }
 
         var rad = await _inn.MottaAsync(fra!, til, tekst ?? "", Kort(raw, 4000));
@@ -102,6 +113,12 @@ public class SmsInnController : ControllerBase
                 try { using var doc = JsonDocument.Parse(raw); Flat(doc.RootElement, d); }
                 catch { /* ikke JSON — prøv skjema under */ }
             }
+            else if (trimmet.StartsWith("<"))
+            {
+                // LinkMobility kan levere MO som XML (konfigureres hos Support). Flat ut elementnavn → verdi.
+                try { FlatXml(XDocument.Parse(raw).Root, d); }
+                catch { /* ikke gyldig XML — prøv skjema under */ }
+            }
             if (d.Count == 0 && raw.Contains('='))
             {
                 foreach (var par in raw.Split('&'))
@@ -120,6 +137,20 @@ public class SmsInnController : ControllerBase
             if (!d.ContainsKey(q.Key)) d[q.Key] = q.Value.ToString();
 
         return d;
+    }
+
+    // XML: elementer med underelementer flates ut rekursivt; blad-elementer og attributter blir nøkkel → verdi.
+    private static void FlatXml(XElement? el, Dictionary<string, string> d)
+    {
+        if (el is null) return;
+        foreach (var a in el.Attributes())
+            if (!d.ContainsKey(a.Name.LocalName)) d[a.Name.LocalName] = a.Value;
+        if (el.HasElements)
+        {
+            foreach (var barn in el.Elements()) FlatXml(barn, d);
+        }
+        else if (!d.ContainsKey(el.Name.LocalName))
+            d[el.Name.LocalName] = el.Value;
     }
 
     private static void Flat(JsonElement el, Dictionary<string, string> d)
