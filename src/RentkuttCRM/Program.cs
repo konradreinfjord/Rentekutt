@@ -58,12 +58,9 @@ builder.Services.AddSwaggerGen(c =>
             + "- Status `Tilbud` skal inneholde objektet `tilbud` (nominell + effektiv rente, etablerings- og termingebyr, månedsbeløp, totalkostnad, gyldig til).\n\n"
             + "- Status `Utbetalt` skal ha `utbetaltBelop` + `utbetaltDato`.",
     });
-    // «v1»: full intern API-flate — kun i Development.
-    if (builder.Environment.IsDevelopment())
-        c.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo { Title = "Rentekutt (internt API)", Version = "v1" });
-
-    // Partner-dokumentet inkluderer kun partner-gruppen; v1 (dev) tar med alt.
-    c.DocInclusionPredicate((docName, api) => docName == "partner" ? api.GroupName == "partner" : true);
+    // Kun partner-dokumentet finnes — den interne API-flaten dokumenteres aldri i Swagger
+    // (heller ikke lokalt), så det som deles er alltid bare «Rentekutt Partner API».
+    c.DocInclusionPredicate((_, api) => api.GroupName == "partner");
 
     // Korte skjemanavn (SoknadDto, ikke RentkuttCRM.Models.PartnerApi.SoknadDto).
     c.CustomSchemaIds(t => t.Name);
@@ -375,9 +372,7 @@ app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
 app.UseSwagger();   // serverer /swagger/{dokument}/swagger.json for definerte dokumenter
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/partner/swagger.json", "Rentekutt Partner API");
-    if (app.Environment.IsDevelopment())
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Rentekutt (internt API)");
+    c.SwaggerEndpoint("/swagger/partner/swagger.json", "Rentekutt Partner API");   // eneste dokument som vises
     c.RoutePrefix = "swagger";       // portal.metapro.no/swagger
     c.DocumentTitle = "Rentekutt Partner API";
 });
