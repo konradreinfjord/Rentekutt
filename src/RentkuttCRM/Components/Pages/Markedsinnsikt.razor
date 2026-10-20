@@ -18,13 +18,28 @@
     .mi-table .mi-strong { font-weight: 700; }
     .mi-table .mi-muted { color: var(--text-2, #64748b); font-variant-numeric: tabular-nums; }
     .mi-table .num { font-variant-numeric: tabular-nums; }
+    .mi-table th.mi-sml, .mi-table td.mi-sml { background: rgba(100,116,139,.06); }
     .mi-barcell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; position: relative; min-width: 72px; }
     .mi-barcell .mi-bar { position: absolute; right: 26px; height: 7px; border-radius: 4px; background: var(--accent-blue, #1f5fc4); opacity: .22; }
     .mi-barcell .mi-barnum { position: relative; min-width: 18px; text-align: right; font-weight: 600; }
     .mi-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .mi-pill-up { background: #fef3e2; color: #b45309; }
     .mi-pill-down { background: #e8f6ed; color: #266f32; }
+    .mi-pill-flat { background: #eef2f6; color: #64748b; }
     .mi-link { border: none; background: none; padding: 0; color: var(--accent-blue, #1f5fc4); cursor: pointer; text-decoration: underline; font: inherit; }
+    /* Tidsfilter: datofelt + sammenligning. */
+    .mi-dato { padding: 6px 8px; font: inherit; font-size: 13px; }
+    .mi-strek { color: var(--text-2, #64748b); font-size: 13px; margin: 0 -4px; }
+    .mi-sml-lbl { font-size: 12px; font-weight: 600; color: var(--text-2, #64748b); margin-left: 6px; }
+    .mi-periode { font-size: 12.5px; color: var(--text-2, #64748b); margin: -8px 0 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+    .mi-periode b { color: var(--ink, #1f2937); font-weight: 600; }
+    .mi-periode .mi-swatch-b { display: inline-block; width: 14px; height: 0; border-top: 2px dashed #64748b; vertical-align: middle; margin-right: 4px; }
+    /* Differanse mot sammenligningsperioden i statistikkboksene. */
+    .mi-delta { display: inline-flex; align-items: baseline; gap: 4px; margin-top: 4px; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .mi-delta.god { color: #266f32; }
+    .mi-delta.daarlig { color: #b45309; }
+    .mi-delta.likt { color: #64748b; }
+    .mi-delta .mi-delta-foer { font-weight: 500; color: #98a2b3; }
 </style>
 
 <h1 class="page-title">Markedsinnsikt</h1>
@@ -75,13 +90,37 @@ else
             <option value="">Alle lånebeløp</option>
             @foreach (var s in SegmentValg) { <option value="@s.Navn">@s.Navn (@s.Antall)</option> }
         </select>
-        <select class="db-select" @bind="_periodeFilter" @bind:after="Beregn" title="Tidsrom">
+        <select class="db-select" @bind="_periodeFilter" @bind:after="PeriodeEndret" title="Tidsrom">
             <option value="">Hele perioden</option>
+            <option value="7">Siste 7 dager</option>
             <option value="30">Siste 30 dager</option>
             <option value="90">Siste 90 dager</option>
             <option value="365">Siste 12 måneder</option>
             <option value="ytd">Hittil i år</option>
+            <option value="custom">Egendefinert …</option>
         </select>
+        @if (_periodeFilter == "custom")
+        {
+            <input type="date" class="db-select mi-dato" @bind="_fra" @bind:after="Beregn" title="Fra og med" />
+            <span class="mi-strek">–</span>
+            <input type="date" class="db-select mi-dato" @bind="_til" @bind:after="Beregn" title="Til og med" />
+        }
+        @if (_periodeFilter != "")
+        {
+            <span class="mi-sml-lbl">Sammenlign</span>
+            <select class="db-select" @bind="_sammenlign" @bind:after="SammenlignEndret" title="Sammenlign med en annen periode — differansen vises på hver widget">
+                <option value="">Ingen sammenligning</option>
+                <option value="forrige">Forrige periode (like lang)</option>
+                <option value="ifjor">Samme periode i fjor</option>
+                <option value="custom">Egendefinert periode …</option>
+            </select>
+            @if (_sammenlign == "custom")
+            {
+                <input type="date" class="db-select mi-dato" @bind="_fraB" @bind:after="Beregn" title="Sammenligning fra og med" />
+                <span class="mi-strek">–</span>
+                <input type="date" class="db-select mi-dato" @bind="_tilB" @bind:after="Beregn" title="Sammenligning til og med" />
+            }
+        }
         @if (HarAktivtFilter)
         {
             <button class="db-select" style="cursor:pointer" @onclick="NullstillFilter" title="Nullstill alle filtre">✕ Nullstill</button>
@@ -89,6 +128,18 @@ else
         <div class="db-spacer"></div>
         <span class="db-count">@_punkter.Count av @_kategoriPunkter.Count</span>
     </div>
+
+    @if (_perA is { } pa)
+    {
+        <div class="mi-periode">
+            <span>Periode: <b>@PeriodeTekst(pa)</b> (@_punkter.Count renter)</span>
+            @if (_perB is { } pb)
+            {
+                <span><span class="mi-swatch-b"></span>Sammenlignet med: <b>@PeriodeTekst(pb)</b> (@_punkterB.Count renter)</span>
+                @if (_punkterB.Count == 0) { <span style="color:#b45309">Ingen registrerte renter i sammenligningsperioden.</span> }
+            }
+        </div>
+    }
 
     @if (_punkter.Count == 0)
     {
@@ -103,30 +154,49 @@ else
     else
     {
     <div class="db-stats">
-        <div class="db-box"><span class="db-box-num">@_punkter.Count</span><span class="db-box-lbl">Registrerte renter</span></div>
-        <div class="db-box"><span class="db-box-num">@_banker.Count</span><span class="db-box-lbl">Banker</span></div>
-        <div class="db-box accent-blue"><span class="db-box-num">@_snittRente.ToString("N2", Nb)<span class="db-box-unit">%</span></span><span class="db-box-lbl">Snitt kunderente</span></div>
-        <div class="db-box accent-amber"><span class="db-box-num">+@_snittMargin.ToString("N2", Nb)<span class="db-box-unit">pp</span></span><span class="db-box-lbl">Over styringsrente</span></div>
-        <div class="db-box accent-purple"><span class="db-box-num">@(_antLtv > 0 ? _snittLtv.ToString("N0", Nb) : "—")<span class="db-box-unit">@(_antLtv > 0 ? "%" : "")</span></span><span class="db-box-lbl">Snitt LTV@(_antLtv > 0 ? $" ({_antLtv})" : "")</span></div>
+        <div class="db-box">
+            <span class="db-box-num">@_punkter.Count</span><span class="db-box-lbl">Registrerte renter</span>
+            @Delta(_punkter.Count, _b?.Antall, "", 0, hoyereErBra: true)
+        </div>
+        <div class="db-box">
+            <span class="db-box-num">@_banker.Count</span><span class="db-box-lbl">Banker</span>
+            @Delta(_banker.Count, _b?.AntBanker, "", 0, hoyereErBra: true)
+        </div>
+        <div class="db-box accent-blue">
+            <span class="db-box-num">@_snittRente.ToString("N2", Nb)<span class="db-box-unit">%</span></span><span class="db-box-lbl">Snitt kunderente</span>
+            @Delta(_snittRente, _b?.SnittRente, "pp", 2, hoyereErBra: false)
+        </div>
+        <div class="db-box accent-amber">
+            <span class="db-box-num">+@_snittMargin.ToString("N2", Nb)<span class="db-box-unit">pp</span></span><span class="db-box-lbl">Over styringsrente</span>
+            @Delta(_snittMargin, _b?.SnittMargin, "pp", 2, hoyereErBra: false)
+        </div>
+        <div class="db-box accent-purple">
+            <span class="db-box-num">@(_antLtv > 0 ? _snittLtv.ToString("N0", Nb) : "—")<span class="db-box-unit">@(_antLtv > 0 ? "%" : "")</span></span><span class="db-box-lbl">Snitt LTV@(_antLtv > 0 ? $" ({_antLtv})" : "")</span>
+            @Delta(_antLtv > 0 ? _snittLtv : null, _b?.SnittLtv, "pp", 1, hoyereErBra: false)
+        </div>
     </div>
 
     <div class="section">
-        <h2>Siste 12 måneder</h2>
-        <p class="page-sub">Hver boble er en kunde plassert på tidspunkt (x) og rente (y). Den <span style="color:#266f32;font-weight:600">grønne linjen</span> er snittrenten per måned, og den <span style="color:#c2740a;font-weight:600">oransje</span> er Norges Banks styringsrente. Boblestørrelsen følger lånebeløpet.</p>
-        @if (_punkter12.Count == 0)
+        <h2>@(_perA is null ? "Siste 12 måneder" : "Utvikling i perioden")</h2>
+        <p class="page-sub">Hver boble er en kunde plassert på tidspunkt (x) og rente (y). Den <span style="color:#266f32;font-weight:600">grønne linjen</span> er snittrenten per @_bucketNavn, og den <span style="color:#c2740a;font-weight:600">oransje</span> er Norges Banks styringsrente. Boblestørrelsen følger lånebeløpet.@(_perB is not null ? " Den stiplede grå linjen er snittrenten i sammenligningsperioden, lagt oppå samme tidsakse." : "")</p>
+        @if (_punkterChart.Count == 0)
         {
-            <p class="page-sub">Ingen registrerte renter siste 12 måneder. De kommer inn fra søknadene og fra «Lagre bank &amp; rente» på kundekortet.</p>
+            <p class="page-sub">Ingen registrerte renter i tidsrommet. De kommer inn fra søknadene og fra «Lagre bank &amp; rente» på kundekortet.</p>
         }
         else
         {
             <div class="mi-legend">
                 <span class="mi-leg"><span class="mi-swatch" style="background:#c2740a"></span>Styringsrente — @_styringKilde</span>
-                <span class="mi-leg"><span class="mi-swatch" style="background:#266f32"></span>Snitt kunderente (mnd)</span>
+                <span class="mi-leg"><span class="mi-swatch" style="background:#266f32"></span>Snitt kunderente (@_bucketNavn)</span>
+                @if (_perB is { } pb2)
+                {
+                    <span class="mi-leg"><span class="mi-swatch" style="background:repeating-linear-gradient(90deg,#64748b 0 4px,transparent 4px 7px)"></span>Snitt @PeriodeTekst(pb2)</span>
+                }
                 <span class="mi-leg"><span class="mi-dot" style="background:#1f5fc4"></span>Fra søknad (@_antSoknad)</span>
                 <span class="mi-leg"><span class="mi-dot" style="background:#6b3fc4"></span>Manuelt registrert (@_antManuell)</span>
             </div>
             <div class="mi-chart">
-                <svg id="mi-svg-trend" data-ymin="@_yMinTrend" data-ymax="@_yMaxTrend" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå siste 12 måneder">
+                <svg id="mi-svg-trend" data-ymin="@_yMinTrend" data-ymax="@_yMaxTrend" viewBox="0 0 900 340" preserveAspectRatio="none" role="img" aria-label="Rentenivå i perioden">
                     @((MarkupString)_svgTrend)
                 </svg>
                 <div id="mi-tip-trend" class="mi-tip"></div>
@@ -136,14 +206,16 @@ else
 
     <div class="section">
         <h2>Registrerte renter per bank</h2>
-        <p class="page-sub">Snittrente per bank sammenlignet med Norges Banks styringsrente (@_naaStyring.ToString("N2", Nb) %). Søylen viser hvor stor andel av utvalget hver bank står for.</p>
+        <p class="page-sub">Snittrente per bank sammenlignet med Norges Banks styringsrente (@_naaStyring.ToString("N2", Nb) %). Søylen viser hvor stor andel av utvalget hver bank står for.@(_b is not null ? " De grå kolonnene viser sammenligningsperioden og endringen fra den." : "")</p>
         <div class="table-scroll">
         <table class="data-table mi-table">
             <thead>
                 <tr>
                     <th>Bank</th>
                     <th class="num">Antall</th>
+                    @if (_b is not null) { <th class="num mi-sml">Antall sml.</th> }
                     <th class="num">Snitt rente</th>
+                    @if (_b is not null) { <th class="num mi-sml">Snitt sml.</th><th class="num mi-sml">Endring</th> }
                     <th class="num">Spenn (lav–høy)</th>
                     <th class="num">Over styringsrente</th>
                     <th class="num">Snitt lånebeløp</th>
@@ -154,12 +226,14 @@ else
             <tbody>
                 @if (_banker.Count == 0)
                 {
-                    <tr><td colspan="8" class="empty-row">Ingen data ennå.</td></tr>
+                    <tr><td colspan="@(_b is null ? 8 : 11)" class="empty-row">Ingen data ennå.</td></tr>
                 }
                 @{ var maxAnt = _banker.Count > 0 ? _banker.Max(x => x.Antall) : 1; }
                 @foreach (var b in _banker)
                 {
                     var margin = b.Snitt - (decimal)_naaStyring;
+                    BankRad? sml = null;
+                    _b?.Banker.TryGetValue(b.Bank, out sml);
                     <tr>
                         <td class="mi-bank">@b.Bank</td>
                         <td class="num">
@@ -168,13 +242,35 @@ else
                                 <span class="mi-barnum">@b.Antall</span>
                             </span>
                         </td>
+                        @if (_b is not null) { <td class="num mi-muted mi-sml">@(sml is not null ? sml.Antall.ToString() : "—")</td> }
                         <td class="num mi-strong">@b.Snitt.ToString("N2", Nb) %</td>
+                        @if (_b is not null)
+                        {
+                            <td class="num mi-muted mi-sml">@(sml is not null ? sml.Snitt.ToString("N2", Nb) + " %" : "—")</td>
+                            <td class="num mi-sml">@EndringPill(b.Snitt, sml?.Snitt)</td>
+                        }
                         <td class="num mi-muted">@b.Min.ToString("N2", Nb)&nbsp;–&nbsp;@b.Max.ToString("N2", Nb) %</td>
                         <td class="num"><span class="mi-pill @(margin >= 0 ? "mi-pill-up" : "mi-pill-down")">@(margin >= 0 ? "+" : "")@margin.ToString("N2", Nb) pp</span></td>
                         <td class="num">@(b.SnittBelop is > 0 ? (b.SnittBelop!.Value / 1_000_000m).ToString("N2", Nb) + " M" : "—")</td>
                         <td class="num">@(b.SnittLtv is not null ? b.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
                         <td class="num mi-muted">@b.Siste.TilOslo().ToString("dd.MM.yy")</td>
                     </tr>
+                }
+                @* Banker som kun finnes i sammenligningsperioden — vises nederst så de ikke «forsvinner». *@
+                @if (_b is not null)
+                {
+                    foreach (var sml in _b.Banker.Values.Where(x => !_banker.Any(y => y.Bank.Equals(x.Bank, StringComparison.OrdinalIgnoreCase))).OrderByDescending(x => x.Antall))
+                    {
+                        <tr style="opacity:.65">
+                            <td class="mi-bank">@sml.Bank</td>
+                            <td class="num mi-muted">0</td>
+                            <td class="num mi-muted mi-sml">@sml.Antall</td>
+                            <td class="num mi-muted">—</td>
+                            <td class="num mi-muted mi-sml">@sml.Snitt.ToString("N2", Nb) %</td>
+                            <td class="num mi-sml"><span class="mi-pill mi-pill-flat">kun sml.</span></td>
+                            <td class="num mi-muted" colspan="5">Ingen registreringer i valgt periode</td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -183,20 +279,31 @@ else
 
     <div class="section">
         <h2>Rentenivå per lånebeløp</h2>
-        <p class="page-sub">Snitt rente og LTV gruppert på lånestørrelse — ser vi forskjell mellom store og små lån?</p>
+        <p class="page-sub">Snitt rente og LTV gruppert på lånestørrelse — ser vi forskjell mellom store og små lån?@(_b is not null ? " De grå kolonnene viser sammenligningsperioden og endringen fra den." : "")</p>
         <div class="table-scroll">
         <table class="data-table mi-table">
             <thead>
-                <tr><th>Lånebeløp</th><th class="num">Antall</th><th class="num">Snitt rente</th><th class="num">Spenn (lav–høy)</th><th class="num">Snitt lånebeløp</th><th class="num">Snitt LTV</th></tr>
+                <tr>
+                    <th>Lånebeløp</th>
+                    <th class="num">Antall</th>
+                    @if (_b is not null) { <th class="num mi-sml">Antall sml.</th> }
+                    <th class="num">Snitt rente</th>
+                    @if (_b is not null) { <th class="num mi-sml">Snitt sml.</th><th class="num mi-sml">Endring</th> }
+                    <th class="num">Spenn (lav–høy)</th>
+                    <th class="num">Snitt lånebeløp</th>
+                    <th class="num">Snitt LTV</th>
+                </tr>
             </thead>
             <tbody>
                 @if (_segmenter.Count == 0)
                 {
-                    <tr><td colspan="6" class="empty-row">Ingen kunder med lånebeløp registrert ennå.</td></tr>
+                    <tr><td colspan="@(_b is null ? 6 : 9)" class="empty-row">Ingen kunder med lånebeløp registrert ennå.</td></tr>
                 }
                 @{ var maxSeg = _segmenter.Count > 0 ? _segmenter.Max(x => x.Antall) : 1; }
                 @foreach (var s in _segmenter)
                 {
+                    Segment? sml = null;
+                    _b?.Segmenter.TryGetValue(s.Navn, out sml);
                     <tr>
                         <td class="mi-bank">@s.Navn</td>
                         <td class="num">
@@ -205,7 +312,13 @@ else
                                 <span class="mi-barnum">@s.Antall</span>
                             </span>
                         </td>
+                        @if (_b is not null) { <td class="num mi-muted mi-sml">@(sml is not null ? sml.Antall.ToString() : "—")</td> }
                         <td class="num mi-strong">@s.Snitt.ToString("N2", Nb) %</td>
+                        @if (_b is not null)
+                        {
+                            <td class="num mi-muted mi-sml">@(sml is not null ? sml.Snitt.ToString("N2", Nb) + " %" : "—")</td>
+                            <td class="num mi-sml">@EndringPill(s.Snitt, sml?.Snitt)</td>
+                        }
                         <td class="num mi-muted">@s.Min.ToString("N2", Nb)&nbsp;–&nbsp;@s.Max.ToString("N2", Nb) %</td>
                         <td class="num">@((s.SnittBelop / 1_000_000m).ToString("N2", Nb)) M</td>
                         <td class="num">@(s.SnittLtv is not null ? s.SnittLtv.Value.ToString("N0", Nb) + " %" : "—")</td>
@@ -228,11 +341,16 @@ else
     private string _kategori = Produktkategori.Boliglaan;   // valgt fane — Boliglån default
     private List<Punkt> _kategoriPunkter = new(); // valgt kategori, før filterlinje (styrer filtervalg)
     private List<Punkt> _punkter = new();      // valgt kategori etter filterlinje — alt under følger denne
-    private List<Punkt> _punkter12 = new();     // siste 12 måneder
+    private List<Punkt> _punkterB = new();     // samme filtre, men sammenligningsperioden
+    private List<Punkt> _punkterChart = new(); // punktene i diagramvinduet
 
     // Filterlinje (samme oppsett som Saker). Tomt = alt.
     private string _search = "", _bankFilter = "", _kildeFilter = "", _segmentFilter = "", _periodeFilter = "";
-    private bool HarAktivtFilter => !(string.IsNullOrWhiteSpace(_search) && _bankFilter == "" && _kildeFilter == "" && _segmentFilter == "" && _periodeFilter == "");
+    // Tidsfilter: egendefinert periode (fra/til, inkl.) og sammenligning («forrige», «ifjor», «custom»).
+    private DateOnly _fra, _til, _fraB, _tilB;
+    private string _sammenlign = "";
+    private Periode? _perA, _perB;   // utledet fra valgene over (null = hele perioden / ingen sammenligning)
+    private bool HarAktivtFilter => !(string.IsNullOrWhiteSpace(_search) && _bankFilter == "" && _kildeFilter == "" && _segmentFilter == "" && _periodeFilter == "" && _sammenlign == "");
 
     // Valg til nedtrekkene — bygges fra kategoriens punkter (uavhengig av øvrige aktive filtre).
     private IEnumerable<(string Navn, int Antall)> BankValg => _kategoriPunkter
@@ -249,10 +367,21 @@ else
     private int _antSoknad, _antManuell, _antLtv;
     private double _maxBelop;
     private int _yMinTrend = 0, _yMaxTrend = 8;
+    private string _bucketNavn = "måned";
+    private Sammendrag? _b;   // aggregater for sammenligningsperioden (null = ingen sammenligning)
 
     private record Punkt(DateTime Dato, string Bank, decimal Rente, decimal? Belop, decimal? Ltv, bool Soknad, string Kategori);
     private record BankRad(string Bank, int Antall, decimal Snitt, decimal Min, decimal Max, decimal? SnittBelop, decimal? SnittLtv, DateTime Siste);
     private record Segment(string Navn, int Antall, decimal Snitt, decimal Min, decimal Max, decimal SnittBelop, decimal? SnittLtv);
+    // Periode = datoer (Oslo-tid), fra og med / til og med.
+    private record Periode(DateOnly Fra, DateOnly Til)
+    {
+        public int Dager => Til.DayNumber - Fra.DayNumber + 1;
+        public bool Inneholder(DateOnly d) => d >= Fra && d <= Til;
+    }
+    // Samme aggregater som vises for hovedperioden, regnet for sammenligningsperioden.
+    private record Sammendrag(int Antall, int AntBanker, decimal SnittRente, decimal SnittMargin, decimal? SnittLtv,
+        Dictionary<string, BankRad> Banker, Dictionary<string, Segment> Segmenter);
 
     // Norges Banks styringsrente (endringsdatoer) — hentes live via StyringsrenteService.
     private IReadOnlyList<(DateTime Dato, decimal Rente)> _styring = Array.Empty<(DateTime, decimal)>();
@@ -296,55 +425,108 @@ else
 
         _naaStyring = (double)RentePaa(DateTime.UtcNow);
 
+        var idag = IDag;
+        _til = idag; _fra = idag.AddDays(-30);
+        _tilB = _fra.AddDays(-1); _fraB = _tilB.AddDays(-30);
+
         Beregn();
 
         _loading = false;
     }
+
+    private static DateOnly IDag => DateOnly.FromDateTime(Tid.IDag);
+    private static DateOnly Dato(Punkt p) => DateOnly.FromDateTime(p.Dato.TilOslo());
+    private static string PeriodeTekst(Periode p) => p.Fra.ToString("dd.MM.yy", Nb) + " – " + p.Til.ToString("dd.MM.yy", Nb);
 
     // Bytt produktkategori-fane. Nullstiller filterlinja så man starter rent i ny kategori.
     private void VelgKategori(string kat)
     {
         if (_kategori == kat) return;
         _kategori = kat;
-        _search = _bankFilter = _kildeFilter = _segmentFilter = _periodeFilter = "";
-        Beregn();
+        NullstillFilter();
     }
 
     private void NullstillFilter()
     {
-        _search = _bankFilter = _kildeFilter = _segmentFilter = _periodeFilter = "";
+        _search = _bankFilter = _kildeFilter = _segmentFilter = _periodeFilter = _sammenlign = "";
         Beregn();
     }
 
-    // Grense for tidsrom-filteret (null = hele perioden).
-    private DateTime? PeriodeFra() => _periodeFilter switch
+    // Tidsrom byttet: uten tidsrom gir sammenligning ikke mening. Egendefinert starter på siste 30 dager.
+    private void PeriodeEndret()
     {
-        "30" => DateTime.UtcNow.AddDays(-30),
-        "90" => DateTime.UtcNow.AddDays(-90),
-        "365" => DateTime.UtcNow.AddDays(-365),
-        "ytd" => new DateTime(Tid.IDag.Year, 1, 1),
-        _ => null,
-    };
+        if (_periodeFilter == "") _sammenlign = "";
+        if (_periodeFilter == "custom" && _fra > _til) (_fra, _til) = (_til, _fra);
+        Beregn();
+    }
+
+    // Egendefinert sammenligning starter som «forrige periode», så brukeren bare justerer datoene.
+    private void SammenlignEndret()
+    {
+        if (_sammenlign == "custom" && PeriodeA() is { } a)
+        {
+            _tilB = a.Fra.AddDays(-1);
+            _fraB = _tilB.AddDays(-(a.Dager - 1));
+        }
+        Beregn();
+    }
+
+    // Hovedperioden (null = hele perioden).
+    private Periode? PeriodeA()
+    {
+        var idag = IDag;
+        return _periodeFilter switch
+        {
+            "7" => new Periode(idag.AddDays(-6), idag),
+            "30" => new Periode(idag.AddDays(-29), idag),
+            "90" => new Periode(idag.AddDays(-89), idag),
+            "365" => new Periode(idag.AddDays(-364), idag),
+            "ytd" => new Periode(new DateOnly(idag.Year, 1, 1), idag),
+            "custom" => _fra <= _til ? new Periode(_fra, _til) : new Periode(_til, _fra),
+            _ => null,
+        };
+    }
+
+    // Sammenligningsperioden, utledet fra hovedperioden (null = ingen sammenligning).
+    private Periode? PeriodeB(Periode? a)
+    {
+        if (a is null) return null;
+        return _sammenlign switch
+        {
+            "forrige" => new Periode(a.Fra.AddDays(-a.Dager), a.Fra.AddDays(-1)),
+            "ifjor" => new Periode(a.Fra.AddYears(-1), a.Til.AddYears(-1)),
+            "custom" => _fraB <= _tilB ? new Periode(_fraB, _tilB) : new Periode(_tilB, _fraB),
+            _ => null,
+        };
+    }
+
+    // Filterlinja (søk/bank/kilde/segment) + et valgfritt tidsrom.
+    private List<Punkt> Filtrer(Periode? periode)
+    {
+        var søk = _search.Trim();
+        return _kategoriPunkter.Where(p =>
+            (søk.Length == 0 || p.Bank.Contains(søk, StringComparison.OrdinalIgnoreCase)) &&
+            (_bankFilter == "" || p.Bank.Equals(_bankFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (_kildeFilter == "" || (_kildeFilter == "soknad" ? p.Soknad : !p.Soknad)) &&
+            (_segmentFilter == "" || (p.Belop is > 0 && SegmentNavnFor(p.Belop!.Value) == _segmentFilter)) &&
+            (periode is null || periode.Inneholder(Dato(p))))
+            .OrderBy(p => p.Dato).ToList();
+    }
 
     // Regn ut alle aggregater/diagrammer for punktene i valgt kategori + aktiv filterlinje.
     private void Beregn()
     {
         _kategoriPunkter = _allePunkter.Where(p => p.Kategori == _kategori).OrderBy(p => p.Dato).ToList();
 
-        // Filterlinja (søk/bank/kilde/segment/tidsrom) — alt under følger dette utvalget.
-        var søk = _search.Trim();
-        var fra = PeriodeFra();
-        _punkter = _kategoriPunkter.Where(p =>
-            (søk.Length == 0 || p.Bank.Contains(søk, StringComparison.OrdinalIgnoreCase)) &&
-            (_bankFilter == "" || p.Bank.Equals(_bankFilter, StringComparison.OrdinalIgnoreCase)) &&
-            (_kildeFilter == "" || (_kildeFilter == "soknad" ? p.Soknad : !p.Soknad)) &&
-            (_segmentFilter == "" || (p.Belop is > 0 && SegmentNavnFor(p.Belop!.Value) == _segmentFilter)) &&
-            (fra is null || p.Dato >= fra.Value))
-            .OrderBy(p => p.Dato).ToList();
+        _perA = PeriodeA();
+        _perB = PeriodeB(_perA);
+        _punkter = Filtrer(_perA);
+        _punkterB = _perB is null ? new() : Filtrer(_perB);
+        _b = _perB is null ? null : LagSammendrag(_punkterB);
 
         _snittRente = _snittMargin = _snittLtv = 0; _antLtv = 0;
         _banker = new(); _segmenter = new();
-        _punkter12 = new(); _antSoknad = _antManuell = 0;
+        _punkterChart = new(); _antSoknad = _antManuell = 0;
         _svgTrend = "";
 
         if (_punkter.Count == 0) return;
@@ -356,22 +538,62 @@ else
         _antLtv = medLtv.Count;
         if (_antLtv > 0) _snittLtv = medLtv.Average(p => p.Ltv!.Value);
 
-        _banker = _punkter
-            .GroupBy(p => p.Bank, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new BankRad(g.Key, g.Count(), g.Average(x => x.Rente),
-                g.Min(x => x.Rente), g.Max(x => x.Rente),
-                SnittEllerNull(g.Where(x => x.Belop is > 0).Select(x => x.Belop!.Value)),
-                SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value)),
-                g.Max(x => x.Dato)))
-            .OrderByDescending(b => b.Antall).ThenBy(b => b.Bank)
-            .ToList();
-
-        ByggSegmenter();
+        _banker = BankRader(_punkter);
+        _segmenter = Segmenter(_punkter);
 
         _maxBelop = _punkter.Where(p => p.Belop is > 0).Select(p => (double)p.Belop!.Value).DefaultIfEmpty(0).Max();
 
         ByggTrend();
     }
+
+    private Sammendrag LagSammendrag(List<Punkt> pts)
+    {
+        if (pts.Count == 0) return new Sammendrag(0, 0, 0, 0, null, new(StringComparer.OrdinalIgnoreCase), new());
+        var ltv = pts.Where(p => p.Ltv is not null).Select(p => p.Ltv!.Value).ToList();
+        var banker = BankRader(pts);
+        return new Sammendrag(pts.Count, banker.Count, pts.Average(p => p.Rente), pts.Average(p => p.Rente - RentePaa(p.Dato)),
+            ltv.Count > 0 ? ltv.Average() : null,
+            banker.ToDictionary(b => b.Bank, b => b, StringComparer.OrdinalIgnoreCase),
+            Segmenter(pts).ToDictionary(s => s.Navn, s => s));
+    }
+
+    private static List<BankRad> BankRader(List<Punkt> pts) => pts
+        .GroupBy(p => p.Bank, StringComparer.OrdinalIgnoreCase)
+        .Select(g => new BankRad(g.Key, g.Count(), g.Average(x => x.Rente),
+            g.Min(x => x.Rente), g.Max(x => x.Rente),
+            SnittEllerNull(g.Where(x => x.Belop is > 0).Select(x => x.Belop!.Value)),
+            SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value)),
+            g.Max(x => x.Dato)))
+        .OrderByDescending(b => b.Antall).ThenBy(b => b.Bank)
+        .ToList();
+
+    // ---- Differanse mot sammenligningsperioden ----
+
+    // Liten differanse-linje under tallet i statistikkboksene: «▲ +0,12 pp · før 4,85».
+    private RenderFragment Delta(decimal? naa, decimal? foer, string enhet, int desimaler, bool hoyereErBra) => __builder =>
+    {
+        if (_b is null) return;
+        if (naa is null || foer is null)
+        {
+            <span class="mi-delta likt">— <span class="mi-delta-foer">ingen sml.</span></span>
+            return;
+        }
+        var d = naa.Value - foer.Value;
+        var fmt = "N" + desimaler;
+        var likt = Math.Round(d, desimaler) == 0;
+        var klasse = likt ? "likt" : ((d > 0) == hoyereErBra ? "god" : "daarlig");
+        var pil = likt ? "▬" : (d > 0 ? "▲" : "▼");
+        <span class="mi-delta @klasse">@pil @(d > 0 ? "+" : "")@d.ToString(fmt, Nb)@(enhet.Length > 0 ? " " + enhet : "") <span class="mi-delta-foer">· før @foer.Value.ToString(fmt, Nb)</span></span>
+    };
+
+    // Endringspille i tabellene (rente: lavere er bra = grønn).
+    private RenderFragment EndringPill(decimal naa, decimal? foer) => __builder =>
+    {
+        if (foer is null) { <span class="mi-pill mi-pill-flat">ny</span> return; }
+        var d = naa - foer.Value;
+        var likt = Math.Round(d, 2) == 0;
+        <span class="mi-pill @(likt ? "mi-pill-flat" : d > 0 ? "mi-pill-up" : "mi-pill-down")">@(d > 0 ? "+" : "")@d.ToString("N2", Nb) pp</span>
+    };
 
     // LTV = belåningsgrad, samme definisjon som BeregningService: (boliggjeld + ønsket lån) / boligverdi.
     // Aktiveres kun når vi har eiendomsverdi (boligverdi > 0).
@@ -391,41 +613,74 @@ else
     private static string SegmentNavnFor(decimal b) => SegmentNavn[SegmentBucket(b)];
 
     // Grupper på lånestørrelse for å se om rente/LTV varierer med beløp.
-    private void ByggSegmenter()
-    {
-        _segmenter = _punkter.Where(p => p.Belop is > 0)
-            .GroupBy(p => SegmentBucket(p.Belop!.Value))
-            .OrderBy(g => g.Key)
-            .Select(g => new Segment(SegmentNavn[g.Key], g.Count(), g.Average(x => x.Rente),
-                g.Min(x => x.Rente), g.Max(x => x.Rente), g.Average(x => x.Belop!.Value),
-                SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value))))
-            .ToList();
-    }
+    private static List<Segment> Segmenter(List<Punkt> pts) => pts.Where(p => p.Belop is > 0)
+        .GroupBy(p => SegmentBucket(p.Belop!.Value))
+        .OrderBy(g => g.Key)
+        .Select(g => new Segment(SegmentNavn[g.Key], g.Count(), g.Average(x => x.Rente),
+            g.Min(x => x.Rente), g.Max(x => x.Rente), g.Average(x => x.Belop!.Value),
+            SnittEllerNull(g.Where(x => x.Ltv is not null).Select(x => x.Ltv!.Value))))
+        .ToList();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_loading) return;
-        if (_punkter12.Count > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-trend", "mi-tip-trend");
+        if (_punkterChart.Count > 0) await JS.InvokeVoidAsync("miChart.initById", "mi-svg-trend", "mi-tip-trend");
     }
 
     // Bobleradius etter lånebeløp (2.5–7 px) — holdt nede så boblene ikke overlapper for mye.
     private double Radius(decimal? belop) =>
         _maxBelop <= 0 || belop is not > 0 ? 3 : 2.5 + Math.Sqrt((double)belop.Value / _maxBelop) * 4.5;
 
-    // ---- Bilde 1: siste 12 måneder (tid → rente) ----
+    // Snittlinjas oppløsning følger vinduets lengde: dag (≤ 45 d), uke (≤ 200 d), ellers måned.
+    // Returnerer bucket-nøkkel (midtpunkt) for et punkt.
+    private static DateTime Bucket(DateTime oslo, int spennDager)
+    {
+        var d = oslo.Date;
+        if (spennDager <= 45) return d.AddHours(12);
+        if (spennDager <= 200)
+        {
+            var mandag = d.AddDays(-(((int)d.DayOfWeek + 6) % 7));
+            return mandag.AddDays(3).AddHours(12);
+        }
+        return new DateTime(d.Year, d.Month, 15);
+    }
+    private static string BucketNavn(int spennDager) => spennDager <= 45 ? "dag" : spennDager <= 200 ? "uke" : "måned";
+
+    // ---- Bilde 1: tid → rente for valgt tidsrom (siste 12 måneder når ingen periode er valgt) ----
     private void ByggTrend()
     {
-        var xMax = Tid.IDag;
-        var xMin = new DateTime(xMax.Year, xMax.Month, 1).AddMonths(-11);
-        _punkter12 = _punkter.Where(p => p.Dato.TilOslo().Date >= xMin).ToList();
-        _antSoknad = _punkter12.Count(p => p.Soknad);
-        _antManuell = _punkter12.Count - _antSoknad;
-        if (_punkter12.Count == 0) return;
+        DateTime xMin, xMax;
+        if (_perA is { } a)
+        {
+            xMin = a.Fra.ToDateTime(TimeOnly.MinValue);
+            xMax = a.Til.ToDateTime(TimeOnly.MinValue).AddDays(1);
+        }
+        else
+        {
+            xMax = Tid.IDag.AddDays(1);
+            xMin = new DateTime(xMax.Year, xMax.Month, 1).AddMonths(-11);
+        }
+        var spennDager = (int)Math.Max(1, Math.Round((xMax - xMin).TotalDays));
+        _bucketNavn = BucketNavn(spennDager);
+        _punkterChart = _punkter.Where(p => p.Dato.TilOslo() >= xMin && p.Dato.TilOslo() < xMax).ToList();
+        _antSoknad = _punkterChart.Count(p => p.Soknad);
+        _antManuell = _punkterChart.Count - _antSoknad;
+        if (_punkterChart.Count == 0) return;
+
+        // Sammenligningsperiodens snittlinje, flyttet inn på hovedperiodens tidsakse (samme avstand fra start).
+        var skift = _perB is { } b ? xMin - b.Fra.ToDateTime(TimeOnly.MinValue) : TimeSpan.Zero;
+        var smlLinje = _perB is null ? new() : _punkterB
+            .GroupBy(p => Bucket(p.Dato.TilOslo(), spennDager))
+            .Select(g => (Dato: g.Key + skift, Snitt: (double)g.Average(x => x.Rente)))
+            .Where(x => x.Dato >= xMin && x.Dato <= xMax)
+            .OrderBy(x => x.Dato).ToList();
 
         // Tett Y-akse: fit til dataene (min–max med litt luft) i stedet for alltid 0–8, så variasjonen
         // blir tydelig. For boliglån gir dette typisk ~3–7 %. Minst 2 prosentpoeng høyt vindu.
-        var vals = _styring.Where(s => s.Dato <= xMax).Select(s => (double)s.Rente)
-            .Concat(_punkter12.Select(p => (double)p.Rente)).ToList();
+        var vals = _styring.Where(s => s.Dato > xMin && s.Dato <= xMax).Select(s => (double)s.Rente)
+            .Append((double)RentePaa(xMin))
+            .Concat(_punkterChart.Select(p => (double)p.Rente))
+            .Concat(smlLinje.Select(x => x.Snitt)).ToList();
         var yMin = Math.Max(0, (int)Math.Floor(vals.Min() - 0.25));
         var yMax = (int)Math.Ceiling(vals.Max() + 0.25);
         if (yMax - yMin < 2) yMax = yMin + 2;
@@ -441,13 +696,12 @@ else
             svg.Append($"<line x1=\"{Num(PadL)}\" y1=\"{Num(Y(g))}\" x2=\"{Num(W - PadR)}\" y2=\"{Num(Y(g))}\" stroke=\"var(--border)\" stroke-width=\"1\" />");
             svg.Append($"<text x=\"{Num(PadL - 6)}\" y=\"{Num(Y(g) + 3)}\" text-anchor=\"end\" font-size=\"10\" fill=\"var(--text-2)\">{g} %</text>");
         }
-        // Måned-ticks
-        for (var m = 0; m <= 12; m += 2)
+        // Tids-ticks: tetthet og format etter vinduets lengde (~6–8 merker).
+        foreach (var (t, etikett) in Ticks(xMin, xMax, spennDager))
         {
-            var t = xMin.AddMonths(m);
             var x = X(t);
             svg.Append($"<line x1=\"{Num(x)}\" y1=\"{Num(PadT)}\" x2=\"{Num(x)}\" y2=\"{Num(H - PadB)}\" stroke=\"var(--border)\" stroke-width=\"1\" stroke-dasharray=\"2 3\" />");
-            svg.Append($"<text x=\"{Num(x)}\" y=\"{Num(H - PadB + 14)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"var(--text-2)\">{t.ToString("MMM yy", Nb)}</text>");
+            svg.Append($"<text x=\"{Num(x)}\" y=\"{Num(H - PadB + 14)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"var(--text-2)\">{etikett}</text>");
         }
         // Styringsrente (stegvis, fremhevet referanse)
         var sb = new StringBuilder();
@@ -469,28 +723,58 @@ else
 
         // Kundepunkter — farge = kilde, størrelse = lånebeløp, tooltip med detaljer.
         // Lav opasitet + tynn kant så de leses som en «sky» og lar snittlinja stå frem.
-        foreach (var p in _punkter12)
-            svg.Append($"<circle cx=\"{Num(X(p.Dato))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.28\" stroke=\"{Farge(p.Soknad)}\" stroke-opacity=\"0.5\" stroke-width=\"0.75\"><title>{PunktTekst(p)}</title></circle>");
+        foreach (var p in _punkterChart)
+            svg.Append($"<circle cx=\"{Num(X(p.Dato.TilOslo()))}\" cy=\"{Num(Y((double)p.Rente))}\" r=\"{Num(Radius(p.Belop))}\" fill=\"{Farge(p.Soknad)}\" fill-opacity=\"0.28\" stroke=\"{Farge(p.Soknad)}\" stroke-opacity=\"0.5\" stroke-width=\"0.75\"><title>{PunktTekst(p)}</title></circle>");
 
-        // Snitt kunderente per måned — fremhevet trendlinje med markører.
-        var mnd = _punkter12
-            .GroupBy(p => new DateTime(p.Dato.Year, p.Dato.Month, 15))
+        // Sammenligningsperiodens snitt — stiplet grå, tegnes under hovedlinja.
+        if (smlLinje.Count >= 2)
+        {
+            var cb = new StringBuilder();
+            for (var i = 0; i < smlLinje.Count; i++)
+                cb.Append(i == 0 ? "M " : " L ").Append(Num(X(smlLinje[i].Dato))).Append(' ').Append(Num(Y(smlLinje[i].Snitt)));
+            svg.Append($"<path d=\"{cb}\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-dasharray=\"6 4\" stroke-linejoin=\"round\" stroke-linecap=\"round\" />");
+        }
+        foreach (var m in smlLinje)
+            svg.Append($"<circle cx=\"{Num(X(m.Dato))}\" cy=\"{Num(Y(m.Snitt))}\" r=\"2.5\" fill=\"#64748b\" stroke=\"#fff\" stroke-width=\"1\"><title>Sml. {m.Snitt.ToString("N2", Nb)} %</title></circle>");
+
+        // Snitt kunderente per bucket — fremhevet trendlinje med markører.
+        var snitt = _punkterChart
+            .GroupBy(p => Bucket(p.Dato.TilOslo(), spennDager))
             .Select(g => (Dato: g.Key, Snitt: (double)g.Average(x => x.Rente)))
             .OrderBy(x => x.Dato).ToList();
-        if (mnd.Count >= 2)
+        if (snitt.Count >= 2)
         {
             var tb = new StringBuilder();
-            for (var i = 0; i < mnd.Count; i++)
-                tb.Append(i == 0 ? "M " : " L ").Append(Num(X(mnd[i].Dato))).Append(' ').Append(Num(Y(mnd[i].Snitt)));
+            for (var i = 0; i < snitt.Count; i++)
+                tb.Append(i == 0 ? "M " : " L ").Append(Num(X(snitt[i].Dato))).Append(' ').Append(Num(Y(snitt[i].Snitt)));
             svg.Append($"<path d=\"{tb}\" fill=\"none\" stroke=\"#266f32\" stroke-width=\"2.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\" />");
-            foreach (var m in mnd)
-                svg.Append($"<circle cx=\"{Num(X(m.Dato))}\" cy=\"{Num(Y(m.Snitt))}\" r=\"3\" fill=\"#266f32\" stroke=\"#fff\" stroke-width=\"1.5\" />");
         }
+        foreach (var m in snitt)
+            svg.Append($"<circle cx=\"{Num(X(m.Dato))}\" cy=\"{Num(Y(m.Snitt))}\" r=\"3\" fill=\"#266f32\" stroke=\"#fff\" stroke-width=\"1.5\"><title>Snitt {m.Snitt.ToString("N2", Nb)} %</title></circle>");
 
         // Hover-crosshair (styres av mi-chart.js)
         svg.Append($"<line class=\"mi-cross\" x1=\"{Num(PadL)}\" x2=\"{Num(W - PadR)}\" y1=\"0\" y2=\"0\" stroke=\"var(--text-2)\" stroke-width=\"1\" stroke-dasharray=\"4 3\" />");
 
         _svgTrend = svg.ToString();
+    }
+
+    // Tidsakse-merker: dager for korte vinduer, måneder for lange.
+    private static IEnumerable<(DateTime Dato, string Etikett)> Ticks(DateTime xMin, DateTime xMax, int spennDager)
+    {
+        if (spennDager <= 120)
+        {
+            var stegDager = spennDager <= 10 ? 1 : spennDager <= 45 ? 7 : 14;
+            for (var t = xMin; t <= xMax; t = t.AddDays(stegDager))
+                yield return (t, t.ToString("dd.MM", Nb));
+        }
+        else
+        {
+            var stegMnd = spennDager <= 240 ? 1 : spennDager <= 400 ? 2 : (int)Math.Ceiling(spennDager / 30.0 / 7);
+            var start = new DateTime(xMin.Year, xMin.Month, 1);
+            if (start < xMin) start = start.AddMonths(1);
+            for (var t = start; t <= xMax; t = t.AddMonths(stegMnd))
+                yield return (t, t.ToString("MMM yy", Nb));
+        }
     }
 
     // Tooltip-tekst for et datapunkt (SVG <title>).
@@ -499,7 +783,7 @@ else
         var deler = new List<string> { p.Bank, p.Rente.ToString("N2", Nb) + " %" };
         if (p.Belop is > 0) deler.Add("Lånesum " + p.Belop!.Value.ToString("N0", Nb) + " kr");
         if (p.Ltv is not null) deler.Add("LTV " + p.Ltv.Value.ToString("N0", Nb) + " %");
-        deler.Add(p.Dato.TilOslo().ToString("MMM yy", Nb));
+        deler.Add(p.Dato.TilOslo().ToString("dd.MM.yy", Nb));
         return Escape(string.Join(" · ", deler));
     }
 
