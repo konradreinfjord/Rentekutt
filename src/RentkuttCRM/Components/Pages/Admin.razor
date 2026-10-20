@@ -1243,8 +1243,10 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
                 <span class="v"><code>@PartnerDocsUrl</code> <a href="@PartnerDocsUrl" target="_blank" class="btn-sm" style="text-decoration:none">Åpne</a></span>
                 <span class="k">Innlogging (POST)</span>
                 <span class="v"><code>@PartnerTokenUrl</code></span>
-                <span class="k">Mine søknader (GET)</span>
-                <span class="v"><code>@PartnerSoknaderUrl</code></span>
+                <span class="k">Boliglån (GET)</span>
+                <span class="v"><code>@PartnerBoliglanUrl</code></span>
+                <span class="k">Refinansiering (GET)</span>
+                <span class="v"><code>@PartnerRefiUrl</code></span>
                 <span class="k">Status-callback (POST)</span>
                 <span class="v"><code>@PartnerStatusUrl</code></span>
             </div>
@@ -1269,14 +1271,15 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
             {
                 <div class="table-scroll">
                 <table class="data-table" style="margin-bottom:12px">
-                    <thead><tr><th>Bank</th><th>Brukernavn</th><th>Passord</th><th></th></tr></thead>
+                    <thead><tr><th>Bank</th><th>Brukernavn</th><th>Passord</th><th>Opprettet</th><th></th></tr></thead>
                     <tbody>
                         @foreach (var kr in _kredsListe)
                         {
                             <tr>
                                 <td><strong>@kr.Bank</strong></td>
                                 <td class="mono-cell">@kr.Username</td>
-                                <td class="mono-cell">@kr.Password</td>
+                                <td class="mono-cell" title="Lagres kun som hash — kan ikke vises igjen">••••••••</td>
+                                <td style="white-space:nowrap">@(kr.Opprettet is { } o ? o.TilOslo().ToString("dd.MM.yy") : "—")</td>
                                 <td><button class="btn-sm" @onclick="() => FjernKreds(kr)">Fjern</button></td>
                             </tr>
                         }
@@ -1303,7 +1306,7 @@ Gjeldsregisteret__Password      = &lt;partner-passord&gt;
                 <ol style="margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.6">
                     <li>API-dokumentasjon: <code>@PartnerDocsUrl</code> — åpnes med tilgangskoden@(string.IsNullOrWhiteSpace(_docsKode) ? "" : (MarkupString)$" <code>{_docsKode}</code>")</li>
                     <li>Logg inn: <code>POST @PartnerTokenUrl</code> med <code>{ "username": "…", "password": "…" }</code> → token (1 time)</li>
-                    <li>Hent egne søknader: <code>GET @PartnerSoknaderUrl</code> med <code>Authorization: Bearer &lt;token&gt;</code></li>
+                    <li>Hent én søknad på UUID: <code>GET @PartnerBoliglanUrl</code> (boliglån) / <code>GET @PartnerRefiUrl</code> (refinansiering) med <code>Authorization: Bearer &lt;token&gt;</code></li>
                     <li>Meld status: <code>POST @PartnerStatusUrl</code> med samme token</li>
                 </ol>
             </div>
@@ -2457,7 +2460,8 @@ else if (_active == "GDPR")
     }
     private string PartnerDocsUrl => $"{Nav.BaseUri.TrimEnd('/')}/swagger";
     private string PartnerTokenUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/auth/token";
-    private string PartnerSoknaderUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/soknader";
+    private string PartnerRefiUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/refinansiering/{{referanse}}";
+    private string PartnerBoliglanUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/boliglan/{{referanse}}";
     private string PartnerStatusUrl => $"{Nav.BaseUri.TrimEnd('/')}/api/partner/v1/status";
 
     private async Task LeggTilKreds()
@@ -2466,17 +2470,17 @@ else if (_active == "GDPR")
         if (string.IsNullOrWhiteSpace(_nyBank)) { _partnerMsg = "Velg en bank."; return; }
         if (string.IsNullOrWhiteSpace(_nyUser) || string.IsNullOrWhiteSpace(_nyPass)) { _partnerMsg = "Fyll inn brukernavn og passord."; return; }
         if (_kredsListe.Any(k => string.Equals(k.Username, _nyUser, StringComparison.OrdinalIgnoreCase))) { _partnerMsg = "Brukernavnet er allerede i bruk."; return; }
-        _kredsListe.Add(new RentkuttCRM.Services.PartnerKreds(_nyBank, _nyUser, _nyPass));
-        await PartnerKreds.LagreAsync(_kredsListe);
-        await PartnerKreds.SecretAsync();   // sørg for at token-nøkkel finnes
+        await PartnerKreds.LeggTilAsync(_nyBank, _nyUser, _nyPass);
+        _kredsListe = await PartnerKreds.HentAsync();
+        // Passordet lagres kun som hash — vis det én gang nå så det kan deles med banken.
+        _partnerMsg = $"Pålogging lagt til for {_nyBank}. Passordet vises KUN nå — noter det: «{_nyPass}».";
         _nyBank = _nyUser = _nyPass = "";
-        _partnerMsg = "Pålogging lagt til. Del brukernavn/passord med banken.";
     }
 
     private async Task FjernKreds(RentkuttCRM.Services.PartnerKreds kr)
     {
-        _kredsListe.Remove(kr);
-        await PartnerKreds.LagreAsync(_kredsListe);
+        await PartnerKreds.FjernAsync(kr.Username);
+        _kredsListe = await PartnerKreds.HentAsync();
         _partnerMsg = "Pålogging fjernet.";
     }
 

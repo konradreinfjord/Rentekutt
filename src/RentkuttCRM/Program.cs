@@ -36,33 +36,27 @@ builder.Services.AddSwaggerGen(c =>
         Title = "Rentekutt Partner API",
         Version = "v1",
         Description =
-            "Dette API-et lar en **bankpartner** ta imot lånesøknader fra Rentekutt og melde status tilbake. "
-            + "Rentekutt er en låneformidler: vi sender søknaden til banken, og banken gir tilbud eller svar. "
-            + "Alle beløp er i hele norske kroner (heltall), og alle tidspunkt er ISO-8601 i UTC.\n\n"
+            "Dette API-et lar en **bankpartner** ta imot lånesøknader fra Rentekutt og melde status tilbake.\n\n"
             + "## Slik fungerer det\n\n"
             + "1. **Logg inn** — `POST /api/partner/v1/auth/token` med `{ \"username\": \"…\", \"password\": \"…\" }` (utlevert av Rentekutt). Du får en `access_token` som varer 1 time.\n\n"
             + "2. **Se datamodellen** — `GET /api/partner/v1/soknad/eksempel` returnerer en ferdig utfylt eksempel-søknad du kan bygge mot.\n\n"
-            + "3. **Hent dine søknader** — `GET /api/partner/v1/soknader` gir søknadene som er sendt til DIN bank. "
+            + "3. **Hent én søknad på UUID** — spisset oppslag, ingen lister: `GET /api/partner/v1/boliglan/{referanse}` (boliglån) og "
+            + "`GET /api/partner/v1/refinansiering/{referanse}` (refinansiering/forbrukslån). Referansen får du når Rentekutt varsler om en ny søknad. "
+            + "Kun søknader sendt til DIN bank. "
             + "(Rentekutt kan også pushe søknader i samme format til et mottaks-endepunkt hos deg — avtales per integrasjon.)\n\n"
             + "4. **Meld status tilbake** — `POST /api/partner/v1/status` hver gang søknaden endrer status.\n\n"
-            + "## Innlogging og tilgang\n\n"
-            + "Hver bank har sin egen pålogging. Tokenet er knyttet til banken din, og **du ser kun søknader som er sendt til deg** — "
-            + "du kan heller ikke melde status på en annen banks søknader.\n\n"
             + "Send tokenet som header på alle kall: `Authorization: Bearer <access_token>`. "
             + "Trykk **Authorize** øverst til høyre for å lime inn tokenet og teste kallene direkte her i portalen.\n\n"
-            + "## Når Rentekutt sender en søknad til deg\n\n"
-            + "- Svar `200 OK` eller `202 Accepted` — gjerne med din egen saks-referanse i svaret.\n\n"
+            + "## Fra Rentekutt til bank\n\n"
+            + "- Svar `200 OK` eller `202 Accepted`.\n\n"
             + "- Timeout er 30 sekunder. Får vi ikke svar, prøver vi på nytt inntil 3 ganger med økende pause.\n\n"
             + "- Samme `referanse` (en UUID) kan derfor komme flere ganger — **oppdater den eksisterende søknaden, ikke opprett en ny** (idempotens).\n\n"
-            + "## Når du melder status tilbake\n\n"
+            + "## Fra bank til Rentekutt\n\n"
             + "Gyldige statusverdier: `Mottatt`, `UnderBehandling`, `TrengerDokumentasjon`, `Tilbud`, `Innvilget`, `Utbetalt`, `Avslatt`, `Kansellert`.\n\n"
             + "- Hver melding må ha en unik `hendelseId` (UUID) — samme hendelse registreres kun én gang.\n\n"
             + "- `referanse` må matche en kjent søknad; ukjent referanse gir `404`.\n\n"
-            + "- Status `Tilbud` skal inneholde objektet `tilbud` (nominell + effektiv rente, etablerings- og termingebyr, månedsbeløp, totalkostnad, gyldig til) — dette er grunnlaget vi sammenligner tilbud på.\n\n"
-            + "- Status `Utbetalt` skal ha `utbetaltBelop` + `utbetaltDato`.\n\n"
-            + "---\n\n"
-            + "Spørsmål om integrasjonen? Kontakt Rentekutt.",
-        Contact = new Microsoft.OpenApi.OpenApiContact { Name = "Rentekutt / Metapro", Url = new Uri("https://portal.metapro.no") },
+            + "- Status `Tilbud` skal inneholde objektet `tilbud` (nominell + effektiv rente, etablerings- og termingebyr, månedsbeløp, totalkostnad, gyldig til).\n\n"
+            + "- Status `Utbetalt` skal ha `utbetaltBelop` + `utbetaltDato`.",
     });
     // «v1»: full intern API-flate — kun i Development.
     if (builder.Environment.IsDevelopment())
@@ -73,6 +67,15 @@ builder.Services.AddSwaggerGen(c =>
 
     // Korte skjemanavn (SoknadDto, ikke RentkuttCRM.Models.PartnerApi.SoknadDto).
     c.CustomSchemaIds(t => t.Name);
+
+    // Rekkefølge på seksjonene: login+status øverst, så boliglån, så usikret gjeld.
+    c.OrderActionsBy(d =>
+    {
+        var p = (d.RelativePath ?? "").ToLowerInvariant();
+        var grp = (p.Contains("auth/token") || p.EndsWith("/status")) ? "0"
+                : p.Contains("boliglan") ? "1" : "2";
+        return grp + p;
+    });
 
     // Bearer-token (gir «Authorize»-knapp i Swagger UI).
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
@@ -117,6 +120,27 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("webhook", ctx =>
     {
         var key = "ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0,
+        });
+    });
+
+    // Partner-API: innlogging strengt per IP (brute-force-vern), øvrige kall per token.
+    options.AddPolicy("partner-login", ctx =>
+    {
+        var key = "ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0,
+        });
+    });
+    options.AddPolicy("partner", ctx =>
+    {
+        var auth = ctx.Request.Headers.Authorization.ToString();
+        var key = auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? "t:" + auth["Bearer ".Length..].Trim()
+            : "ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
         return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0,
@@ -326,11 +350,13 @@ static bool BasicKodeOk(HttpRequest req, string kode)
 app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
     branch.Use(async (ctx, next) =>
     {
+        // Alltid åpent lokalt (Development) — koden kreves kun i produksjon.
+        if (app.Environment.IsDevelopment()) { await next(); return; }
+
         var kreds = ctx.RequestServices.GetRequiredService<PartnerKredsService>();
         var kode = await kreds.DocsKodeAsync();
         if (string.IsNullOrWhiteSpace(kode))
         {
-            if (app.Environment.IsDevelopment()) { await next(); return; }   // åpent lokalt
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await ctx.Response.WriteAsync("Partner-API-dokumentasjonen er ikke aktivert.");
             return;

@@ -2,21 +2,22 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RentkuttCRM.Models.PartnerApi;
 using RentkuttCRM.Services;
 
 namespace RentkuttCRM.Controllers;
 
 /// <summary>
-/// Endepunktene for bankpartnere. Logg inn på <c>/auth/token</c> for å få en token, hent et
-/// søknadseksempel på <c>/soknad/eksempel</c>, og meld status tilbake på <c>/status</c>.
-/// Se full forklaring øverst på siden. Alle beløp er i hele norske kroner.
+/// Endepunktene for bankpartnere.
 /// </summary>
 [ApiController]
 [Route("api/partner/v1")]
 [ApiExplorerSettings(GroupName = "partner")]
+[Tags("Endepunkt usikret gjeld")]
 [Produces("application/json")]
 [Consumes("application/json")]
+[EnableRateLimiting("partner")]
 public class PartnerApiController : ControllerBase
 {
     private const int TokenLevetidSek = 3600;               // 1 time
@@ -42,15 +43,17 @@ public class PartnerApiController : ControllerBase
     /// <response code="200">Innlogging OK — token returneres.</response>
     /// <response code="401">Feil brukernavn eller passord.</response>
     [HttpPost("auth/token")]
+    [Tags("Endepunkt login og status")]
+    [EnableRateLimiting("partner-login")]
     [ProducesResponseType(typeof(TokenSvar), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Token([FromBody] PartnerLoginDto paalogging)
     {
         if ((await _kreds.HentAsync()).Count == 0)
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Partner-API er ikke aktivert." });
+            return Feil(StatusCodes.Status503ServiceUnavailable, "Ikke aktivert", "Partner-API er ikke aktivert.");
 
         var kreds = await _kreds.ValiderAsync(paalogging?.Username, paalogging?.Password);
-        if (kreds is null) return Unauthorized(new { error = "Feil brukernavn eller passord." });
+        if (kreds is null) return Feil(StatusCodes.Status401Unauthorized, "Ikke autorisert", "Feil brukernavn eller passord.");
 
         var secret = await _kreds.SecretAsync();
         var token = LagToken(kreds.Username, kreds.Bank, secret, TokenLevetidSek);
@@ -58,33 +61,70 @@ public class PartnerApiController : ControllerBase
     }
 
     /// <summary>
-    /// Søknadene som er sendt til DIN bank (tokenet avgjør hvilken bank). Nyeste først, maks 100.
+    /// Hent ÉN refinansierings-/forbrukslånssøknad på referanse (UUID). Kun søknader sendt til din bank.
     /// </summary>
-    [HttpGet("soknader")]
-    [ProducesResponseType(typeof(List<SoknadDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Soknader()
-    {
-        var bank = await AutentisertBankAsync();
-        if (bank is null) return Unauthorized(new { error = "Mangler/ugyldig token." });
-
-        var soknader = (await _kundekort.ListLettAsync())
-            .Where(k => string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(k => k.CreatedAt)
-            .Take(100)
-            .Select(MapTilSoknad)
-            .ToList();
-        return Ok(soknader);
-    }
-
-    /// <summary>
-    /// Eksempel på en søknad slik Rentekutt sender den. Bruk responsen som mal for mottaket. Krever token.
-    /// </summary>
-    [HttpGet("soknad/eksempel")]
+    /// <param name="referanse">Søknadens unike referanse (UUID) fra Rentekutt.</param>
+    /// <response code="200">Søknaden.</response>
+    /// <response code="401">Mangler eller ugyldig token.</response>
+    /// <response code="403">Søknaden tilhører en annen bank.</response>
+    /// <response code="404">Ingen refinansieringssøknad med denne referansen.</response>
+    [HttpGet("refinansiering/{referanse:guid}")]
     [ProducesResponseType(typeof(SoknadDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> SoknadEksempel()
-        => await AutentisertBankAsync() is not null ? Ok(Eksempel()) : Unauthorized(new { error = "Mangler/ugyldig token." });
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Refinansiering(Guid referanse)
+    {
+        var bank = await AutentisertBankAsync();
+        if (bank is null) return Feil(StatusCodes.Status401Unauthorized, "Ikke autorisert", "Mangler/ugyldig token.");
+        var k = await _kundekort.GetAsync(referanse);
+        if (k is null || ErBoliglaan(k.Laanetype))
+            return Feil(StatusCodes.Status404NotFound, "Ikke funnet", "Ingen refinansieringssøknad med denne referansen.");
+        if (!string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
+            return Feil(StatusCodes.Status403Forbidden, "Ingen tilgang", "Søknaden tilhører en annen bank.");
+        return Ok(MapTilSoknad(k));
+    }
+
+    /// <summary>Eksempel på en refinansierings-/forbrukslånssøknad. Krever token.</summary>
+    [HttpGet("refinansiering/eksempel")]
+    [ProducesResponseType(typeof(SoknadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RefinansieringEksempel()
+        => await AutentisertBankAsync() is not null ? Ok(Eksempel()) : Feil(StatusCodes.Status401Unauthorized, "Ikke autorisert", "Mangler/ugyldig token.");
+
+    /// <summary>
+    /// Hent ÉN boliglånssøknad på referanse (UUID). Kun søknader sendt til din bank.
+    /// </summary>
+    /// <param name="referanse">Søknadens unike referanse (UUID) fra Rentekutt.</param>
+    /// <response code="200">Søknaden.</response>
+    /// <response code="401">Mangler eller ugyldig token.</response>
+    /// <response code="403">Søknaden tilhører en annen bank.</response>
+    /// <response code="404">Ingen boliglånssøknad med denne referansen.</response>
+    [HttpGet("boliglan/{referanse:guid}")]
+    [Tags("Endepunkt boliglån")]
+    [ProducesResponseType(typeof(BoliglanSoknadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Boliglan(Guid referanse)
+    {
+        var bank = await AutentisertBankAsync();
+        if (bank is null) return Feil(StatusCodes.Status401Unauthorized, "Ikke autorisert", "Mangler/ugyldig token.");
+        var k = await _kundekort.GetAsync(referanse);
+        if (k is null || !ErBoliglaan(k.Laanetype))
+            return Feil(StatusCodes.Status404NotFound, "Ikke funnet", "Ingen boliglånssøknad med denne referansen.");
+        if (!string.Equals(k.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
+            return Feil(StatusCodes.Status403Forbidden, "Ingen tilgang", "Søknaden tilhører en annen bank.");
+        return Ok(MapTilBoliglan(k));
+    }
+
+    /// <summary>Eksempel på en boliglånssøknad (mindre skjema). Krever token.</summary>
+    [HttpGet("boliglan/eksempel")]
+    [Tags("Endepunkt boliglån")]
+    [ProducesResponseType(typeof(BoliglanSoknadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> BoliglanEksempel()
+        => await AutentisertBankAsync() is not null ? Ok(BoliglanEksempelData()) : Feil(StatusCodes.Status401Unauthorized, "Ikke autorisert", "Mangler/ugyldig token.");
 
     /// <summary>
     /// Bankens status-tilbakemelding på en søknad. Krever token (<c>Authorization: Bearer …</c>).
@@ -96,6 +136,7 @@ public class PartnerApiController : ControllerBase
     /// <response code="403">Søknaden tilhører en annen bank enn din.</response>
     /// <response code="404">Ukjent referanse (søknaden finnes ikke hos Rentekutt).</response>
     [HttpPost("status")]
+    [Tags("Endepunkt login og status")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -104,16 +145,16 @@ public class PartnerApiController : ControllerBase
     public async Task<IActionResult> Status([FromBody] StatusCallbackDto melding)
     {
         var bank = await AutentisertBankAsync();
-        if (bank is null) return Unauthorized(new { error = "Mangler/ugyldig token." });
+        if (bank is null) return Feil(StatusCodes.Status401Unauthorized, "Ikke autorisert", "Mangler/ugyldig token.");
         if (melding is null || string.IsNullOrWhiteSpace(melding.HendelseId) || string.IsNullOrWhiteSpace(melding.Referanse))
-            return BadRequest(new { error = "Mangler hendelseId, referanse eller status." });
+            return Feil(StatusCodes.Status400BadRequest, "Ugyldig forespørsel", "Mangler hendelseId, referanse eller status.");
 
         // Referansen må være en kjent søknad hos oss (= Rentekutt sin sak-id).
         if (!Guid.TryParse(melding.Referanse, out var sakId) || await _kundekort.GetAsync(sakId) is not { } sak)
-            return NotFound(new { error = "Ukjent referanse." });
+            return Feil(StatusCodes.Status404NotFound, "Ikke funnet", "Ukjent referanse.");
         // ...og den må være sendt til DIN bank.
         if (!string.Equals(sak.DelegertBank, bank, StringComparison.OrdinalIgnoreCase))
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Søknaden tilhører en annen bank." });
+            return Feil(StatusCodes.Status403Forbidden, "Ingen tilgang", "Søknaden tilhører en annen bank.");
 
         var detalj = $"Partner-status: {melding.Status}"
             + (melding.Tilbud is { } t ? $" · tilbud {t.EffektivRente?.ToString() ?? "?"} % eff, mnd {t.MaanedsbelopKr?.ToString("N0") ?? "?"} kr" : "")
@@ -128,6 +169,11 @@ public class PartnerApiController : ControllerBase
         _log.LogInformation("Partner-status mottatt: ref={Ref} status={Status} hendelse={H}", melding.Referanse, melding.Status, melding.HendelseId);
         return Ok(new { ok = true, referanse = melding.Referanse, status = melding.Status.ToString(), hendelseId = melding.HendelseId });
     }
+
+    // ---- Feilsvar i standardformat (RFC 7807 ProblemDetails) ----
+
+    private ObjectResult Feil(int status, string tittel, string detalj)
+        => Problem(statusCode: status, title: tittel, detail: detalj);
 
     // ---- Token (JWT HS256, selvstendig) ----
 
@@ -186,7 +232,135 @@ public class PartnerApiController : ControllerBase
         return Convert.FromBase64String(s);
     }
 
-    // ---- Mapping Kundekort → SoknadDto (for GET /soknader) ----
+    private static bool ErBoliglaan(string? laanetype) => (laanetype ?? "").Contains("bolig", StringComparison.OrdinalIgnoreCase);
+
+    // ---- Felt-hjelpere: beløp → hele kroner, tomt → null, fritekst/kode → enum ----
+
+    private static long? Kr(decimal? v) => v is > 0 ? (long)Math.Round(v.Value) : null;
+    private static string? Tekst(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // Kundekortet lagrer fritekst (fra KundekortService-listene) + ev. en kode fra skjemaet.
+    // Vi matcher på begge, fritekst først. Ukjent → null (feltet utelates), aldri gjetting.
+    private static string Norm(string? tekst, string? kode) => ((tekst ?? "") + " " + (kode ?? "")).ToLowerInvariant();
+
+    private static Sivilstatus? MapSivilstatus(string? tekst, string? kode)
+    {
+        var s = Norm(tekst, kode);
+        if (s.Contains("gift")) return Sivilstatus.Gift;
+        if (s.Contains("samboer")) return Sivilstatus.Samboer;
+        if (s.Contains("skilt") || s.Contains("separert")) return Sivilstatus.Skilt;
+        if (s.Contains("enke")) return Sivilstatus.Enke;
+        if (s.Contains("singel") || s.Contains("enslig") || s.Contains("ugift")) return Sivilstatus.Enslig;
+        return null;
+    }
+
+    private static Arbeidssituasjon? MapArbeid(string? tekst, string? kode)
+    {
+        var s = Norm(tekst, kode);
+        if (s.Contains("midlertidig") || s.Contains("vikar")) return Arbeidssituasjon.MidlertidigAnsatt;
+        if (s.Contains("fast") || s.Contains("offentlig")) return Arbeidssituasjon.FastAnsatt;
+        if (s.Contains("selvstendig") || s.Contains("næring")) return Arbeidssituasjon.Selvstendig;
+        if (s.Contains("pensjon")) return Arbeidssituasjon.Pensjonist;
+        if (s.Contains("ufør") || s.Contains("trygd")) return Arbeidssituasjon.Trygd;
+        if (s.Contains("student")) return Arbeidssituasjon.Student;
+        if (s.Contains("arbeidsledig") || s.Contains("hjemme")) return Arbeidssituasjon.Arbeidsledig;
+        return null;
+    }
+
+    private static Boforhold? MapBoforhold(string? tekst, string? kode)
+    {
+        var s = Norm(tekst, kode);
+        if (s.Contains("foreldre")) return Boforhold.BorHosForeldre;
+        if (s.Contains("leier")) return Boforhold.Leier;
+        if (s.Contains("eier") || s.Contains("andel") || s.Contains("borettslag") || s.Contains("enebolig")) return Boforhold.Eier;
+        return null;
+    }
+
+    // ---- Mapping Kundekort → Boliglån (mindre skjema) ----
+
+    private static BoliglanSoknadDto MapTilBoliglan(Kundekort k) => new()
+    {
+        Referanse = k.Id.ToString(),
+        OnsketBelop = (long)(k.OnsketLaanebelop ?? 0),
+        NedbetalingstidMnd = k.OnsketLopetidMnd,
+        Opprettet = k.CreatedAt,
+        Samtykke = new SamtykkeDto
+        {
+            SamtykkeId = k.Id.ToString(),
+            Tidspunkt = k.CreatedAt,
+            VilkaarVersjon = k.SamtykkeGjeldsregisterKredittsjekk ? "samtykket" : "ukjent",
+        },
+        Soker = new BoliglanSokerDto
+        {
+            FulltNavn = k.FulltNavn ?? "",
+            Fodselsnummer = k.Foedselsnummer ?? "",
+            Epost = k.Epost ?? "",
+            Mobilnummer = k.Mobilnummer ?? "",
+            Adresse = k.Adresse,
+            Postnummer = k.Postnummer,
+            Poststed = k.Poststed,
+            AarsinntektBrutto = Kr(k.AarsinntektBrutto),
+            Arbeidssituasjon = MapArbeid(k.Arbeidssituasjon, k.ArbeidssituasjonKode),
+        },
+        Medsoker = !k.HarMedsoker ? null : new BoliglanSokerDto
+        {
+            FulltNavn = k.MedsokerNavn ?? "",
+            Fodselsnummer = k.MedsokerFoedselsnummer ?? "",
+            Epost = k.MedsokerEpost ?? "",
+            Mobilnummer = k.MedsokerMobil ?? "",
+            Adresse = k.MedsokerAdresse,
+            Postnummer = k.MedsokerPostnummer,
+            Poststed = k.MedsokerPoststed,
+            AarsinntektBrutto = Kr(k.MedsokerInntekt),
+            Arbeidssituasjon = MapArbeid(k.MedsokerArbeidsforhold, k.MedsokerArbeidssituasjonKode),
+        },
+        Bolig = new BoligDto
+        {
+            Boligverdi = k.Boligverdi is > 0 ? (long)k.Boligverdi.Value : null,
+            BelaaningsgradProsent = k.Belaaningsgrad,
+            NaavaerendeBoliglaan = k.NaavaerendeLaanebelop is > 0 ? (long)k.NaavaerendeLaanebelop.Value : null,
+            Boliggjeld = k.Boliggjeld is > 0 ? (long)k.Boliggjeld.Value : null,
+            NaavaerendeRente = k.NaavaerendeRente,
+            NaavaerendeBank = k.NavarendeBank,
+        },
+    };
+
+    private static BoliglanSoknadDto BoliglanEksempelData() => new()
+    {
+        Referanse = "7a2b9c10-3d4e-4f56-8a90-0b1c2d3e4f50",
+        OnsketBelop = 3500000,
+        NedbetalingstidMnd = 300,
+        Opprettet = new DateTime(2026, 10, 19, 9, 30, 0, DateTimeKind.Utc),
+        Samtykke = new SamtykkeDto
+        {
+            SamtykkeId = "9d2f6a31-0b4c-4d8e-9f31-2b3c4d5e6f71",
+            Tidspunkt = new DateTime(2026, 10, 19, 9, 28, 0, DateTimeKind.Utc),
+            VilkaarVersjon = "2026-01",
+        },
+        Soker = new BoliglanSokerDto
+        {
+            FulltNavn = "Ola Nordmann",
+            Fodselsnummer = "15857243371",
+            Epost = "ola.nordmann@example.com",
+            Mobilnummer = "40412345",
+            Adresse = "Storgata 1",
+            Postnummer = "0155",
+            Poststed = "Oslo",
+            AarsinntektBrutto = 740000,
+            Arbeidssituasjon = Arbeidssituasjon.FastAnsatt,
+        },
+        Bolig = new BoligDto
+        {
+            Boligverdi = 5200000,
+            BelaaningsgradProsent = 67.3m,
+            NaavaerendeBoliglaan = 3200000,
+            Boliggjeld = 3200000,
+            NaavaerendeRente = 5.9m,
+            NaavaerendeBank = "DNB",
+        },
+    };
+
+    // ---- Mapping Kundekort → SoknadDto (refinansiering/forbrukslån) ----
 
     private static SoknadDto MapTilSoknad(Kundekort k) => new()
     {
@@ -212,9 +386,31 @@ public class PartnerApiController : ControllerBase
             Adresse = k.Adresse,
             Postnummer = k.Postnummer,
             Poststed = k.Poststed,
-            AarsinntektBrutto = k.AarsinntektBrutto is > 0 ? (long)k.AarsinntektBrutto.Value : null,
-            UsikretGjeld = null,
-            Boliggjeld = k.Boliggjeld is > 0 ? (long)k.Boliggjeld.Value : null,
+            AarsinntektBrutto = Kr(k.AarsinntektBrutto),
+            Sivilstatus = MapSivilstatus(k.Sivilstatus, k.SivilstatusKode),
+            Arbeidssituasjon = MapArbeid(k.Arbeidssituasjon, k.ArbeidssituasjonKode),
+            Boforhold = MapBoforhold(k.Boforhold, k.BoforholdKode),
+            AntallBarnUnder18 = k.AntallBarnUnder18,
+            UsikretGjeld = Kr(k.Forbruksgjeld),
+            Boliggjeld = Kr(k.Boliggjeld),
+            Studielaan = Kr(k.Studielaan),
+            Billaan = Kr(k.Billaan),
+            Arbeidsgiver = Tekst(k.Arbeidsgiver),
+            BoutgifterMnd = Kr(k.BoligkostnadMnd),
+            Statsborgerskap = Tekst(k.StatsborgerskapKode) ?? Tekst(k.Statsborgerskap),
+            BotidAar = k.BotidMnd is > 0 ? k.BotidMnd / 12 : null,
+        },
+        Medsoker = !k.HarMedsoker ? null : new SokerDto
+        {
+            FulltNavn = k.MedsokerNavn ?? "",
+            Fodselsnummer = k.MedsokerFoedselsnummer ?? "",
+            Epost = k.MedsokerEpost ?? "",
+            Mobilnummer = k.MedsokerMobil ?? "",
+            Adresse = k.MedsokerAdresse,
+            Postnummer = k.MedsokerPostnummer,
+            Poststed = k.MedsokerPoststed,
+            AarsinntektBrutto = Kr(k.MedsokerInntekt),
+            Arbeidssituasjon = MapArbeid(k.MedsokerArbeidsforhold, k.MedsokerArbeidssituasjonKode),
         },
         Firma = k.KundeType == "B2B" ? new FirmaDto
         {

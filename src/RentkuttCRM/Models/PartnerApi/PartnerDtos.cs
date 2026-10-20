@@ -162,6 +162,69 @@ public class FirmaDto
     public string? Laaneformaal { get; set; }
 }
 
+// ===== Boliglån (Rentekutt → bank) — eget, mindre skjema =====
+
+/// <summary>
+/// En boliglånssøknad fra Rentekutt. Vesentlig færre felt enn refinansierings-/forbrukslånssøknaden —
+/// kun det boliglåns-leadet gir oss. Alle beløp er i hele norske kroner. Bruk «referanse» i statusmeldingene.
+/// </summary>
+public class BoliglanSoknadDto
+{
+    /// <summary>Unik referanse for søknaden hos Rentekutt (UUID). Oppgis i statusmeldinger.</summary>
+    [Required] public string Referanse { get; set; } = "";
+
+    /// <summary>Ønsket lånebeløp i hele kroner.</summary>
+    [Required] public long OnsketBelop { get; set; }
+
+    /// <summary>Ønsket nedbetalingstid i måneder.</summary>
+    public int? NedbetalingstidMnd { get; set; }
+
+    /// <summary>Kundens samtykke til at dataene deles med denne banken.</summary>
+    [Required] public SamtykkeDto Samtykke { get; set; } = new();
+
+    [Required] public BoliglanSokerDto Soker { get; set; } = new();
+    public BoliglanSokerDto? Medsoker { get; set; }
+
+    /// <summary>Opplysninger om boligen/lånet.</summary>
+    [Required] public BoligDto Bolig { get; set; } = new();
+
+    /// <summary>Tidspunkt søknaden ble opprettet (ISO-8601, UTC).</summary>
+    public DateTime Opprettet { get; set; }
+}
+
+/// <summary>Søker på en boliglånssøknad — kun grunnleggende personalia og inntekt.</summary>
+public class BoliglanSokerDto
+{
+    [Required] public string FulltNavn { get; set; } = "";
+    /// <summary>Norsk fødselsnummer, 11 siffer.</summary>
+    [Required] public string Fodselsnummer { get; set; } = "";
+    [Required] public string Epost { get; set; } = "";
+    [Required] public string Mobilnummer { get; set; } = "";
+    public string? Adresse { get; set; }
+    public string? Postnummer { get; set; }
+    public string? Poststed { get; set; }
+    /// <summary>Brutto årsinntekt i hele kroner.</summary>
+    public long? AarsinntektBrutto { get; set; }
+    public Arbeidssituasjon? Arbeidssituasjon { get; set; }
+}
+
+/// <summary>Bolig- og låneopplysninger fra boliglåns-leadet. Beløp i hele kroner, renter i prosent.</summary>
+public class BoligDto
+{
+    /// <summary>Anslått boligverdi i hele kroner.</summary>
+    public long? Boligverdi { get; set; }
+    /// <summary>Beregnet belåningsgrad (LTV) i prosent.</summary>
+    public decimal? BelaaningsgradProsent { get; set; }
+    /// <summary>Nåværende boliglån (restgjeld) i hele kroner.</summary>
+    public long? NaavaerendeBoliglaan { get; set; }
+    /// <summary>Boliggjeld i hele kroner.</summary>
+    public long? Boliggjeld { get; set; }
+    /// <summary>Nåværende rente på boliglånet, i prosent.</summary>
+    public decimal? NaavaerendeRente { get; set; }
+    /// <summary>Nåværende bank.</summary>
+    public string? NaavaerendeBank { get; set; }
+}
+
 // ===== Status (bank → Rentekutt) =====
 
 /// <summary>
