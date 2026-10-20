@@ -17,7 +17,10 @@
         <div class="sms-varsel-panel" @onclick:stopPropagation="true">
             <div class="sms-varsel-tit">
                 Kundesvar @(_uleste.Count > 0 ? $"({_uleste.Count})" : "")
-                <button class="sms-varsel-ref" @onclick="Last" title="Oppdater">↻</button>
+                <span>
+                    @if (_uleste.Count > 0) { <button class="sms-varsel-ref" @onclick="KvitterUtAlle" title="Kvitter ut alle">Kvitter ut alle</button> }
+                    <button class="sms-varsel-ref" @onclick="Last" title="Oppdater">↻</button>
+                </span>
             </div>
             @if (_uleste.Count == 0)
             {
@@ -28,6 +31,7 @@
                 @foreach (var s in _uleste)
                 {
                     <div class="sms-varsel-rad @(s.KundekortId is null ? "" : "klikk")" @onclick="() => Aapne(s)">
+                        <button class="sms-varsel-kvitt" title="Kvitter ut" @onclick="() => KvitterUt(s)" @onclick:stopPropagation="true">✓</button>
                         <div class="sms-varsel-navn">@Navn(s)</div>
                         <div class="sms-varsel-tekst">@(string.IsNullOrWhiteSpace(s.Tekst) ? "(tom melding)" : s.Tekst)</div>
                         <div class="sms-varsel-tid">@s.MottattAt.TilOslo().ToString("dd.MM HH:mm")@(s.KundekortId is null ? " · ukjent nummer" : "")</div>
@@ -74,10 +78,35 @@
 
     private void Veksle() => _open = !_open;
 
-    private void Aapne(RentkuttCRM.Services.InnkommendeSms s)
+    // Klikk på et svar: kvitter ut (alle svar på den saken) med én gang, så det forsvinner fra
+    // varslingen umiddelbart — og åpne saken.
+    private async Task Aapne(RentkuttCRM.Services.InnkommendeSms s)
     {
         _open = false;
-        if (s.KundekortId is { } id) Nav.NavigateTo($"/crm/ny-kunde?id={id}");
+        if (s.KundekortId is { } id)
+        {
+            await InnSms.MarkerLestForKundeAsync(id);
+            _uleste.RemoveAll(x => x.KundekortId == id);
+            Nav.NavigateTo($"/crm/ny-kunde?id={id}");
+        }
+        else
+        {
+            await InnSms.MarkerLestAsync(s.Id);
+            _uleste.RemoveAll(x => x.Id == s.Id);
+        }
+    }
+
+    // ✓ på raden: kvitter ut uten å åpne saken.
+    private async Task KvitterUt(RentkuttCRM.Services.InnkommendeSms s)
+    {
+        await InnSms.MarkerLestAsync(s.Id);
+        _uleste.RemoveAll(x => x.Id == s.Id);
+    }
+
+    private async Task KvitterUtAlle()
+    {
+        foreach (var s in _uleste.ToList()) await InnSms.MarkerLestAsync(s.Id);
+        _uleste.Clear();
     }
 
     public void Dispose() => _timer?.Dispose();

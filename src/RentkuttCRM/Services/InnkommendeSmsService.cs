@@ -125,6 +125,24 @@ public class InnkommendeSmsService
     public async Task<HashSet<Guid>> UlesteKundekortIderAsync()
         => (await UlesteAsync(500)).Where(x => x.KundekortId is not null).Select(x => x.KundekortId!.Value).ToHashSet();
 
+    /// <summary>Marker én innkommende SMS som lest (kvitter ut fra notifikasjonssenteret).</summary>
+    public async Task MarkerLestAsync(Guid smsId)
+    {
+        if (!IsConfigured)
+        {
+            foreach (var x in _staging.Where(x => x.Id == smsId)) x.Lest = true;
+            return;
+        }
+        try
+        {
+            await _client.From<InnkommendeSms>()
+                .Where(x => x.Id == smsId)
+                .Set(x => x.Lest, true)
+                .Update();
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Marker lest (enkelt) feilet"); }
+    }
+
     /// <summary>Marker alle innkommende SMS på en sak som lest (når agenten åpner saken).</summary>
     public async Task MarkerLestForKundeAsync(Guid kundekortId)
     {
