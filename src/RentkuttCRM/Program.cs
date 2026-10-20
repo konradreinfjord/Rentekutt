@@ -328,22 +328,33 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-// Partner-API-dokumentasjonen (/swagger) åpnes med én felles, symbolsk tilgangskode (ikke bankens
-// brukernavn/passord — de brukes kun til selve API-innloggingen). Koden settes i Admin → Partner API.
-// Nettleserens Basic-dialog godtar koden i enten brukernavn- eller passord-feltet.
+// Partner-API-dokumentasjonen (/swagger) åpnes med én felles tilgangskode via en egen, enkel
+// innloggingsside med ETT felt (ikke nettleserens Basic-dialog, som alltid viser bruker+passord).
+// Bankens brukernavn/passord brukes kun til selve API-innloggingen. Koden settes i Admin → Partner API.
+// Riktig kode → signert cookie (HMAC av koden) i 12 t; bytter man kode, blir gamle cookies ugyldige.
 // Ikke satt: åpent i Development, STENGT i produksjon (fail-closed).
-static bool BasicKodeOk(HttpRequest req, string kode)
+static string DocsCookieVerdi(string secret, string kode)
 {
-    var auth = req.Headers.Authorization.ToString();
-    if (!auth.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)) return false;
-    string dekodet;
-    try { dekodet = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(auth["Basic ".Length..].Trim())); }
-    catch { return false; }
-    var i = dekodet.IndexOf(':');
-    var bruker = i < 0 ? dekodet : dekodet[..i];
-    var passord = i < 0 ? "" : dekodet[(i + 1)..];
-    return PartnerKredsService.KonstantLik(kode, bruker) || PartnerKredsService.KonstantLik(kode, passord);
+    using var h = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(secret));
+    return Convert.ToHexString(h.ComputeHash(System.Text.Encoding.UTF8.GetBytes("docs:" + kode)));
 }
+static string DocsLoginSide(bool feil) => $$"""
+<!doctype html><html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rentekutt Partner API</title>
+<style>
+ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f4f6f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1f2937}
+ .k{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:28px 30px;width:min(92vw,380px);box-shadow:0 12px 32px -16px rgba(16,24,40,.3)}
+ h1{font-size:18px;margin:0 0 4px}p{margin:0 0 18px;color:#64748b;font-size:14px}
+ label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+ input{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;font-size:16px}
+ button{margin-top:14px;width:100%;padding:11px;border:0;border-radius:9px;background:#2f6fed;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+ .f{color:#b42318;font-size:13px;margin:10px 0 0}
+</style></head><body><form class="k" method="post" action="/swagger/login">
+<h1>Rentekutt Partner API</h1><p>Oppgi tilgangskoden for å åpne dokumentasjonen.</p>
+<label for="kode">Tilgangskode</label><input id="kode" name="kode" autocomplete="off" autofocus required>
+<button type="submit">Åpne</button>{{(feil ? "<div class=\"f\">Feil tilgangskode.</div>" : "")}}
+</form></body></html>
+""";
 app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
     branch.Use(async (ctx, next) =>
     {
@@ -351,20 +362,48 @@ app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/swagger"), branch =>
         if (app.Environment.IsDevelopment()) { await next(); return; }
 
         var kreds = ctx.RequestServices.GetRequiredService<PartnerKredsService>();
+        // Koden fra Admin (innstillinger); Azure-config PartnerDocs__Kode som fallback.
         var kode = await kreds.DocsKodeAsync();
+        if (string.IsNullOrWhiteSpace(kode))
+            kode = ctx.RequestServices.GetRequiredService<IConfiguration>()["PartnerDocs:Kode"];
         if (string.IsNullOrWhiteSpace(kode))
         {
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await ctx.Response.WriteAsync("Partner-API-dokumentasjonen er ikke aktivert.");
             return;
         }
-        if (!BasicKodeOk(ctx.Request, kode!))
+        var secret = await kreds.SecretAsync();
+        var gyldig = DocsCookieVerdi(secret, kode!);
+
+        // Innsending av koden fra innloggingssiden.
+        if (ctx.Request.Path.Equals("/swagger/login") && HttpMethods.IsPost(ctx.Request.Method))
         {
-            ctx.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Rentekutt Partner API - oppgi tilgangskode\"";
+            var innsendt = ctx.Request.HasFormContentType ? (await ctx.Request.ReadFormAsync())["kode"].ToString() : "";
+            if (PartnerKredsService.KonstantLik(kode!, innsendt.Trim()))
+            {
+                ctx.Response.Cookies.Append("rk_docs", gyldig, new CookieOptions
+                {
+                    HttpOnly = true, Secure = ctx.Request.IsHttps, SameSite = SameSiteMode.Strict,
+                    Path = "/swagger", MaxAge = TimeSpan.FromHours(12),
+                });
+                ctx.Response.Redirect("/swagger/index.html");
+                return;
+            }
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            ctx.Response.ContentType = "text/html; charset=utf-8";
+            await ctx.Response.WriteAsync(DocsLoginSide(feil: true));
             return;
         }
-        await next();
+
+        // Gyldig cookie → slipp gjennom til Swagger. Ellers vis innloggingssiden (ett felt).
+        if (ctx.Request.Cookies.TryGetValue("rk_docs", out var c) && PartnerKredsService.KonstantLik(gyldig, c))
+        {
+            await next();
+            return;
+        }
+        ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        await ctx.Response.WriteAsync(DocsLoginSide(feil: false));
     }));
 
 // Swagger: i prod eksponeres KUN det kuraterte partner-dokumentet (på /swagger), bak Basic Auth.
