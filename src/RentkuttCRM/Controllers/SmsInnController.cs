@@ -36,9 +36,13 @@ public class SmsInnController : ControllerBase
     [EnableRateLimiting("webhook")]
     public async Task<IActionResult> Inn([FromQuery] string? token)
     {
-        // Les rå body (JSON eller skjema) først — så vi alltid kan logge hva som faktisk kom inn.
+        // Les rå body (JSON/XML/skjema) først — så vi alltid kan logge hva som faktisk kom inn.
+        // Tåler gzip-komprimert body (Content-Encoding: gzip).
         string raw;
-        using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
+        Stream kropp = Request.Body;
+        if (Request.Headers.ContentEncoding.ToString().Contains("gzip", StringComparison.OrdinalIgnoreCase))
+            kropp = new System.IO.Compression.GZipStream(kropp, System.IO.Compression.CompressionMode.Decompress);
+        using (var reader = new StreamReader(kropp, Encoding.UTF8))
             raw = await reader.ReadToEndAsync();
 
         // Token: query-param (?token=) eller header X-Sms-Token. Konstant-tids sammenligning.
@@ -62,6 +66,12 @@ public class SmsInnController : ControllerBase
         var til = Foerste(felt, "destination", "receiver", "to", "shortnumber", "destinationaddr", "destinationaddress",
             "recipientaddress", "recipient", "tonumber");
         var tekst = Foerste(felt, "userdata", "text", "message", "messagetext", "body", "sms", "smstext", "content");
+
+        // Siste utvei: ukjente feltnavn — match på nøkkel-delstreng (også sti-prefiksede nøkler som
+        // «sender_number»/«from_address»), og for numre krev at verdien faktisk ser ut som et telefonnummer.
+        fra ??= PaaNokkel(felt, new[] { "source", "sender", "from", "msisdn", "orig", "anumber", "a_number", "caller" }, telefon: true);
+        til ??= PaaNokkel(felt, new[] { "dest", "recip", "shortnumber", "shortcode", "bnumber", "b_number", "_to", "to_" }, telefon: true);
+        tekst ??= PaaNokkel(felt, new[] { "userdata", "text", "message", "body", "content", "sms" }, telefon: false);
 
         if (string.IsNullOrWhiteSpace(fra))
         {
@@ -98,6 +108,31 @@ public class SmsInnController : ControllerBase
         foreach (var n in navn)
             if (felt.TryGetValue(n, out var v) && !string.IsNullOrWhiteSpace(v)) return v.Trim();
         return null;
+    }
+
+    // Nøkler som aldri er avsender/mottaker/tekst (id-er, tidsstempler, rutingmetadata, vår egen token).
+    private static readonly string[] IgnorerNokler =
+        { "token", "id", "timestamp", "operator", "route", "gate", "platform", "encoding", "type", "queued", "reference", "keyword", "range" };
+
+    /// <summary>Finn første verdi der nøkkelen inneholder en av delstrengene. For numre må verdien se ut som
+    /// et telefonnummer (8–15 siffer, ev. ledende +). Nøkler med id/timestamp/rutingmetadata hoppes over.</summary>
+    private static string? PaaNokkel(Dictionary<string, string> felt, string[] delstrenger, bool telefon)
+    {
+        foreach (var (nokkel, verdi) in felt)
+        {
+            var k = nokkel.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(verdi) || IgnorerNokler.Any(k.Contains)) continue;
+            if (!delstrenger.Any(k.Contains)) continue;
+            if (telefon && !ErTelefon(verdi)) continue;
+            return verdi.Trim();
+        }
+        return null;
+    }
+
+    private static bool ErTelefon(string s)
+    {
+        var siffer = s.Count(char.IsDigit);
+        return siffer is >= 8 and <= 15 && s.Trim().All(c => char.IsDigit(c) || c is '+' or ' ' or '-' or '(' or ')');
     }
 
     // Flater ut payload til små-bokstavs feltnavn → verdi. Støtter JSON (også nøstet) og skjema/query.
@@ -140,32 +175,46 @@ public class SmsInnController : ControllerBase
     }
 
     // XML: elementer med underelementer flates ut rekursivt; blad-elementer og attributter blir nøkkel → verdi.
-    private static void FlatXml(XElement? el, Dictionary<string, string> d)
+    private static void FlatXml(XElement? el, Dictionary<string, string> d, string prefiks = "")
     {
         if (el is null) return;
+        var navn = el.Name.LocalName;
         foreach (var a in el.Attributes())
+        {
             if (!d.ContainsKey(a.Name.LocalName)) d[a.Name.LocalName] = a.Value;
+            if (!d.ContainsKey(prefiks + navn + "_" + a.Name.LocalName)) d[prefiks + navn + "_" + a.Name.LocalName] = a.Value;
+        }
         if (el.HasElements)
         {
-            foreach (var barn in el.Elements()) FlatXml(barn, d);
+            foreach (var barn in el.Elements()) FlatXml(barn, d, prefiks + navn + "_");
         }
-        else if (!d.ContainsKey(el.Name.LocalName))
-            d[el.Name.LocalName] = el.Value;
+        else
+        {
+            if (!d.ContainsKey(navn)) d[navn] = el.Value;
+            if (prefiks.Length > 0 && !d.ContainsKey(prefiks + navn)) d[prefiks + navn] = el.Value;
+        }
     }
 
-    private static void Flat(JsonElement el, Dictionary<string, string> d)
+    // Flater ut JSON. Hver bladverdi legges inn BÅDE som bar nøkkel («number») og sti-prefikset
+    // («sender_number»), så nøstede strukturer kan matches på kontekst. Første verdi vinner.
+    private static void Flat(JsonElement el, Dictionary<string, string> d, string prefiks = "")
     {
         switch (el.ValueKind)
         {
             case JsonValueKind.Object:
                 foreach (var p in el.EnumerateObject())
                 {
-                    if (p.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array) Flat(p.Value, d);
-                    else if (!d.ContainsKey(p.Name)) d[p.Name] = p.Value.ToString();
+                    if (p.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array) Flat(p.Value, d, prefiks + p.Name + "_");
+                    else
+                    {
+                        var v = p.Value.ToString();
+                        if (!d.ContainsKey(p.Name)) d[p.Name] = v;
+                        if (prefiks.Length > 0 && !d.ContainsKey(prefiks + p.Name)) d[prefiks + p.Name] = v;
+                    }
                 }
                 break;
             case JsonValueKind.Array:
-                foreach (var item in el.EnumerateArray()) Flat(item, d);
+                foreach (var item in el.EnumerateArray()) Flat(item, d, prefiks);
                 break;
         }
     }
