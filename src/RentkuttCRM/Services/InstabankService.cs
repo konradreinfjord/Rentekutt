@@ -158,7 +158,8 @@ public class InstabankService
                 innvilgetBelop = TalltolkBelop(FinnFlere(root, "ApprovedAmount", "GrantedAmount", "OfferedAmount",
                     "ApprovedCreditLimit", "GrantedCreditLimit", "CreditLimit", "AcceptedAmount", "OfferAmount", "ApprovedLoanAmount"));
                 // Instabank sin egen sak-id (IKKE vår ExternalReference).
-                instabankId = FinnFlere(root, "ApplicationId", "ApplicationNumber", "InstabankId", "LoanApplicationId",
+                // Iht. Instabanks Agent API-doc heter deres interne referanse «Sequence». Øvrige navn = reserve.
+                instabankId = FinnFlere(root, "Sequence", "ApplicationId", "ApplicationNumber", "InstabankId", "LoanApplicationId",
                     "CaseId", "CaseNumber", "LoanNumber", "ApplicationReference");
             }
             catch { /* ikke-JSON respons */ }

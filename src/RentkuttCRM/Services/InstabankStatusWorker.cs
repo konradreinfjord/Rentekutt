@@ -32,8 +32,25 @@ public class InstabankStatusWorker : BackgroundService
         _ => null,
     };
 
-    private static bool UtfallAvklart(string? utfall) =>
-        utfall is SendUtfall.Utbetalt or SendUtfall.Avslatt or SendUtfall.Kansellert;
+    // Instabank har ingen push tilbake til oss — vi må polle. Kun «Complete» (utbetalt) er endelig.
+    // Iht. Instabanks doc går «Rejected» videre til «Cancelled» (manuelt eller automatisk etter noen
+    // dager); noen annen vei ut av avslag er ikke dokumentert, men support har antydet at saker kan
+    // snus. Derfor: negative utfall sjekkes på nytt ÉN gang i døgnet i 30 dager — billig, men fanger
+    // både auto-kansellering og en eventuell snuing. Aktive saker polles hvert 5. minutt som før.
+    private static readonly TimeSpan PollEtterNegativtUtfall = TimeSpan.FromDays(30);
+
+    private static bool FerdigPollet(BankSending s)
+    {
+        if (s.Utfall == SendUtfall.Utbetalt) return true;
+        if (s.Utfall is SendUtfall.Avslatt or SendUtfall.Kansellert)
+        {
+            if (DateTime.UtcNow - s.SendtAt > PollEtterNegativtUtfall) return true;
+            // Kun i døgnets første 5-minutters-syklus etter kl. 06 UTC (én sjekk per døgn).
+            var naa = DateTime.UtcNow;
+            return !(naa.Hour == 6 && naa.Minute < 5);
+        }
+        return false;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -59,8 +76,8 @@ public class InstabankStatusWorker : BackgroundService
                         if (ct.IsCancellationRequested) break;
                         if (!InstabankService.ErInstabankNavn(siste.Bank) || string.IsNullOrWhiteSpace(siste.EksternRef)) continue;
                         if (!kortMap.TryGetValue(kortId, out var status)) continue;
-                        if (KundekortService.StatuserAvklart.Contains(status)) continue;   // saken er ferdig
-                        if (UtfallAvklart(siste.Utfall)) continue;                          // denne sendingen er ferdig
+                        if (status == KundekortService.StatusUtbetalt) continue;   // utbetalt = endelig
+                        if (FerdigPollet(siste)) continue;                          // utbetalt, eller negativt utfall > 30 dager
 
                         var r = await instabank.HentStatusAsync(siste.EksternRef!);
                         if (r.Ok)
