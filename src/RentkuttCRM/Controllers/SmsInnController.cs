@@ -22,44 +22,69 @@ public class SmsInnController : ControllerBase
     private readonly InnkommendeSmsService _inn;
     private readonly SettingsService _settings;
     private readonly SmsInnDebugLogg _debug;
+    private readonly EventService _events;
     private readonly ILogger<SmsInnController> _log;
 
-    public SmsInnController(InnkommendeSmsService inn, SettingsService settings, SmsInnDebugLogg debug, ILogger<SmsInnController> log)
+    public SmsInnController(InnkommendeSmsService inn, SettingsService settings, SmsInnDebugLogg debug, EventService events, ILogger<SmsInnController> log)
     {
         _inn = inn;
         _settings = settings;
         _debug = debug;
+        _events = events;
         _log = log;
     }
 
+    // Tåler alle vanlige gateway-oppsett: POST (JSON/XML/skjema) eller GET med query-felt, og token
+    // i query (?token=), i stien (/inn/{token}), i header (X-Sms-Token) eller som skjemafelt.
     [HttpPost("inn")]
+    [HttpGet("inn")]
+    [HttpPost("inn/{tokenSti}")]
+    [HttpGet("inn/{tokenSti}")]
     [EnableRateLimiting("webhook")]
-    public async Task<IActionResult> Inn([FromQuery] string? token)
+    public async Task<IActionResult> Inn([FromQuery] string? token, string? tokenSti = null)
     {
         // Les rå body (JSON/XML/skjema) først — så vi alltid kan logge hva som faktisk kom inn.
+        // Skjema-kodet body (application/x-www-form-urlencoded / multipart) er allerede konsumert
+        // av ASP.NET sin form-parser, så den må hentes via Request.Form — ikke fra Request.Body.
         // Tåler gzip-komprimert body (Content-Encoding: gzip).
         string raw;
-        Stream kropp = Request.Body;
-        if (Request.Headers.ContentEncoding.ToString().Contains("gzip", StringComparison.OrdinalIgnoreCase))
-            kropp = new System.IO.Compression.GZipStream(kropp, System.IO.Compression.CompressionMode.Decompress);
-        using (var reader = new StreamReader(kropp, Encoding.UTF8))
+        Dictionary<string, string>? skjema = null;
+        if (Request.HasFormContentType)
+        {
+            var form = await Request.ReadFormAsync();
+            skjema = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in form) if (!skjema.ContainsKey(f.Key)) skjema[f.Key] = f.Value.ToString();
+            raw = string.Join("&", form.Select(f => f.Key + "=" + f.Value));
+        }
+        else
+        {
+            Stream kropp = Request.Body;
+            if (Request.Headers.ContentEncoding.ToString().Contains("gzip", StringComparison.OrdinalIgnoreCase))
+                kropp = new System.IO.Compression.GZipStream(kropp, System.IO.Compression.CompressionMode.Decompress);
+            using var reader = new StreamReader(kropp, Encoding.UTF8);
             raw = await reader.ReadToEndAsync();
+        }
 
-        // Token: query-param (?token=) eller header X-Sms-Token. Konstant-tids sammenligning.
+        // Token: query (?token=), sti (/inn/{token}), header X-Sms-Token eller skjemafelt «token».
+        // Konstant-tids sammenligning.
         var forventet = await _settings.GetAsync(KeyToken);
-        var presentert = !string.IsNullOrWhiteSpace(token) ? token : Request.Headers["X-Sms-Token"].ToString();
+        var presentert = Foerste(new[] { token, tokenSti, Request.Headers["X-Sms-Token"].ToString(),
+            skjema is not null && skjema.TryGetValue("token", out var ft) ? ft : null });
+        var hvordan = $"{Request.Method} {Request.ContentType ?? "(ingen content-type)"}";
         if (string.IsNullOrWhiteSpace(forventet))
         {
-            _debug.Logg("Avvist: ingen token konfigurert", Kort(raw));
+            await Logg("Avvist: ingen token konfigurert", $"{hvordan} · {Kort(raw)}");
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Inbound SMS er ikke aktivert (mangler token)." });
         }
         if (!KonstantLik(forventet, presentert))
         {
-            _debug.Logg("Avvist: ugyldig token", $"token={(string.IsNullOrWhiteSpace(presentert) ? "(mangler)" : "feil")} · {Kort(raw)}");
+            await Logg("Avvist: ugyldig token", $"{hvordan} · token={(string.IsNullOrWhiteSpace(presentert) ? "(mangler)" : "feil")} · {Kort(raw)}");
             return Unauthorized(new { error = "Ugyldig token." });
         }
 
-        var felt = ParseFelt(raw, Request);
+        // Skjema: bruk de ferdig-dekodede feltene direkte (rå-strengen er kun for logging) + query som fallback.
+        var felt = skjema is not null ? ParseFelt("", Request) : ParseFelt(raw, Request);
+        if (skjema is not null) foreach (var (k, v) in skjema) felt[k] = v;
         // LinkMobility MO (JSON eller XML): source / destination / content.userData. Øvrige navn = varianter.
         var fra = Foerste(felt, "source", "sender", "from", "msisdn", "originator", "sourceaddr", "sourcenumber",
             "sourceaddress", "senderaddress", "sendernumber", "fromnumber", "sourcemsisdn", "phonenumber", "mobilenumber");
@@ -76,24 +101,36 @@ public class SmsInnController : ControllerBase
         if (string.IsNullOrWhiteSpace(fra))
         {
             var ct = Request.ContentType ?? "(ingen content-type)";
-            _debug.Logg("Mottatt, men fant ikke avsender", $"content-type={ct} · felt=[{string.Join(",", felt.Keys)}] · {Kort(raw)}");
+            await Logg("Mottatt, men fant ikke avsender", $"{hvordan} · felt=[{string.Join(",", felt.Keys)}] · {Kort(raw)}");
             _log.LogWarning("Innkommende SMS: fant ikke avsendernummer. Content-Type={Ct}. Felt=[{Felt}]. Rå: {Raw}", ct, string.Join(",", felt.Keys), Kort(raw));
             // Returner hva vi faktisk så, så leverandørens utvikler ser feilen med en gang.
             return BadRequest(new
             {
-                error = "Mangler avsendernummer. Forventer «source» (ev. sender/from/msisdn) i JSON eller XML.",
+                error = "Mangler avsendernummer. Forventer «source» (ev. sender/from/msisdn) i JSON, XML, skjema eller query.",
                 contentType = ct,
-                feltFunnet = felt.Keys.ToArray(),
+                feltFunnet = felt.Keys.Where(k => !k.Equals("token", StringComparison.OrdinalIgnoreCase)).ToArray(),
             });
         }
 
         var rad = await _inn.MottaAsync(fra!, til, tekst ?? "", Kort(raw, 4000));
-        _debug.Logg("OK mottatt", $"fra={fra} · sak={(rad.KundekortId?.ToString() ?? "ingen match")} · «{Kort(tekst, 60)}»");
+        await Logg("OK mottatt", $"fra={fra} · sak={(rad.KundekortId?.ToString() ?? "ingen match")} · «{Kort(tekst, 60)}»");
         _log.LogInformation("Innkommende SMS mottatt fra {Fra} (sak: {Sak}).", fra, rad.KundekortId?.ToString() ?? "ingen match");
         return Ok(new { ok = true, matchetSak = rad.KundekortId });
     }
 
     // ---- Hjelpere ----
+
+    // Alle treff logges både i minnet (Admin → LinkMobility → Webhook-treff) og varig under
+    // Hendelser, så vi kan se hva som faktisk kom inn også etter en deploy/omstart.
+    private async Task Logg(string utfall, string detalj)
+    {
+        _debug.Logg(utfall, detalj);
+        try { await _events.LogAsync("SMS inn", utfall + " · " + Kort(detalj, 300), "LinkMobility MO"); }
+        catch (Exception ex) { _log.LogWarning(ex, "Kunne ikke logge SMS-inn-hendelse"); }
+    }
+
+    private static string? Foerste(IEnumerable<string?> kandidater) =>
+        kandidater.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k))?.Trim();
 
     private static bool KonstantLik(string a, string? b)
     {
