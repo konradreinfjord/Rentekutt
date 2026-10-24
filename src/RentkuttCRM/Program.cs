@@ -240,6 +240,7 @@ builder.Services.AddScoped<AlarmService>();
 
 // Endringslogg per kundekort (audit trail).
 builder.Services.AddScoped<LoggService>();
+builder.Services.AddScoped<RapportService>();   // aggregert arbeidsrapport (Tredjepart-API «rapport» + Admin-forhåndsvisning)
 
 // GDPR: anonymisering + sletting etter oppsatt antall måneder.
 builder.Services.AddScoped<GdprService>();

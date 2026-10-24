@@ -172,7 +172,7 @@ public class LoggService
         return res;
     }
 
-    private static string? ParseStatus(string tekst)
+    public static string? ParseStatus(string tekst)
     {
         if (string.IsNullOrWhiteSpace(tekst) || !tekst.StartsWith("Endret status", StringComparison.OrdinalIgnoreCase)) return null;
         var pil = tekst.LastIndexOf('→');

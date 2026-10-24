@@ -110,6 +110,30 @@ public class DialerService
                    .ToDictionary(g => g.Key, g => (g.Count(), g.Max(a => a.StartetAt)));
     }
 
+    /// <summary>Alle anrop startet etter et tidspunkt (paginert) — til aktivitetsrapporter.</summary>
+    public async Task<List<DialerAnrop>> SidenAsync(DateTime fraUtc)
+    {
+        if (!IsConfigured) return _staging.Where(a => a.StartetAt >= fraUtc).ToList();
+        var res = new List<DialerAnrop>();
+        try
+        {
+            await EnsureInitAsync();
+            const int side = 1000;
+            for (var from = 0; from <= 100000; from += side)
+            {
+                var batch = (await _client.From<DialerAnrop>()
+                    .Filter("startet_at", Supabase.Postgrest.Constants.Operator.GreaterThanOrEqual, fraUtc.ToUniversalTime().ToString("o"))
+                    .Order(x => x.StartetAt, Supabase.Postgrest.Constants.Ordering.Ascending, Supabase.Postgrest.Constants.NullPosition.Last)
+                    .Range(from, from + side - 1)
+                    .Get()).Models;
+                res.AddRange(batch);
+                if (batch.Count < side) break;
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Henting av anrop siden {Fra} feilet", fraUtc); }
+        return res;
+    }
+
     /// <summary>Uavklarte anrop (status «uavklart») registrert etter et tidspunkt — for CDR-oppfølging.</summary>
     public async Task<List<DialerAnrop>> UavklarteSidenAsync(DateTime fraUtc)
     {

@@ -27,6 +27,7 @@
 @inject RentkuttCRM.Services.NextcomService Nextcom
 @inject RentkuttCRM.Services.ArbeidslisteService Arbeidsliste
 @inject RentkuttCRM.Services.RefinansieringMappingService RefiMap
+@inject RentkuttCRM.Services.RapportService Rapport
 @inject Microsoft.Extensions.Hosting.IHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -764,6 +765,85 @@ Authorization: Bearer &lt;token&gt;</pre>
                     <tr><td>Åpen / Pågår / Manuell / Sendt bank / Tilbud utsendt</td><td class="mono-cell">apen</td><td class="muted">—</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        @* Rapport-API: aggregert arbeidsdata til ledelsen. Kun tall — aldri kundedata. *@
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+                <h2 style="margin:0">Rapport-API <span class="ww-tag">GET · arbeidsdata</span></h2>
+                <span class="status @(_rpEnabled ? "on" : "off")">@(_rpEnabled ? "Aktiv" : "Av")</span>
+            </div>
+            <p class="page-sub" style="margin:8px 0 16px">
+                Aggregert arbeidsrapport for ledelsen: hva som kommer inn (kilder, typer, beløp), hva agentene gjør
+                (endringer, ringeforsøk, sendinger) og hva bankene innvilger. Svaret inneholder <strong>kun tall</strong>
+                — antall, summer, snitt og fordelinger. Aldri navn, telefonnummer eller enkeltsaker.
+                Sikret med eget token (HTTPS + Bearer).
+            </p>
+
+            <label class="ff-check" style="margin-bottom:14px"><input type="checkbox" @bind="_rpEnabled" /> Aktiver rapport-API-et</label>
+
+            <h3 class="ww-h">Endepunkt</h3>
+            <pre class="code-block">GET @RapportUrl?fra=2026-10-01&amp;til=2026-10-31&amp;agent=&amp;kundetype=
+Authorization: Bearer &lt;token&gt;</pre>
+            <table class="data-table" style="margin:8px 0 14px">
+                <thead><tr><th>Parameter</th><th>Betydning</th><th>Standard</th></tr></thead>
+                <tbody>
+                    <tr><td class="mono-cell">fra</td><td>Første dag i perioden (yyyy-MM-dd, Oslo-tid)</td><td>29 dager før «til»</td></tr>
+                    <tr><td class="mono-cell">til</td><td>Siste dag i perioden (yyyy-MM-dd)</td><td>i dag</td></tr>
+                    <tr><td class="mono-cell">agent</td><td>Navn eller e-post på én agent — saker agenten eier og handlinger agenten har gjort</td><td>alle agenter (+ tabell per agent)</td></tr>
+                    <tr><td class="mono-cell">kundetype</td><td><code>B2C</code> eller <code>B2B</code></td><td>begge</td></tr>
+                </tbody>
+            </table>
+            <p class="page-sub" style="margin:0 0 14px; font-size:12px">Token kan alternativt sendes som <code>?token=…</code>. Perioden kan maks være 2 år. Ukjent agent gir 404 med liste over gyldige agentnavn.</p>
+
+            <h3 class="ww-h">API-token</h3>
+            <div class="rule-builder" style="margin-bottom:8px">
+                <div class="rb-field" style="flex:1; min-width:280px">
+                    <label>Token</label>
+                    <input class="rb-input" style="font-family:var(--mono)" @bind="_rpToken" placeholder="Ingen token generert ennå" />
+                </div>
+                <button class="btn-sm rb-add" @onclick="() => _rpToken = TredjepartController.NewToken()">Generer nytt</button>
+                <button class="btn-primary rb-add" @onclick="LagreRapport">Lagre</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_rpMsg)) { <p class="page-sub" style="margin:0 0 12px; font-size:12px">@_rpMsg</p> }
+
+            <h3 class="ww-h">Innhold i svaret</h3>
+            <table class="data-table" style="margin-bottom:14px">
+                <thead><tr><th>Seksjon</th><th>Hva</th><th>Datostyrt</th></tr></thead>
+                <tbody>
+                    <tr><td class="mono-cell">naa</td><td>Øyeblikksbilde: saker siste 30 dager, pipeline (aktive saker, oppgitt + estimert sum, snitt, per status/type/kundetype)</td><td class="muted">Nei</td></tr>
+                    <tr><td class="mono-cell">innkommet</td><td>Saker opprettet i perioden: antall, sum, snitt, per kilde, per type, per kundetype, kilde × type, per dag, status nå</td><td>Ja</td></tr>
+                    <tr><td class="mono-cell">agentaktivitet</td><td>Saker endret, handlinger, statusendringer, eierskap tatt, SMS sendt, oppgaver kvittert, sendt til bank (manuelt/automatisk), ringeforsøk (svart/ikke svart/taletid), per dag — og <code>per_agent</code> når ingen agent er valgt</td><td>Ja</td></tr>
+                    <tr><td class="mono-cell">bank</td><td>Sendinger i perioden: innvilget antall/sum, utbetalt antall/sum, avslått, innvilgelsesgrad, per bank</td><td>Ja</td></tr>
+                    <tr><td class="mono-cell">saksutfall</td><td>Saker som fikk status Utbetalt / Innvilget / Avslag / Kansellert / Sendt til bank i perioden</td><td>Ja</td></tr>
+                </tbody>
+            </table>
+
+            <h3 class="ww-h">Forhåndsvis med ekte data</h3>
+            <div class="rule-builder" style="margin-bottom:8px; align-items:flex-end">
+                <div class="rb-field"><label>Fra</label><input type="date" class="rb-input" @bind="_rpFra" /></div>
+                <div class="rb-field"><label>Til</label><input type="date" class="rb-input" @bind="_rpTil" /></div>
+                <div class="rb-field" style="min-width:200px">
+                    <label>Agent</label>
+                    <select class="rb-input" @bind="_rpAgent">
+                        <option value="">Alle agenter</option>
+                        @foreach (var a in _rpAgenter) { <option value="@a.Email">@a.FullName</option> }
+                    </select>
+                </div>
+                <div class="rb-field">
+                    <label>Kundetype</label>
+                    <select class="rb-input" @bind="_rpKundetype">
+                        <option value="">Begge</option>
+                        <option value="B2C">B2C</option>
+                        <option value="B2B">B2B</option>
+                    </select>
+                </div>
+                <button class="btn-primary rb-add" @onclick="ForhaandsvisRapport" disabled="@_rpLaster">@(_rpLaster ? "Henter…" : "Hent rapport")</button>
+            </div>
+            @if (_rpJson is not null)
+            {
+                <pre class="code-block" style="max-height:520px; overflow:auto; font-size:11.5px">@_rpJson</pre>
+            }
         </div>
     }
     else if (_apiTab == "Bank API")
@@ -2402,6 +2482,9 @@ else if (_active == "GDPR")
         _innAktivSender = await LinkMobility.AktivSenderAsync();
         _tpToken = await Settings.GetAsync(TredjepartController.KeyToken) ?? "";
         _tpEnabled = (await Settings.GetAsync(TredjepartController.KeyEnabled)) == "true";
+        _rpToken = await Settings.GetAsync(TredjepartController.KeyRapportToken) ?? "";
+        _rpEnabled = (await Settings.GetAsync(TredjepartController.KeyRapportEnabled)) == "true";
+        _rpAgenter = await Rapport.AgenterAsync();
         _ibEnabled = await Instabank.AktivertAsync();
         _ibMiljo = await Instabank.MiljoAsync();
         _ibKonfigurert = await Instabank.ErKonfigurertAsync();
@@ -2614,6 +2697,42 @@ else if (_active == "GDPR")
         await Settings.SetAsync(TredjepartController.KeyEnabled, _tpEnabled ? "true" : "false");
         await Events.LogAsync("Tredjepart-API", _tpEnabled ? "Aktivert / token oppdatert" : "Deaktivert", "Admin");
         _tpMsg = "Lagret.";
+    }
+    // ---- Rapport-API (GET aggregert arbeidsdata til ledelsen) ----
+    private string RapportUrl => $"{Nav.BaseUri}api/tredjepart/rapport";
+    private string _rpToken = "";
+    private bool _rpEnabled;
+    private string? _rpMsg;
+    private DateOnly _rpFra = DateOnly.FromDateTime(Tid.IDag).AddDays(-29), _rpTil = DateOnly.FromDateTime(Tid.IDag);
+    private string _rpAgent = "", _rpKundetype = "";
+    private List<UserRow> _rpAgenter = new();
+    private string? _rpJson;
+    private bool _rpLaster;
+    private async Task LagreRapport()
+    {
+        if (!Session.IsAdmin) return;   // server-side vern (defence-in-depth)
+        await Settings.SetAsync(TredjepartController.KeyRapportToken, _rpToken?.Trim());
+        await Settings.SetAsync(TredjepartController.KeyRapportEnabled, _rpEnabled ? "true" : "false");
+        await Events.LogAsync("Rapport-API", _rpEnabled ? "Aktivert / token oppdatert" : "Deaktivert", "Admin");
+        _rpMsg = "Lagret.";
+    }
+    // Kjører samme aggregering som API-et, med ekte data — så man ser nøyaktig hva mottakeren får.
+    private async Task ForhaandsvisRapport()
+    {
+        _rpLaster = true; _rpJson = null;
+        try
+        {
+            if (_rpAgenter.Count == 0) _rpAgenter = await Rapport.AgenterAsync();
+            var agent = RapportService.FinnAgent(_rpAgenter, _rpAgent);
+            var data = await Rapport.LagAsync(_rpFra, _rpTil, agent, _rpKundetype);
+            _rpJson = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            });
+        }
+        catch (Exception ex) { _rpJson = "Feil: " + ex.Message; }
+        _rpLaster = false;
     }
     private static bool WebhookFresh(Webhook w) => w.Active && w.LastReceivedAt is { } t && t > DateTime.UtcNow.AddDays(-7);
     // Lampe: grønn hvis det er mottatt data siste 3 døgn.
