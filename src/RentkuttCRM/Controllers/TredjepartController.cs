@@ -125,6 +125,65 @@ public class TredjepartController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// GET /api/tredjepart/rapport/openapi.json — OpenAPI 3.1-skjema for rapport-API-et, til «Import from URL»
+    /// i ChatGPT Actions / Custom GPT, Power BI, Make m.fl. Åpent (inneholder ingen data, kun beskrivelse);
+    /// server-URL-en settes fra faktisk vertsnavn så den aldri kan skrives feil.
+    /// </summary>
+    [HttpGet("rapport/openapi.json")]
+    [EnableRateLimiting("tredjepart")]
+    public IActionResult RapportOpenApi()
+    {
+        var server = $"{(Request.IsHttps || !_env.IsDevelopment() ? "https" : "http")}://{Request.Host}";
+        var doc = new
+        {
+            openapi = "3.1.0",
+            info = new
+            {
+                title = "Rentekutt Rapport-API",
+                version = "1.0.0",
+                description = "Aggregert arbeidsrapport (antall, summer, snitt). Inneholder ingen kundedata. Alle parametre er valgfrie: standard er siste 30 dager, alle agenter og begge kundetyper.",
+            },
+            servers = new[] { new { url = server } },
+            paths = new Dictionary<string, object>
+            {
+                ["/api/tredjepart/rapport"] = new
+                {
+                    get = new
+                    {
+                        operationId = "hentRapport",
+                        summary = "Hent arbeidsrapport for en periode",
+                        description = "Returnerer øyeblikksbilde (naa), innkommet, agentaktivitet, bank og saksutfall for perioden fra–til (Oslo-datoer, inkl.).",
+                        parameters = new object[]
+                        {
+                            new { name = "fra", @in = "query", required = false, description = "Første dag i perioden, yyyy-MM-dd. Standard: 29 dager før «til».", schema = new { type = "string", format = "date" } },
+                            new { name = "til", @in = "query", required = false, description = "Siste dag i perioden, yyyy-MM-dd. Standard: i dag.", schema = new { type = "string", format = "date" } },
+                            new { name = "agent", @in = "query", required = false, description = "Navn eller e-post på én agent. Utelat for alle agenter (gir også tabell per agent).", schema = new { type = "string" } },
+                            new { name = "kundetype", @in = "query", required = false, description = "B2C eller B2B. Utelat for begge.", schema = new { type = "string", @enum = new[] { "B2C", "B2B" } } },
+                        },
+                        responses = new Dictionary<string, object>
+                        {
+                            ["200"] = new { description = "Rapport (JSON) med seksjonene periode, filter, naa, innkommet, agentaktivitet, bank og saksutfall.", content = new Dictionary<string, object> { ["application/json"] = new { schema = new { type = "object" } } } },
+                            ["400"] = new { description = "Ugyldig dato, kundetype eller for lang periode (maks 2 år)." },
+                            ["401"] = new { description = "Ugyldig eller manglende token." },
+                            ["404"] = new { description = "Ukjent agent — svaret inneholder listen over gyldige agentnavn." },
+                            ["503"] = new { description = "Rapport-API-et er ikke aktivert." },
+                        },
+                        security = new[] { new Dictionary<string, string[]> { ["bearerAuth"] = Array.Empty<string>() } },
+                    },
+                },
+            },
+            components = new
+            {
+                securitySchemes = new Dictionary<string, object>
+                {
+                    ["bearerAuth"] = new { type = "http", scheme = "bearer", description = "API-token fra Admin → Tredjeparter → Rapport-API." },
+                },
+            },
+        };
+        return new JsonResult(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+    }
+
     private string? PresentedToken()
     {
         var auth = Request.Headers.Authorization.ToString();

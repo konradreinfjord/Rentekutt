@@ -796,6 +796,16 @@ Authorization: Bearer &lt;token&gt;</pre>
             </table>
             <p class="page-sub" style="margin:0 0 14px; font-size:12px">Token kan alternativt sendes som <code>?token=…</code>. Perioden kan maks være 2 år. Ukjent agent gir 404 med liste over gyldige agentnavn.</p>
 
+            <h3 class="ww-h">Koble til ChatGPT (Custom GPT → Actions) eller andre verktøy</h3>
+            <p class="page-sub" style="margin:0 0 8px">Ferdig OpenAPI-skjema — lim inn denne URL-en under <strong>Actions → Import from URL</strong>, så slipper du å skrive server-adresse og parametre selv:</p>
+            <pre class="code-block">@RapportUrl/openapi.json</pre>
+            <ol class="page-sub" style="margin:8px 0 14px 18px; font-size:12.5px; line-height:1.7">
+                <li>I GPT-en: <strong>Configure → Actions → Create new action → Import from URL</strong> → lim inn URL-en over.</li>
+                <li><strong>Authentication</strong>: velg <em>API Key</em>, Auth Type <em>Bearer</em>, og lim inn tokenet fra feltet over.</li>
+                <li>Test med «Hent rapport for forrige måned» — GPT-en kaller <code>hentRapport</code> med fra/til selv.</li>
+            </ol>
+            <p class="page-sub" style="margin:0 0 14px; font-size:12px">Får du «DNS-feil» i ChatGPT, er server-URL-en i skjemaet skrevet feil (skrivefeil i domenet, <code>http://</code>, eller sti i server-feltet). Skjemaet over setter <code>servers.url</code> automatisk til <code>@Nav.BaseUri.TrimEnd('/')</code>.</p>
+
             <h3 class="ww-h">API-token</h3>
             <div class="rule-builder" style="margin-bottom:8px">
                 <div class="rb-field" style="flex:1; min-width:280px">
