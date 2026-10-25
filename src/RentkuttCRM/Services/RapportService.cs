@@ -104,7 +104,8 @@ public class RapportService
 
         // ---- Agentaktivitet i perioden ----
         var handlinger = logg.Where(l => IPeriode(l.Opprettet) && ErAgentAktor(l.Aktor) && KortOk(l.KundekortId)).ToList();
-        var ring = anrop.Where(a => IPeriode(a.StartetAt) && ErAgentAktor(a.Aktor) && KortOk(a.KundekortId)).ToList();
+        var oppringinger = anrop.Where(a => IPeriode(a.StartetAt) && ErAgentAktor(a.Aktor) && KortOk(a.KundekortId)).ToList();
+        var ring = Ringeforsok(oppringinger);   // klynget: flere oppringinger til samme kunde på kort tid = ett forsøk
         var sendt = sendinger.Where(s => IPeriode(s.SendtAt) && KortOk(s.KundekortId)
             && (agent is null || ErAgentAktor(s.SendtAv))).ToList();
         var eierskap = grunnlag.Where(k => k.EierTattAt is { } t && IPeriode(t) && ErAgentEier(k)).ToList();
@@ -165,8 +166,9 @@ public class RapportService
                 handlinger = h.Count,
                 statusendringer = h.Count(l => l.Kategori == "endring" && LoggService.ParseStatus(l.Tekst) is not null),
                 ringeforsok = r.Count,
-                ringeforsok_svart = r.Count(a => a.Utfall == DialerService.UtfallSvart),
-                taletid_min = Math.Round(r.Sum(a => a.TaletidSek ?? 0) / 60.0, 1),
+                ringeforsok_svart = r.Count(f => f.Svart),
+                oppringinger = oppringinger.Count(a => Mine(a.Aktor)),
+                taletid_min = Math.Round(r.Sum(f => f.TaletidSek) / 60.0, 1),
                 sms_sendt = h.Count(l => l.Kategori == "sms"),
                 oppgaver_kvittert = h.Count(l => l.Kategori == "arbeidsoppgave"),
                 sendt_til_bank = sendt.Count(s => Mine(s.SendtAv)),
@@ -236,14 +238,19 @@ public class RapportService
                 sendt_til_bank_automatisk = agent is null ? sendt.Count(s => !ErMenneske(s.SendtAv)) : 0,
                 ringeforsok = new
                 {
+                    definisjon = $"Flere oppringinger fra samme agent til samme kunde der hver kommer under {RingeKlynge.TotalMinutes:0} min etter forrige, " +
+                                 "regnes som ett ringeforsøk. Forsøket er «svart» hvis minst én av oppringingene ble besvart. «oppringinger» er råtallet.",
+                    klynge_min = (int)RingeKlynge.TotalMinutes,
                     antall = ring.Count,
-                    unike_saker = ring.Select(a => a.KundekortId).Distinct().Count(),
-                    svart = ring.Count(a => a.Utfall == DialerService.UtfallSvart),
-                    ikke_svart = ring.Count(a => a.Utfall == DialerService.UtfallIkkeSvart),
-                    uavklart = ring.Count(a => a.Status == DialerService.StatusUavklart),
-                    taletid_min = Math.Round(ring.Sum(a => a.TaletidSek ?? 0) / 60.0, 1),
-                    per_dag = ring.GroupBy(a => DateOnly.FromDateTime(a.StartetAt.TilOslo()))
-                        .Select(g => new { dato = g.Key.ToString("yyyy-MM-dd"), antall = g.Count(), svart = g.Count(a => a.Utfall == DialerService.UtfallSvart) })
+                    oppringinger = oppringinger.Count,
+                    unike_saker = ring.Select(f => f.KundekortId).Distinct().Count(),
+                    svart = ring.Count(f => f.Svart),
+                    ikke_svart = ring.Count(f => !f.Svart && f.Avklart),
+                    uavklart = ring.Count(f => !f.Avklart),
+                    taletid_min = Math.Round(ring.Sum(f => f.TaletidSek) / 60.0, 1),
+                    per_dag = ring.GroupBy(f => DateOnly.FromDateTime(f.Start.TilOslo()))
+                        .Select(g => new { dato = g.Key.ToString("yyyy-MM-dd"), antall = g.Count(), svart = g.Count(f => f.Svart),
+                            oppringinger = g.Sum(f => f.Oppringinger) })
                         .OrderBy(x => x.dato).ToList(),
                 },
                 per_kategori = handlinger.GroupBy(l => l.Kategori).Select(g => new { kategori = g.Key, antall = g.Count() })
@@ -313,6 +320,37 @@ public class RapportService
                 }).OrderByDescending(x => x.timer_totalt).ThenBy(x => x.agent).ToList() : null,
             },
         };
+    }
+
+    // ---- Ringeforsøk ----
+
+    // Oppringinger til samme kunde fra samme agent der hver kommer under 15 min etter forrige = ett forsøk.
+    private static readonly TimeSpan RingeKlynge = TimeSpan.FromMinutes(15);
+
+    public record Forsok(string? Aktor, Guid KundekortId, DateTime Start, int Oppringinger, bool Svart, bool Avklart, int TaletidSek);
+
+    public static List<Forsok> Ringeforsok(IEnumerable<DialerAnrop> anrop)
+    {
+        var res = new List<Forsok>();
+        foreach (var g in anrop.GroupBy(a => (Aktor: a.Aktor ?? "", a.KundekortId)))
+        {
+            var liste = g.OrderBy(a => a.StartetAt).ToList();
+            var i = 0;
+            while (i < liste.Count)
+            {
+                var start = liste[i]; var j = i; var svart = false; var avklart = false; var tale = 0;
+                while (j < liste.Count && (j == i || liste[j].StartetAt - liste[j - 1].StartetAt <= RingeKlynge))
+                {
+                    svart |= liste[j].Utfall == DialerService.UtfallSvart;
+                    avklart |= liste[j].Status != DialerService.StatusUavklart;
+                    tale += liste[j].TaletidSek ?? 0;
+                    j++;
+                }
+                res.Add(new Forsok(start.Aktor, start.KundekortId, start.StartetAt, j - i, svart, avklart, tale));
+                i = j;
+            }
+        }
+        return res.OrderBy(f => f.Start).ToList();
     }
 
     // ---- Arbeidstid ----
