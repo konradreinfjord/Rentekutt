@@ -22,6 +22,10 @@ public class InstabankStatusWorker : BackgroundService
         _log = log;
     }
 
+    // Statusene Instabank dokumenterer i Agent API-et. Alt utenfor denne lista er ukjent for oss.
+    private static readonly HashSet<string> KjenteStatuser = new(StringComparer.OrdinalIgnoreCase)
+        { "Cancelled", "New", "Approved", "Control", "Rejected", "DocumentsSent", "DocumentsComplete", "Complete" };
+
     // Instabank-status → per-bank utfall. New/Control = fortsatt under behandling (ingen endring).
     private static string? MapUtfall(string? instabankStatus) => instabankStatus switch
     {
@@ -93,19 +97,28 @@ public class InstabankStatusWorker : BackgroundService
                             if (r.InnvilgetBelop is not null || !string.IsNullOrWhiteSpace(r.InstabankId))
                                 await sendinger.SetInstabankDetaljerAsync(siste.Id, r.InnvilgetBelop, r.InstabankId);
 
+                            // Lagre Instabanks rå status på sendingen så vi alltid kan se hva banken faktisk svarte.
+                            var raaStatus = string.IsNullOrWhiteSpace(r.Status) ? "(ukjent)" : r.Status!;
+                            var detalj = "Instabank-status: " + raaStatus;
+                            if (siste.Detalj != detalj) { await sendinger.SetDetaljAsync(siste.Id, detalj); siste.Detalj = detalj; }
+
                             var utfall = MapUtfall(r.Status);
-                            // Signeringslenke i retur = Instabank har gitt et signerbart tilbud ⇒ søknaden
-                            // er innvilget. Kjente «Complete/Rejected» (fra MapUtfall) har forrang; ellers
-                            // promoterer vi til «Innvilget» så ukjente tilbuds-/signeringsstatuser fanges
-                            // (f.eks. «Offered»/«Signing») i stedet for å bli stående uendret.
-                            if (utfall is null && !string.IsNullOrWhiteSpace(siste.SigningUrl))
+                            // Signeringslenken får vi allerede ved INNSENDING (netbank-lenken med vår referanse) —
+                            // den beviser IKKE et tilbud. «New»/«Control» = ikke besluttet, og skal aldri promoteres.
+                            // Kun for udokumenterte statuser (f.eks. «Offered»/«Signing») med lenke i statussvaret
+                            // tolker vi det som innvilget, så slike ikke blir stående uendret.
+                            if (utfall is null && !KjenteStatuser.Contains(raaStatus) && !string.IsNullOrWhiteSpace(r.SigningUrl))
                                 utfall = SendUtfall.Innvilget;
+                            // Sak som står som Innvilget hos oss, men «New» hos Instabank, ble promotert på
+                            // lenke-heuristikken før rettelsen → tilbake til Venter så statusen blir sann.
+                            if (utfall is null && raaStatus.Equals("New", StringComparison.OrdinalIgnoreCase) && siste.Utfall == SendUtfall.Innvilget)
+                                utfall = SendUtfall.Venter;
                             if (utfall is not null && utfall != siste.Utfall)
                             {
                                 await sendinger.SetUtfallAsync(siste.Id, utfall);
                                 // Aggreger kundekortets status fra ALLE bankenes utfall.
                                 var alle = await sendinger.ForKundeAsync(kortId);
-                                await kunder.OppdaterStatusFraBankerAsync(kortId, status, alle, "System (Instabank-synk)");
+                                await kunder.OppdaterStatusFraBankerAsync(kortId, status, alle, $"System (Instabank-synk: {raaStatus})");
                                 // Ved avslag: lagre undergrunn fra Instabank-responsen (hvis oppgitt).
                                 if (utfall == SendUtfall.Avslatt)
                                     await kunder.SetAvslagGrunnAsync(kortId,

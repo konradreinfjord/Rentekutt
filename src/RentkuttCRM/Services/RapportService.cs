@@ -150,6 +150,50 @@ public class RapportService
         // Uten agent-filter: totalen er summen over agentene (per dag = sum av agentenes timer den dagen).
         var tidAlle = agent is null ? SlaaSammen(tidPerAgent.Values) : tidValgt!;
 
+        // ---- Bankresultater — samme definisjon som dashbordets «Bankresultater»-panel ----
+        static bool ErSendtStatus(BankSending s) => s.Status is SendStatus.Sendt or SendStatus.Manuelt;
+        static bool ErSoknedal(string? navn) => (navn ?? "").Contains("soknedal", OIC);
+        bool KortEidOk(Guid? id) => agent is null || (id is { } g && kortMap.TryGetValue(g, out var k) && ErAgentEier(k));
+        var soknSendtDato = sendinger.Where(s => ErSoknedal(s.Bank) && ErSendtStatus(s) && s.KundekortId is not null)
+            .GroupBy(s => s.KundekortId!.Value).ToDictionary(g => g.Key, g => g.Max(x => x.SendtAt));
+        static double Pst(int n, int av) => av > 0 ? Math.Round(100.0 * n / av) : 0;
+        object Bankresultater(Func<DateTime, bool> iPeriode)
+        {
+            // Instabank: per sending, filtrert på sendt-dato.
+            var ib = sendinger.Where(s => InstabankService.ErInstabankNavn(s.Bank) && ErSendtStatus(s) && iPeriode(s.SendtAt)
+                && KortOk(s.KundekortId) && KortEidOk(s.KundekortId)).ToList();
+            int ibInnv = ib.Count(s => s.Utfall == SendUtfall.Innvilget), ibUtb = ib.Count(s => s.Utfall == SendUtfall.Utbetalt), ibAvs = ib.Count(s => s.Utfall == SendUtfall.Avslatt);
+            // Soknedal: utfallet meldes som kundekort-status (webhook) — tell saker sendt/delegert til Soknedal,
+            // datofilter på sendt-dato hvis sending finnes, ellers sakens siste endring.
+            var sok = grunnlag.Where(k => (soknSendtDato.ContainsKey(k.Id) || ErSoknedal(k.DelegertBank)) && ErAgentEier(k)
+                && iPeriode(soknSendtDato.TryGetValue(k.Id, out var d) ? d : k.UpdatedAt)).ToList();
+            int sokUtb = sok.Count(k => k.Status == KundekortService.StatusUtbetalt);
+            int sokSign = sokUtb + sok.Count(k => k.Status == KundekortService.StatusSignert);   // utbetalt ⇒ har signert
+            int sokAvs = sok.Count(k => k.Status is KundekortService.StatusAvslatt or KundekortService.StatusAvsluttet);
+            return new
+            {
+                instabank = new
+                {
+                    sendt = ib.Count,
+                    innvilget = ibInnv, innvilget_pst = Pst(ibInnv, ib.Count),
+                    utbetalt = ibUtb, utbetalt_pst = Pst(ibUtb, ib.Count),
+                    avslatt = ibAvs, avslatt_pst = Pst(ibAvs, ib.Count),
+                },
+                soknedal = new
+                {
+                    sendt = sok.Count,
+                    sbl_signert = sokSign, sbl_signert_pst = Pst(sokSign, sok.Count),
+                    utbetalt = sokUtb, utbetalt_pst = Pst(sokUtb, sok.Count),
+                    avslatt = sokAvs, avslatt_pst = Pst(sokAvs, sok.Count),
+                },
+            };
+        }
+
+        // ---- Søknader per status ----
+        List<StatusRad> PerStatus(IEnumerable<Kundekort> ks) => ks.GroupBy(k => k.Status)
+            .Select(g => new StatusRad(g.Key, g.Count(), Sum(g)))
+            .OrderByDescending(x => x.antall).ToList();
+
         // ---- Per agent (kun når ikke filtrert på én agent) ----
         object? perAgent = agent is null ? brukere.Select(u =>
         {
@@ -276,6 +320,21 @@ public class RapportService
                 per_bank = sendt.GroupBy(s => s.Bank).Select(g => BankRad(g.Key, g.ToList())).ToList(),
             },
 
+            soknader_per_status = new
+            {
+                all_time = PerStatus(grunnlag.Where(ErAgentEier)),
+                opprettet_i_perioden = PerStatus(inn),
+            },
+
+            bankresultater = new
+            {
+                definisjon = "Samme tall som «Bankresultater» på dashbordet. Instabank telles per sending (sendt/manuelt registrert) på sendt-dato, " +
+                             "utfall fra bankens svar. Soknedal telles per sak sendt eller delegert til Soknedal, utfall fra sakens status " +
+                             "(SBL signert inkluderer utbetalte); datofilter på sendt-dato, ellers sakens siste endring. Prosent = andel av sendt.",
+                all_time = Bankresultater(_ => true),
+                periode = Bankresultater(IPeriode),
+            },
+
             saksutfall = new
             {
                 utbetalt = Utfall(KundekortService.StatusUtbetalt),
@@ -321,6 +380,8 @@ public class RapportService
             },
         };
     }
+
+    public record StatusRad(string status, int antall, decimal sum);
 
     // ---- Ringeforsøk ----
 

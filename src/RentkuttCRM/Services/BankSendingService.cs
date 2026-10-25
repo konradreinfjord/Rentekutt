@@ -168,6 +168,14 @@ public class BankSendingService
         catch (Exception ex) { _log.LogError(ex, "Oppdatering av Instabank-detaljer feilet"); }
     }
 
+    /// <summary>Oppdater detalj-teksten på en sending (brukes til å vise bankens rå status, f.eks. «Instabank-status: New»).</summary>
+    public async Task SetDetaljAsync(Guid id, string detalj)
+    {
+        if (!IsConfigured) { var k = _staging.FirstOrDefault(x => x.Id == id); if (k is not null) k.Detalj = detalj; return; }
+        try { await EnsureInitAsync(); await _client.From<BankSending>().Where(x => x.Id == id).Set(x => x.Detalj!, detalj).Update(); }
+        catch (Exception ex) { _log.LogError(ex, "Oppdatering av sending-detalj feilet"); }
+    }
+
     /// <summary>Sett per-bank utfall (bankens beslutning) på én sending.</summary>
     public async Task SetUtfallAsync(Guid id, string utfall)
     {
