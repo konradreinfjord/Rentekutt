@@ -3,6 +3,7 @@
 @inject RentkuttCRM.Services.SessionState Session
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.LinkMobilityService LinkMobility
+@inject RentkuttCRM.Services.EventService Events
 @inject NavigationManager Nav
 @inject ProtectedLocalStorage LocalStorage
 
@@ -121,7 +122,11 @@ else
             {
                 var res = await LocalStorage.GetAsync<PersistertSesjon>("rk_session");
                 if (res is { Success: true, Value: { } s })
+                {
                     Session.SignIn(new UserRow(s.Id, s.Email, s.Navn, s.Rolle, true));
+                    // Gjenopprettet økt (ny fane/refresh) = agenten er aktiv i systemet — teller i arbeidstid.
+                    await Events.LogAsync("Innlogging", s.Navn + " (gjenopprettet økt)", s.Email);
+                }
             }
             // Gjenopprett agentens bredmodus-valg (lagret i nettleseren ved første bruk).
             var wide = await LocalStorage.GetAsync<bool>(WideKey);
@@ -174,6 +179,7 @@ else
     private async Task LogOut()
     {
         try { await LocalStorage.DeleteAsync("rk_session"); } catch { /* fjernes uansett ved SignOut */ }
+        await Events.LogAsync("Utlogging", Session.UserName, Session.Email);
         Session.SignOut();
         Nav.NavigateTo("/login", forceLoad: false);
     }

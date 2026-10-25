@@ -59,6 +59,33 @@ public class EventService
         catch (Exception ex) { _log.LogError(ex, "Henting av hendelser feilet"); return new(); }
     }
 
+    /// <summary>Alle hendelser av gitte typer etter et tidspunkt (paginert) — f.eks. «Innlogging»/«Utlogging»
+    /// til arbeidstidsberegning i rapport-API-et.</summary>
+    public async Task<List<Hendelse>> TyperSidenAsync(IEnumerable<string> typer, DateTime fraUtc)
+    {
+        var t = typer.ToList();
+        if (!IsConfigured) return _staging.Where(h => t.Contains(h.Type) && h.Tidspunkt >= fraUtc).ToList();
+        var res = new List<Hendelse>();
+        try
+        {
+            await EnsureInitAsync();
+            const int side = 1000;
+            for (var from = 0; from <= 100000; from += side)
+            {
+                var batch = (await _client.From<Hendelse>()
+                    .Filter("type", Constants.Operator.In, t)
+                    .Filter("tidspunkt", Constants.Operator.GreaterThanOrEqual, fraUtc.ToUniversalTime().ToString("o"))
+                    .Order(x => x.Tidspunkt, Constants.Ordering.Ascending, Constants.NullPosition.Last)
+                    .Range(from, from + side - 1)
+                    .Get()).Models;
+                res.AddRange(batch);
+                if (batch.Count < side) break;
+            }
+        }
+        catch (Exception ex) { _log.LogError(ex, "Henting av hendelser ({Typer}) feilet", string.Join(",", t)); }
+        return res;
+    }
+
     private async Task EnsureInitAsync()
     {
         if (_initialized) return;

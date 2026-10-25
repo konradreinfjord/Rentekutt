@@ -17,14 +17,16 @@ public class RapportService
     private readonly DialerService _dialer;
     private readonly BankSendingService _bank;
     private readonly SupabaseUserService _users;
+    private readonly EventService _events;
 
-    public RapportService(KundekortService kort, LoggService logg, DialerService dialer, BankSendingService bank, SupabaseUserService users)
+    public RapportService(KundekortService kort, LoggService logg, DialerService dialer, BankSendingService bank, SupabaseUserService users, EventService events)
     {
         _kort = kort;
         _logg = logg;
         _dialer = dialer;
         _bank = bank;
         _users = users;
+        _events = events;
     }
 
     public static readonly string[] Kundetyper = { "B2C", "B2B" };
@@ -57,6 +59,8 @@ public class RapportService
 
         var alle = await _kort.ListLettAsync();
         var logg = await _logg.HandlingerSidenAsync(fraUtc);
+        var innsyn = await _logg.KategoriSidenAsync("innsyn", fraUtc);   // kun til arbeidstid — teller ikke som handling
+        var paalogging = await _events.TyperSidenAsync(new[] { "Innlogging", "Utlogging" }, fraUtc);   // kilde = e-post
         var anrop = await _dialer.SidenAsync(fraUtc);
         var sendinger = await _bank.SisteePerKortOgBankAsync();
         var brukere = await AgenterAsync();
@@ -127,6 +131,24 @@ public class RapportService
             .Where(x => x.Status is not null).ToList();
         int Utfall(string status) => statusLogg.Where(x => x.Status!.Equals(status, OIC)).Select(x => x.KundekortId).Distinct().Count();
 
+        // ---- Arbeidstid i systemet (aktiv tid utledet fra tidsstempler) ----
+        // Uavhengig av kundetype-filteret: timer i systemet er ikke knyttet til én kundetype.
+        var stempler = logg.Select(l => (l.Aktor, Tid: l.Opprettet))
+            .Concat(innsyn.Select(l => (l.Aktor, Tid: l.Opprettet)))
+            .Concat(paalogging.Select(h => (Aktor: h.Kilde, Tid: h.Tidspunkt)))   // inn-/utlogging
+            .Concat(anrop.Select(a => (a.Aktor, Tid: a.StartetAt)))
+            .Concat(anrop.Where(a => a.FerdigAt is not null).Select(a => (a.Aktor, Tid: a.FerdigAt!.Value)))
+            .Concat(sendinger.Select(s => (Aktor: s.SendtAv, Tid: s.SendtAt)))
+            .Where(x => IPeriode(x.Tid) && ErMenneske(x.Aktor))
+            .ToList();
+        var innlogginger = paalogging.Where(h => h.Type == "Innlogging" && IPeriode(h.Tidspunkt)).ToList();
+        Arbeidstid TidFor(UserRow u) => BeregnArbeidstid(stempler
+            .Where(x => x.Aktor!.Equals(u.Email, OIC) || x.Aktor.Equals(u.FullName, OIC)).Select(x => x.Tid));
+        var tidPerAgent = brukere.ToDictionary(u => u.Email, TidFor, StringComparer.OrdinalIgnoreCase);
+        var tidValgt = agent is not null ? TidFor(agent) : null;
+        // Uten agent-filter: totalen er summen over agentene (per dag = sum av agentenes timer den dagen).
+        var tidAlle = agent is null ? SlaaSammen(tidPerAgent.Values) : tidValgt!;
+
         // ---- Per agent (kun når ikke filtrert på én agent) ----
         object? perAgent = agent is null ? brukere.Select(u =>
         {
@@ -136,6 +158,7 @@ public class RapportService
             return new
             {
                 agent = u.FullName,
+                arbeidstimer = tidPerAgent[u.Email].Timer,
                 saker_innkommet_eid = inn.Count(k => k.Eier?.Equals(u.Email, OIC) ?? false),
                 eierskap_tatt = eierskap.Count(k => k.Eier?.Equals(u.Email, OIC) ?? false),
                 saker_endret = h.Select(l => l.KundekortId).Distinct().Count(),
@@ -254,6 +277,79 @@ public class RapportService
                 kansellert = Utfall(KundekortService.StatusKansellert),
                 sendt_til_bank = Utfall(KundekortService.StatusSendtIProsess),
             },
+
+            arbeidstimer = new
+            {
+                definisjon = $"Aktiv tid i systemet, regnet fra innlogginger/utlogginger og tidsstemplene på alt agenten gjør (handlinger og innsyn på saker, anrop, banksendinger). " +
+                             $"Aktiviteter med under {PauseGrense.TotalMinutes:0} min mellomrom regnes som én sammenhengende økt; timer = sum av øktenes lengde " +
+                             $"+ {OktTillegg.TotalMinutes:0} min per økt (siste handling i en økt har ingen målt tid etter seg). Påvirkes ikke av kundetype-filteret.",
+                pause_grense_min = (int)PauseGrense.TotalMinutes,
+                tillegg_per_okt_min = (int)OktTillegg.TotalMinutes,
+                timer_totalt = tidAlle.Timer,
+                dager_aktive = tidAlle.PerDag.Count,
+                snitt_timer_per_aktiv_dag = tidAlle.PerDag.Count > 0 ? Math.Round(tidAlle.Timer / tidAlle.PerDag.Count, 2) : 0,
+                innlogginger = innlogginger.Count(h => agent is null || (h.Kilde?.Equals(agent.Email, OIC) ?? false)),
+                per_dag = tidAlle.PerDag.Select(d => new
+                {
+                    dato = d.Dato.ToString("yyyy-MM-dd"),
+                    timer = d.Timer,
+                    forste = d.Forste.TilOslo().ToString("HH:mm"),
+                    siste = d.Siste.TilOslo().ToString("HH:mm"),
+                    okter = d.Okter,
+                    aktiviteter = d.Aktiviteter,
+                    innlogginger = innlogginger.Count(h => DateOnly.FromDateTime(h.Tidspunkt.TilOslo()) == d.Dato
+                        && (agent is null || (h.Kilde?.Equals(agent.Email, OIC) ?? false))),
+                }).ToList(),
+                per_agent = agent is null ? brukere.Select(u => new
+                {
+                    agent = u.FullName,
+                    innlogginger = innlogginger.Count(h => h.Kilde?.Equals(u.Email, OIC) ?? false),
+                    timer_totalt = tidPerAgent[u.Email].Timer,
+                    dager_aktive = tidPerAgent[u.Email].PerDag.Count,
+                    snitt_timer_per_aktiv_dag = tidPerAgent[u.Email].PerDag.Count > 0
+                        ? Math.Round(tidPerAgent[u.Email].Timer / tidPerAgent[u.Email].PerDag.Count, 2) : 0,
+                    forste_dag = tidPerAgent[u.Email].PerDag.FirstOrDefault()?.Dato.ToString("yyyy-MM-dd"),
+                    siste_dag = tidPerAgent[u.Email].PerDag.LastOrDefault()?.Dato.ToString("yyyy-MM-dd"),
+                }).OrderByDescending(x => x.timer_totalt).ThenBy(x => x.agent).ToList() : null,
+            },
         };
+    }
+
+    // ---- Arbeidstid ----
+
+    private static readonly TimeSpan PauseGrense = TimeSpan.FromMinutes(30);   // lengre opphold = ny økt
+    private static readonly TimeSpan OktTillegg = TimeSpan.FromMinutes(5);     // tid etter siste handling i en økt
+
+    public record DagTid(DateOnly Dato, double Timer, DateTime Forste, DateTime Siste, int Okter, int Aktiviteter);
+    public record Arbeidstid(double Timer, List<DagTid> PerDag);
+
+    /// <summary>Økt-basert aktiv tid fra en mengde tidsstempler (UTC). Dag = Oslo-dato.</summary>
+    public static Arbeidstid BeregnArbeidstid(IEnumerable<DateTime> stempler)
+    {
+        var perDag = new List<DagTid>();
+        foreach (var dag in stempler.Distinct().GroupBy(t => DateOnly.FromDateTime(t.TilOslo())).OrderBy(g => g.Key))
+        {
+            var tider = dag.OrderBy(t => t).ToList();
+            var sum = TimeSpan.Zero; var okter = 0;
+            var start = tider[0]; var forrige = tider[0];
+            foreach (var t in tider.Skip(1))
+            {
+                if (t - forrige > PauseGrense) { sum += forrige - start + OktTillegg; okter++; start = t; }
+                forrige = t;
+            }
+            sum += forrige - start + OktTillegg; okter++;
+            perDag.Add(new DagTid(dag.Key, Math.Round(sum.TotalHours, 2), tider[0], tider[^1], okter, tider.Count));
+        }
+        return new Arbeidstid(Math.Round(perDag.Sum(d => d.Timer), 2), perDag);
+    }
+
+    // Summerer flere agenters arbeidstid per dag (første/siste = tidligste/seneste på tvers av agentene).
+    private static Arbeidstid SlaaSammen(IEnumerable<Arbeidstid> alle)
+    {
+        var perDag = alle.SelectMany(a => a.PerDag).GroupBy(d => d.Dato).OrderBy(g => g.Key)
+            .Select(g => new DagTid(g.Key, Math.Round(g.Sum(d => d.Timer), 2), g.Min(d => d.Forste), g.Max(d => d.Siste),
+                g.Sum(d => d.Okter), g.Sum(d => d.Aktiviteter)))
+            .ToList();
+        return new Arbeidstid(Math.Round(perDag.Sum(d => d.Timer), 2), perDag);
     }
 }

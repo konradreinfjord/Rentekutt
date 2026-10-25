@@ -4,6 +4,7 @@
 @inject RentkuttCRM.Services.SupabaseUserService Users
 @inject RentkuttCRM.Services.TwoFactorService TwoFactor
 @inject RentkuttCRM.Services.SettingsService Settings
+@inject RentkuttCRM.Services.EventService Events
 @inject NavigationManager Nav
 @inject ILogger<Login> Logger
 @inject ProtectedLocalStorage LocalStorage
@@ -223,6 +224,8 @@
     private async Task FullforInnlogging(UserRow user)
     {
         Session.SignIn(user);
+        // Innlogging logges som hendelse (navn + e-post) — grunnlag for arbeidstid i rapport-API-et.
+        await Events.LogAsync("Innlogging", user.FullName, user.Email);
         try { await LocalStorage.SetAsync("rk_session", new PersistertSesjon(user.Id, user.Email, user.FullName, user.Role)); }
         catch (Exception ex) { Logger.LogWarning(ex, "Kunne ikke persistere sesjon (fortsetter uten)"); }
         Nav.NavigateTo("/crm");
