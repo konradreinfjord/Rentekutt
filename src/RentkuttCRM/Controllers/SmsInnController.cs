@@ -85,12 +85,13 @@ public class SmsInnController : ControllerBase
         // Skjema: bruk de ferdig-dekodede feltene direkte (rå-strengen er kun for logging) + query som fallback.
         var felt = skjema is not null ? ParseFelt("", Request) : ParseFelt(raw, Request);
         if (skjema is not null) foreach (var (k, v) in skjema) felt[k] = v;
-        // LinkMobility MO (JSON eller XML): source / destination / content.userData. Øvrige navn = varianter.
-        var fra = Foerste(felt, "source", "sender", "from", "msisdn", "originator", "sourceaddr", "sourcenumber",
+        // LinkMobility MO: gateway-push (skjema) bruker SND / RCV / TXT (+ ID, NET); JSON/XML-varianten bruker
+        // source / destination / content.userData. Øvrige navn = varianter.
+        var fra = Foerste(felt, "snd", "source", "sender", "from", "msisdn", "originator", "sourceaddr", "sourcenumber",
             "sourceaddress", "senderaddress", "sendernumber", "fromnumber", "sourcemsisdn", "phonenumber", "mobilenumber");
-        var til = Foerste(felt, "destination", "receiver", "to", "shortnumber", "destinationaddr", "destinationaddress",
+        var til = Foerste(felt, "rcv", "destination", "receiver", "to", "shortnumber", "destinationaddr", "destinationaddress",
             "recipientaddress", "recipient", "tonumber");
-        var tekst = Foerste(felt, "userdata", "text", "message", "messagetext", "body", "sms", "smstext", "content");
+        var tekst = Foerste(felt, "txt", "userdata", "text", "message", "messagetext", "body", "sms", "smstext", "content");
 
         // Siste utvei: ukjente feltnavn — match på nøkkel-delstreng (også sti-prefiksede nøkler som
         // «sender_number»/«from_address»), og for numre krev at verdien faktisk ser ut som et telefonnummer.
@@ -106,7 +107,7 @@ public class SmsInnController : ControllerBase
             // Returner hva vi faktisk så, så leverandørens utvikler ser feilen med en gang.
             return BadRequest(new
             {
-                error = "Mangler avsendernummer. Forventer «source» (ev. sender/from/msisdn) i JSON, XML, skjema eller query.",
+                error = "Mangler avsendernummer. Forventer «SND» (gateway-skjema) eller «source» (ev. sender/from/msisdn) i JSON, XML, skjema eller query.",
                 contentType = ct,
                 feltFunnet = felt.Keys.Where(k => !k.Equals("token", StringComparison.OrdinalIgnoreCase)).ToArray(),
             });
